@@ -1,0 +1,11 @@
+version: v2
+clean: true
+managed:
+  enabled: true
+  override:
+    - file_option: go_package_prefix
+      value: github.com/sparrow-community/sparrow/protocol/gen/go
+plugins:
+  - remote: buf.build/protocolbuffers/go:v1.36.11
+    out: ../gen/go
+    opt: paths=source_relative

@@ -1,0 +1,130 @@
+syntax = "proto3";
+
+package event.v1;
+
+import "event/v1/payloads.proto";
+
+// Event is one append-only record in the engine log (audit source of truth).
+message Event {
+  // Snowflake id for this record (not a UUID).
+  int64 id = 1;
+  // Unix time in milliseconds.
+  int64 timestamp = 2;
+
+  enum RecordType {
+    RECORD_TYPE_UNSPECIFIED = 0;
+    RECORD_TYPE_COMMAND = 1;
+    RECORD_TYPE_EVENT = 2;
+    RECORD_TYPE_REJECTION = 3;
+  }
+  RecordType record_type = 3;
+
+  // Deployed process definition this record belongs to.
+  int64 deployment_id = 4;
+  // Process instance id (partition key for serial processing).
+  int64 process_instance_id = 5;
+  // Version of the deployed process definition.
+  int32 process_version = 6;
+
+  // Element execution details when this record is about a flow node / process / sequence flow.
+  Element element = 7;
+
+  // Id of the command (or prior record) that caused this EVENT or REJECTION. 0 if none.
+  int64 source_record_id = 8;
+
+  // Populated when record_type is RECORD_TYPE_REJECTION.
+  Rejection rejection = 9;
+}
+
+message Rejection {
+  string code = 1;
+  string message = 2;
+}
+
+message Element {
+  enum Intent {
+    INTENT_UNSPECIFIED = 0;
+
+    INTENT_ACTIVATING = 1;
+    INTENT_ACTIVATED = 2;
+
+    INTENT_COMPLETING = 3;
+    INTENT_COMPLETED = 4;
+
+    INTENT_TERMINATING = 5;
+    INTENT_TERMINATED = 6;
+
+    INTENT_SEQUENCE_FLOW_TAKEN = 7;
+
+    INTENT_ERROR_THROWN = 8;
+
+    INTENT_FAILED = 9;
+
+    INTENT_SUSPENDING = 10;
+    INTENT_SUSPENDED = 11;
+    INTENT_RESUMING = 12;
+    INTENT_RESUMED = 13;
+  }
+
+  // Type mirrors independent BPMN elements.
+  // PROCESS is the process container (not a FlowElement).
+  // Remaining values align with concrete types under bpmn/element.FlowElements
+  // (BPMN 2.0 FlowElement specializations). One Type per independent element;
+  // do not collapse siblings into a generic TASK/GATEWAY + kind.
+  enum Type {
+    TYPE_UNSPECIFIED = 0;
+
+    // Process container (bpmn:process)
+    TYPE_PROCESS = 1;
+
+    // Events
+    TYPE_START_EVENT = 2;
+    TYPE_END_EVENT = 3;
+    TYPE_INTERMEDIATE_THROW_EVENT = 4;
+    TYPE_INTERMEDIATE_CATCH_EVENT = 5;
+    TYPE_BOUNDARY_EVENT = 6;
+    TYPE_IMPLICIT_THROW_EVENT = 7;
+
+    // Activities
+    TYPE_TASK = 8;
+    TYPE_MANUAL_TASK = 9;
+    TYPE_USER_TASK = 10;
+    TYPE_SERVICE_TASK = 11;
+    TYPE_SEND_TASK = 12;
+    TYPE_RECEIVE_TASK = 13;
+    TYPE_BUSINESS_RULE_TASK = 14;
+    TYPE_SCRIPT_TASK = 15; // BPMN FlowElement; not yet modeled in FlowElements
+    TYPE_SUB_PROCESS = 16;
+    TYPE_CALL_ACTIVITY = 17;
+
+    // Gateways
+    TYPE_EXCLUSIVE_GATEWAY = 18;
+    TYPE_PARALLEL_GATEWAY = 19;
+    TYPE_INCLUSIVE_GATEWAY = 20;
+    TYPE_EVENT_BASED_GATEWAY = 21;
+    TYPE_COMPLEX_GATEWAY = 22; // BPMN FlowElement; not yet modeled in FlowElements
+
+    // Connecting / data
+    TYPE_SEQUENCE_FLOW = 23;
+    TYPE_DATA_OBJECT = 24;
+    TYPE_DATA_OBJECT_REFERENCE = 25;
+    TYPE_DATA_STORE_REFERENCE = 26;
+  }
+
+  Intent intent = 1;
+  Type type = 2;
+  // BPMN element id from the process definition.
+  string id = 3;
+  // Execution token id; 0 when not applicable (e.g. process-level records).
+  int64 token_id = 4;
+
+  // Payload carries data only; specialization is expressed by Type.
+  oneof payload {
+    ProcessPayload process_payload = 5;
+    EventPayload event_payload = 6;
+    ActivityPayload activity_payload = 7;
+    GatewayPayload gateway_payload = 8;
+    SequenceFlowPayload sequence_flow_payload = 9;
+    DataPayload data_payload = 10;
+  }
+}
