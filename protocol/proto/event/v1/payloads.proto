@@ -20,6 +20,9 @@ message EventPayload {}
 message ActivityPayload {
   // Variable deltas typically set on COMPLETED (or COMMAND complete).
   repeated Variable variables = 1;
+  // Worker subscription key for SERVICE_TASK (and similar job-backed activities).
+  // Set on ACTIVATED when a job is created; empty for user tasks.
+  string job_type = 2;
 }
 
 message GatewayPayload {

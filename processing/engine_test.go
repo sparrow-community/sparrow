@@ -141,14 +141,14 @@ func TestCompleteUserTaskInvalidState(t *testing.T) {
 }
 
 func TestDeployRejectsUnsupportedElement(t *testing.T) {
-	xml, err := os.ReadFile(filepath.Join("testdata", "m1_unsupported_service_task.bpmn"))
+	xml, err := os.ReadFile(filepath.Join("testdata", "m1_unsupported_parallel.bpmn"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	eng := processing.NewEngine(eventlog.NewMemory())
 	_, err = eng.Deploy(context.Background(), xml)
 	if err == nil {
-		t.Fatal("expected deploy to reject ServiceTask")
+		t.Fatal("expected deploy to reject ParallelGateway")
 	}
 }
 
@@ -301,5 +301,69 @@ func TestGetInstanceReturnsSnapshot(t *testing.T) {
 		if tok.Status == "mutated" {
 			t.Fatal("token snapshot leaked")
 		}
+	}
+}
+
+func TestServiceTaskWaitAndComplete(t *testing.T) {
+	xml, err := os.ReadFile(filepath.Join("testdata", "m2_service_task.bpmn"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	eng := processing.NewEngine(eventlog.NewMemory())
+	ctx := context.Background()
+	dep, err := eng.Deploy(ctx, xml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instanceID, err := eng.CreateInstance(ctx, dep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inst, ok := eng.GetInstance(instanceID)
+	if !ok || inst.Status != projection.StatusActive {
+		t.Fatalf("inst=%v ok=%v", inst, ok)
+	}
+	var waitingToken, waitingElement string
+	for _, tok := range inst.Tokens {
+		if tok.Status == projection.TokenWaiting {
+			waitingToken, waitingElement = tok.ID, tok.ElementID
+			break
+		}
+	}
+	if waitingElement != "ServiceTask_1" {
+		t.Fatalf("expected wait at ServiceTask_1, tokens=%#v", inst.Tokens)
+	}
+
+	events, err := eng.ListEvents(ctx, instanceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sawJobType bool
+	for _, ev := range events {
+		if ev.GetRecordType() != eventv1.Event_RECORD_TYPE_EVENT {
+			continue
+		}
+		el := ev.GetElement()
+		if el != nil && el.GetType() == eventv1.Element_TYPE_SERVICE_TASK &&
+			el.GetIntent() == eventv1.Element_INTENT_ACTIVATED {
+			if el.GetActivityPayload().GetJobType() != "work.v1" {
+				t.Fatalf("job_type=%q", el.GetActivityPayload().GetJobType())
+			}
+			sawJobType = true
+		}
+	}
+	if !sawJobType {
+		t.Fatal("missing SERVICE_TASK ACTIVATED with job_type")
+	}
+
+	if err := eng.CompleteServiceTask(ctx, instanceID, waitingElement, waitingToken, map[string]any{"result": "ok"}); err != nil {
+		t.Fatalf("CompleteServiceTask: %v", err)
+	}
+	inst, _ = eng.GetInstance(instanceID)
+	if inst.Status != projection.StatusCompleted {
+		t.Fatalf("status=%s want completed", inst.Status)
+	}
+	if inst.Variables["result"] == "" {
+		t.Fatalf("vars=%#v", inst.Variables)
 	}
 }

@@ -123,7 +123,7 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 	// Tokens are updated only from EVENT records (not by the executor).
 	switch el.GetIntent() {
 	case eventv1.Element_INTENT_ACTIVATED:
-		if el.GetType() == eventv1.Element_TYPE_USER_TASK {
+		if el.GetType() == eventv1.Element_TYPE_USER_TASK || el.GetType() == eventv1.Element_TYPE_SERVICE_TASK {
 			tok.Status = TokenWaiting
 		} else {
 			tok.Status = TokenActive

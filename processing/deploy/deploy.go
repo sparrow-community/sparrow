@@ -16,10 +16,11 @@ type Deployment struct {
 	Version int32
 	Process element.Process
 
-	types    map[string]eventv1.Element_Type
-	outgoing map[string][]string
-	flows    map[string]element.SequenceFlow
-	xor      map[string]element.ExclusiveGateway
+	types        map[string]eventv1.Element_Type
+	outgoing     map[string][]string
+	flows        map[string]element.SequenceFlow
+	xor          map[string]element.ExclusiveGateway
+	serviceTasks map[string]element.ServiceTask
 }
 
 // Compile parses BPMN XML and keeps the first executable process (M1 subset).
@@ -63,6 +64,7 @@ func (d *Deployment) buildIndex() {
 	d.outgoing = make(map[string][]string)
 	d.flows = make(map[string]element.SequenceFlow, len(p.SequenceFlows))
 	d.xor = make(map[string]element.ExclusiveGateway, len(p.ExclusiveGatewaies))
+	d.serviceTasks = make(map[string]element.ServiceTask, len(p.ServiceTasks))
 
 	indexNode := func(id string, typ eventv1.Element_Type, outs []string) {
 		d.types[id] = typ
@@ -79,6 +81,10 @@ func (d *Deployment) buildIndex() {
 	for _, e := range p.UserTasks {
 		indexNode(e.ID, eventv1.Element_TYPE_USER_TASK, e.Outgoing)
 	}
+	for _, e := range p.ServiceTasks {
+		indexNode(e.ID, eventv1.Element_TYPE_SERVICE_TASK, e.Outgoing)
+		d.serviceTasks[e.ID] = e
+	}
 	for _, g := range p.ExclusiveGatewaies {
 		indexNode(g.ID, eventv1.Element_TYPE_EXCLUSIVE_GATEWAY, g.Outgoing)
 		d.xor[g.ID] = g
@@ -94,7 +100,7 @@ func (d *Deployment) buildIndex() {
 
 func validateM1(proc *element.Process) error {
 	unsupported := 0
-	unsupported += len(proc.Tasks) + len(proc.ServiceTasks) + len(proc.ManualTasks)
+	unsupported += len(proc.Tasks) + len(proc.ManualTasks)
 	unsupported += len(proc.SendTasks) + len(proc.ReceiveTasks) + len(proc.BusinessRuleTasks)
 	unsupported += len(proc.ParallelGatewaies) + len(proc.InclusiveGatewaies) + len(proc.EventBasedGatewaies)
 	unsupported += len(proc.SubProcesses) + len(proc.CallActivities) + len(proc.BoundaryEvents)
@@ -173,6 +179,11 @@ func flowNodeOutgoing(proc *element.Process, id string) []string {
 			return append([]string{}, e.Outgoing...)
 		}
 	}
+	for _, e := range proc.ServiceTasks {
+		if e.ID == id {
+			return append([]string{}, e.Outgoing...)
+		}
+	}
 	for _, e := range proc.ExclusiveGatewaies {
 		if e.ID == id {
 			return append([]string{}, e.Outgoing...)
@@ -187,6 +198,14 @@ func (d *Deployment) SequenceFlow(id string) (element.SequenceFlow, error) {
 		return element.SequenceFlow{}, fmt.Errorf("NOT_FOUND: sequence flow %q", id)
 	}
 	return f, nil
+}
+
+func (d *Deployment) ServiceTask(id string) (element.ServiceTask, error) {
+	st, ok := d.serviceTasks[id]
+	if !ok {
+		return element.ServiceTask{}, fmt.Errorf("NOT_FOUND: service task %q", id)
+	}
+	return st, nil
 }
 
 // ConditionText returns the sequence flow condition body, or empty if none.

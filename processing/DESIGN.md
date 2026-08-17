@@ -3,8 +3,9 @@
 本文描述 `processing` 模块的目标形态、核心模型、包结构、处理流程与 M1 实现边界。  
 实现应以本文为准；协议字段变更在 `protocol` 中进行，并保持「Event = 元素行为」的定位。
 
-**M1 状态**：Deploy / CreateInstance / CompleteUserTask、内存与文件 EventLog、`Open` 重启回放、实例投影、按元素 Handler 执行已可用。  
-尚未实现：XOR 条件表达式、更多 BPMN 元素、COMMAND 幂等。
+**M1 状态**：Deploy / CreateInstance / CompleteUserTask、XOR 条件、内存与文件 EventLog、`Open` 重启回放已可用。  
+**M2 起步**：CompleteServiceTask；Job 细节在 `ActivityPayload.job_type`。  
+尚未实现：Timer / Message、COMMAND 幂等、更多 BPMN 元素。
 
 ---
 
@@ -129,6 +130,7 @@ processing/
 │   ├── start_event.go
 │   ├── end_event.go
 │   ├── user_task.go
+│   ├── service_task.go
 │   ├── exclusive_gateway.go
 │   └── sequence_flow.go
 ├── log/                      // EventLog（Memory / File）
@@ -260,11 +262,12 @@ Recover(ctx, eventLog, deploymentStore)
 | `PROCESS` | `process.go` | 实例启动 / 正常完成 |
 | `START_EVENT` | `start_event.go` | 瞬时生命周期后沿出口流出 |
 | `USER_TASK` | `user_task.go` | ACTIVATING→ACTIVATED 后 `Wait`；Complete → COMPLETING→COMPLETED |
+| `SERVICE_TASK` | `service_task.go` | 同上等待；ACTIVATED 带 `ActivityPayload.job_type`；`CompleteServiceTask` |
 | `EXCLUSIVE_GATEWAY` | `exclusive_gateway.go` | 非 default 条件按序求值，否则 default；payload 带 `taken_sequence_flow_id` |
 | `SEQUENCE_FLOW` | `sequence_flow.go` | 经 transit 发 `SEQUENCE_FLOW_TAKEN`（不走 OnEnter） |
 | `END_EVENT` | `end_event.go` | 完成后 `TryCompleteProcess` |
 
-部署时 `validateM1` 拒绝 M1 外元素（ServiceTask、Parallel 等）。
+部署时 `validateM1` 拒绝尚未实现的元素（Parallel、SubProcess 等）。ServiceTask 已纳入可执行子集。
 
 ### 6.2 (Type, Intent) 使用（M1）
 
@@ -275,11 +278,13 @@ Recover(ctx, eventLog, deploymentStore)
 | 走过流 | SEQUENCE_FLOW | SEQUENCE_FLOW_TAKEN |
 | 进入 UserTask | USER_TASK | ACTIVATING → ACTIVATED（等待） |
 | 完成 UserTask | USER_TASK | COMPLETING → COMPLETED |
+| 进入 ServiceTask | SERVICE_TASK | ACTIVATING → ACTIVATED（等待；payload.job_type） |
+| 完成 ServiceTask | SERVICE_TASK | COMPLETING → COMPLETED |
 | XOR | EXCLUSIVE_GATEWAY | ACTIVATING → … → COMPLETED（payload 带 taken flow） |
 | End | END_EVENT | … → COMPLETED |
 | 实例结束 | PROCESS | COMPLETING → COMPLETED |
 
-**等待点（UserTask ACTIVATED）** 与 **SEQUENCE_FLOW_TAKEN** 必须在日志中可见。
+**等待点（UserTask / ServiceTask ACTIVATED）** 与 **SEQUENCE_FLOW_TAKEN** 必须在日志中可见。
 
 ### 6.3 变量
 
@@ -316,10 +321,11 @@ Recover(ctx, eventLog, deploymentStore)
 - 行为：分配 instance/token id；写启动 COMMAND + PROCESS 启动 EVENT；Enter StartEvent  
 - 推进到第一个等待点（通常 UserTask）或直至结束  
 
-### CompleteUserTask
+### CompleteUserTask / CompleteServiceTask
 
 - 输入：`process_instance_id`，`element_id`，`token_id`，可选变量  
 - 行为：写 COMPLETING COMMAND；`Executor.Complete` 后继续自动步进  
+- ServiceTask 须处于 waiting；ACTIVATED 时 `job_type` 来自 BPMN `implementation`（否则 name / id）  
 
 查询：
 
@@ -342,7 +348,7 @@ Recover(ctx, eventLog, deploymentStore)
 
 | 阶段 | 能力 | 落点 |
 |------|------|------|
-| M2 | Timer / Message、ServiceTask Job | payload + Intent 等待语义；新 handler 文件 |
+| M2 | Timer / Message | payload + Intent 等待语义；新 handler 文件 |
 | M3 | Parallel/Inclusive、SubProcess、多 token | `Tokens` 多条目；gateway fork/join |
 | M4 | Boundary / 补偿 / Incident | 新 Intent + payload |
 
@@ -373,7 +379,8 @@ Recover(ctx, eventLog, deploymentStore)
 | 5 | `engine` + `executor` API | 已完成 |
 | 6 | 文件型 EventLog 与重启回放 | 已完成 |
 | 7 | XOR 条件表达式（M1 子集） | 已完成 |
-| 8 | ServiceTask / Timer / 更多元素 | 未开始 |
+| 8 | ServiceTask + job_type | 已完成 |
+| 9 | Timer / Message / 更多元素 | 未开始 |
 
 ---
 

@@ -62,6 +62,7 @@ func DefaultRegistry() *Registry {
 		StartEventHandler{},
 		EndEventHandler{},
 		UserTaskHandler{},
+		ServiceTaskHandler{},
 		ExclusiveGatewayHandler{},
 		SequenceFlowHandler{},
 	)
