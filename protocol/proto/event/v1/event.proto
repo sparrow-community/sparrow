@@ -6,8 +6,8 @@ import "event/v1/payloads.proto";
 
 // Event is one append-only record in the engine log (audit source of truth).
 message Event {
-  // Snowflake id for this record (not a UUID).
-  int64 id = 1;
+  // UUIDv7 for this record (canonical string form).
+  string id = 1;
   // Unix time in milliseconds.
   int64 timestamp = 2;
 
@@ -19,18 +19,19 @@ message Event {
   }
   RecordType record_type = 3;
 
-  // Deployed process definition this record belongs to.
-  int64 deployment_id = 4;
-  // Process instance id (partition key for serial processing).
-  int64 process_instance_id = 5;
+  // Deployed process definition this record belongs to (UUIDv7).
+  string deployment_id = 4;
+  // Process instance id / partition key (UUIDv7).
+  string process_instance_id = 5;
   // Version of the deployed process definition.
   int32 process_version = 6;
 
   // Element execution details when this record is about a flow node / process / sequence flow.
   Element element = 7;
 
-  // Id of the command (or prior record) that caused this EVENT or REJECTION. 0 if none.
-  int64 source_record_id = 8;
+  // Id of the command (or prior record) that caused this EVENT or REJECTION.
+  // Empty when none.
+  string source_record_id = 8;
 
   // Populated when record_type is RECORD_TYPE_REJECTION.
   Rejection rejection = 9;
@@ -115,8 +116,8 @@ message Element {
   Type type = 2;
   // BPMN element id from the process definition.
   string id = 3;
-  // Execution token id; 0 when not applicable (e.g. process-level records).
-  int64 token_id = 4;
+  // Execution token id (UUIDv7); empty when not applicable (e.g. process-level records).
+  string token_id = 4;
 
   // Payload carries data only; specialization is expressed by Type.
   oneof payload {

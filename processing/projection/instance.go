@@ -1,0 +1,145 @@
+package projection
+
+import (
+	"encoding/json"
+
+	eventv1 "github.com/sparrow-community/sparrow/protocol/gen/go/event/v1"
+)
+
+type InstanceStatus string
+
+const (
+	StatusActive     InstanceStatus = "active"
+	StatusCompleted  InstanceStatus = "completed"
+	StatusTerminated InstanceStatus = "terminated"
+)
+
+type TokenStatus string
+
+const (
+	TokenActive  TokenStatus = "active"
+	TokenWaiting TokenStatus = "waiting"
+)
+
+type Token struct {
+	ID        string
+	ElementID string
+	Status    TokenStatus
+}
+
+type Instance struct {
+	ID           string
+	DeploymentID string
+	Version      int32
+	Status       InstanceStatus
+	Variables    map[string]string // name -> json_value
+	Tokens       map[string]*Token
+	// elementID -> last intent seen (for validation helpers)
+	ElementIntent map[string]eventv1.Element_Intent
+}
+
+func NewInstance(id, deploymentID string, version int32) *Instance {
+	return &Instance{
+		ID:            id,
+		DeploymentID:  deploymentID,
+		Version:       version,
+		Status:        StatusActive,
+		Variables:     make(map[string]string),
+		Tokens:        make(map[string]*Token),
+		ElementIntent: make(map[string]eventv1.Element_Intent),
+	}
+}
+
+func (inst *Instance) ApplyEvent(e *eventv1.Event) {
+	if e == nil || e.GetRecordType() != eventv1.Event_RECORD_TYPE_EVENT {
+		return
+	}
+	el := e.GetElement()
+	if el == nil {
+		return
+	}
+
+	inst.ElementIntent[el.GetId()] = el.GetIntent()
+	mergeVariables(inst, el)
+	applyToken(inst, el)
+	applyProcessLifecycle(inst, el)
+}
+
+func mergeVariables(inst *Instance, el *eventv1.Element) {
+	switch p := el.GetPayload().(type) {
+	case *eventv1.Element_ProcessPayload:
+		for _, v := range p.ProcessPayload.GetVariables() {
+			inst.Variables[v.GetName()] = v.GetJsonValue()
+		}
+	case *eventv1.Element_ActivityPayload:
+		for _, v := range p.ActivityPayload.GetVariables() {
+			inst.Variables[v.GetName()] = v.GetJsonValue()
+		}
+	}
+}
+
+func applyToken(inst *Instance, el *eventv1.Element) {
+	tokenID := el.GetTokenId()
+	if tokenID == "" {
+		return
+	}
+	tok, ok := inst.Tokens[tokenID]
+	if !ok {
+		tok = &Token{ID: tokenID}
+		inst.Tokens[tokenID] = tok
+	}
+	tok.ElementID = el.GetId()
+
+	switch el.GetIntent() {
+	case eventv1.Element_INTENT_ACTIVATED:
+		if el.GetType() == eventv1.Element_TYPE_USER_TASK {
+			tok.Status = TokenWaiting
+		} else {
+			tok.Status = TokenActive
+		}
+	case eventv1.Element_INTENT_COMPLETED, eventv1.Element_INTENT_TERMINATED:
+		if el.GetType() == eventv1.Element_TYPE_SEQUENCE_FLOW {
+			tok.Status = TokenActive
+			return
+		}
+		// leave token until moved by sequence flow / process end
+		tok.Status = TokenActive
+	case eventv1.Element_INTENT_SEQUENCE_FLOW_TAKEN:
+		tok.Status = TokenActive
+		if sp := el.GetSequenceFlowPayload(); sp != nil && sp.GetTargetId() != "" {
+			tok.ElementID = sp.GetTargetId()
+		}
+	}
+}
+
+func applyProcessLifecycle(inst *Instance, el *eventv1.Element) {
+	if el.GetType() != eventv1.Element_TYPE_PROCESS {
+		return
+	}
+	switch el.GetIntent() {
+	case eventv1.Element_INTENT_COMPLETED:
+		inst.Status = StatusCompleted
+		inst.Tokens = make(map[string]*Token)
+	case eventv1.Element_INTENT_TERMINATED:
+		inst.Status = StatusTerminated
+		inst.Tokens = make(map[string]*Token)
+	case eventv1.Element_INTENT_ACTIVATED:
+		inst.Status = StatusActive
+	}
+}
+
+// VariablesFromMap encodes Go values as JSON text variables.
+func VariablesFromMap(vars map[string]any) ([]*eventv1.Variable, error) {
+	if len(vars) == 0 {
+		return nil, nil
+	}
+	out := make([]*eventv1.Variable, 0, len(vars))
+	for k, v := range vars {
+		b, err := json.Marshal(v)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, &eventv1.Variable{Name: k, JsonValue: string(b)})
+	}
+	return out, nil
+}

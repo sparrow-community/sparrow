@@ -14,6 +14,14 @@ var eventPool = sync.Pool{
 	},
 }
 
+const (
+	testRecordID   = "01900000-0000-7000-8000-000000000001"
+	testDeployID   = "01900000-0000-7000-8000-000000000002"
+	testInstanceID = "01900000-0000-7000-8000-000000000003"
+	testSourceID   = "01900000-0000-7000-8000-00000000000a"
+	testTokenID    = "01900000-0000-7000-8000-000000000064"
+)
+
 func TestBuildStartEventEvent(t *testing.T) {
 	e, err := BuildStartEventEvent()
 	if err != nil {
@@ -24,14 +32,14 @@ func TestBuildStartEventEvent(t *testing.T) {
 		t.Fatalf("Error unmarshaling StartEvent: %v", err)
 	}
 
-	if evt.GetId() != 1 {
-		t.Fatalf("id = %d, want 1", evt.GetId())
+	if evt.GetId() != testRecordID {
+		t.Fatalf("id = %q, want %q", evt.GetId(), testRecordID)
 	}
 	if evt.GetRecordType() != eventv1.Event_RECORD_TYPE_EVENT {
 		t.Fatalf("record_type = %v", evt.GetRecordType())
 	}
-	if evt.GetSourceRecordId() != 10 {
-		t.Fatalf("source_record_id = %d, want 10", evt.GetSourceRecordId())
+	if evt.GetSourceRecordId() != testSourceID {
+		t.Fatalf("source_record_id = %q, want %q", evt.GetSourceRecordId(), testSourceID)
 	}
 	if evt.GetElement().GetType() != eventv1.Element_TYPE_START_EVENT {
 		t.Fatalf("element.type = %v", evt.GetElement().GetType())
@@ -40,13 +48,13 @@ func TestBuildStartEventEvent(t *testing.T) {
 
 func TestBuildUserTaskRejection(t *testing.T) {
 	msg := &eventv1.Event{
-		Id:                2,
+		Id:                "01900000-0000-7000-8000-000000000002",
 		Timestamp:         1234567890,
 		RecordType:        eventv1.Event_RECORD_TYPE_REJECTION,
-		DeploymentId:      2,
-		ProcessInstanceId: 3,
+		DeploymentId:      testDeployID,
+		ProcessInstanceId: testInstanceID,
 		ProcessVersion:    1,
-		SourceRecordId:    1,
+		SourceRecordId:    testRecordID,
 		Rejection: &eventv1.Rejection{
 			Code:    "INVALID_STATE",
 			Message: "task is not activated",
@@ -55,7 +63,7 @@ func TestBuildUserTaskRejection(t *testing.T) {
 			Intent:  eventv1.Element_INTENT_COMPLETING,
 			Type:    eventv1.Element_TYPE_USER_TASK,
 			Id:      "task-1",
-			TokenId: 1001,
+			TokenId: testTokenID,
 			Payload: &eventv1.Element_ActivityPayload{
 				ActivityPayload: &eventv1.ActivityPayload{},
 			},
@@ -84,18 +92,18 @@ func BenchmarkBuildStartEventEvent(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		evt.Reset()
-		evt.Id = 1
-		evt.DeploymentId = 2
-		evt.ProcessInstanceId = 3
+		evt.Id = testRecordID
+		evt.DeploymentId = testDeployID
+		evt.ProcessInstanceId = testInstanceID
 		evt.ProcessVersion = 1
 		evt.Timestamp = 1234567890
 		evt.RecordType = eventv1.Event_RECORD_TYPE_COMMAND
-		evt.SourceRecordId = 0
+		evt.SourceRecordId = ""
 		evt.Element = &eventv1.Element{
 			Intent:  eventv1.Element_INTENT_ACTIVATING,
 			Type:    eventv1.Element_TYPE_START_EVENT,
 			Id:      "start-event-1",
-			TokenId: 1001,
+			TokenId: testTokenID,
 			Payload: &eventv1.Element_EventPayload{
 				EventPayload: &eventv1.EventPayload{},
 			},
@@ -128,18 +136,18 @@ func BenchmarkParseEventFromBinary(b *testing.B) {
 
 func BuildStartEventEvent() ([]byte, error) {
 	eventMsg := &eventv1.Event{
-		Id:                1,
-		DeploymentId:      2,
-		ProcessInstanceId: 3,
+		Id:                testRecordID,
+		DeploymentId:      testDeployID,
+		ProcessInstanceId: testInstanceID,
 		ProcessVersion:    1,
 		Timestamp:         1234567890,
 		RecordType:        eventv1.Event_RECORD_TYPE_EVENT,
-		SourceRecordId:    10,
+		SourceRecordId:    testSourceID,
 		Element: &eventv1.Element{
 			Intent:  eventv1.Element_INTENT_ACTIVATING,
 			Type:    eventv1.Element_TYPE_START_EVENT,
 			Id:      "start-event-1",
-			TokenId: 1001,
+			TokenId: testTokenID,
 			Payload: &eventv1.Element_EventPayload{
 				EventPayload: &eventv1.EventPayload{},
 			},

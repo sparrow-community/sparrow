@@ -4,6 +4,8 @@ Apache-2.0 Go workspace for a lightweight BPMN workflow engine.
 
 Sparrow is a single-node execution engine in early development. The intended core is an append-only event log (Protocol Buffers) as the source of truth for process execution and audit. BPMN coverage grows from a small executable subset; the runtime is not a Camunda product clone.
 
+Why this project exists in an AI-first world: see [`AI-Driven-BPMN.md`](./AI-Driven-BPMN.md).
+
 ## Workspace
 
 Go **1.26.5** workspace (`go.work`) with three modules:
@@ -46,9 +48,9 @@ Event messages only use **Protocol Buffers**. There is no FlatBuffers path.
 Current `Event` shape (high level):
 
 - `RecordType`: COMMAND / EVENT / REJECTION
-- Instance fields: `deployment_id`, `process_instance_id`, `process_version`
+- Instance fields: `deployment_id`, `process_instance_id`, `process_version` (ids are UUIDv7 strings)
 - Causation: `source_record_id`; rejections carry `Rejection{code,message}`
-- Nested `Element`: `Intent`, `Type`, `id`, `token_id`
+- Nested `Element`: `Intent`, `Type`, `id`, `token_id` (token id is UUIDv7 string)
 - `Element.Type` = one value per independent BPMN element (`PROCESS` + `FlowElements` concrete types); no generic TASK/GATEWAY + kind
 - Payloads are data-only groups: process / event / activity / gateway / sequence-flow / data
 
@@ -66,11 +68,12 @@ cd protocol/proto && ./build.sh
 
 ## processing
 
-- `Processor` interface and `Process` wrapper over `element.Process`.
-- `Handler(*eventv1.Event)` is currently a no-op.
-- IDs via Sonyflake (`InitSonyflake` / `NextID`).
+- Runtime module: see `processing/README.md` and `processing/DESIGN.md`.
+- M1 engine available: Deploy / CreateInstance / CompleteUserTask with in-memory event log.
+- Layout: `deploy` (holds `element.Process`, no parallel graph), `handlers/` (one file per element type), `executor`, `projection`, `log`.
+- IDs via UUIDv7 (`NextID` / `MustNextID`).
 
-No durable event log, projections, or executable token semantics yet.
+File-backed event log and restart replay are not implemented yet.
 
 ## Commands
 

@@ -3,7 +3,7 @@ module github.com/sparrow-community/sparrow/processing
 go 1.26.5
 
 require (
-	github.com/sony/sonyflake/v2 v2.2.0
+	github.com/google/uuid v1.6.0
 	github.com/sparrow-community/sparrow/bpmn v0.0.0
 	github.com/sparrow-community/sparrow/protocol v0.0.0
 )

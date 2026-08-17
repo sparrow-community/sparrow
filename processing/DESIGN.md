@@ -1,0 +1,370 @@
+# processing 程序设计
+
+本文描述 `processing` 模块的目标形态、核心模型、包结构、处理流程与 M1 实现边界。  
+实现应以本文为准；协议字段变更在 `protocol` 中进行，并保持「Event = 元素行为」的定位。
+
+**M1 状态**：Deploy / CreateInstance / CompleteUserTask、内存 EventLog、实例投影、按元素 Handler 执行已可用。  
+尚未实现：文件型 EventLog、重启回放。
+
+---
+
+## 1. 目标与非目标
+
+### 1.1 目标
+
+- 单节点可运行的 BPMN 执行内核
+- 事件日志为唯一真相源；实例状态为投影
+- 行为可审计、可回放、可拒绝（COMMAND → EVENT / REJECTION）
+- API 表面保持简单，便于后续在不改语义的前提下加分区做水平扩展
+- **少中间层**：定义层直接复用 `bpmn/element`，不为执行另造平行图模型
+
+### 1.2 非目标（当前阶段）
+
+- 集群、多活、跨节点分区调度
+- 完整 BPMN 覆盖（DMN、CMMN、建模器、运维 UI）
+- 将 Job / Timer 提升为与 Element 同级的事件主语
+- 复制 Camunda 产品广度
+- 为「整洁」而堆叠无必要的 adapter / Node / Flow 包装类型
+
+---
+
+## 2. 核心概念
+
+### 2.1 行为账本
+
+每条 `event.v1.Event` 描述 **一次行为**：
+
+| 字段 | 含义 |
+|------|------|
+| `record_type` | COMMAND（请求）/ EVENT（已发生事实）/ REJECTION（拒绝） |
+| `deployment_id` / `process_instance_id` / `process_version` | 行为发生的定义与实例上下文 |
+| `element` | 行为主语：哪个元素、什么 Intent、附带 payload |
+| `source_record_id` | 因果：通常指向触发本条 EVENT/REJECTION 的 COMMAND |
+| `rejection` | 仅 REJECTION：机器可读 code + 说明 |
+
+日志偏移（position/sequence）由存储层维护，可不写入 protobuf；回放按追加顺序即可。
+
+### 2.2 Element 是行为主语
+
+```text
+谁：Type + element.id + token_id
+做了什么：Intent
+附带什么：payload（变量增量、选中的 sequenceFlow、后续的 job/timer 字段等）
+```
+
+`Element.Type` 与 BPMN 独立元素对齐（`PROCESS` + `FlowElements` 具体类型）。  
+**不使用**「粗 Type + kind」合并不同 BPMN 元素。
+
+Job / Timer / Message 等待等，视为 **该元素行为的载荷与阶段**，写入对应 `payload` 与 `Intent`，而不是新的顶层 value 类型。
+
+### 2.3 串行与分区键
+
+- 分区键：`process_instance_id`
+- 同一实例上的 COMMAND 严格串行处理（每实例一把互斥锁）
+- 单节点 = 一个逻辑分区的宿主；日后多节点只是多分区复制同一模型
+
+### 2.4 定义 vs 运行时
+
+| 层 | 来源 | 作用 |
+|----|------|------|
+| 定义 | `bpmn` 解析的 `element.Process` | 静态结构：节点、边、默认流等 |
+| 部署 | `deploy.Deployment` | 校验后的不可变定义快照 + `deployment_id` |
+| 实例 | `projection.Instance` | 一次执行的投影（状态 / 变量 / 令牌） |
+| 令牌 | `token_id` → `{element_id, active\|waiting}` | 实例内控制流位置（M1 单 token） |
+
+**不另建** `graph.Node` / `graph.Flow`。`deploy` 在 `element.Process` 上提供查询辅助（`TypeOf`、`Outgoing`、`SequenceFlow`、`ChooseExclusiveOutgoing`）。
+
+---
+
+## 3. 架构总览
+
+```text
+                    ┌──────────────────────────────────────────┐
+                    │              Engine（薄门面）               │
+                    │  Deploy / CreateInstance / Complete…       │
+                    │  实例锁 · 写 COMMAND/EVENT/REJECTION        │
+                    │              │                             │
+                    │              ▼                             │
+                    │         Executor                           │
+                    │  Enter / Complete · 应用 Effect            │
+                    │  出边 → SEQUENCE_FLOW_TAKEN · 自动步进      │
+                    │              │                             │
+                    │              ▼                             │
+                    │   handlers（按 Element.Type）               │
+                    │   OnEnter / OnComplete → Effect            │
+                    │                                            │
+                    │  deploy.Deployment  ← element.Process      │
+                    │  projection.Instance ← ApplyEvent          │
+                    │  EventLog（内存；文件型待做）                 │
+                    └──────────────────────────────────────────┘
+```
+
+**原则**：
+
+- 投影可丢；EventLog 不可丢（回放尚未落地，但投影更新路径已按 EVENT 驱动）。
+- **元素语义在 handlers**；Engine 不写具体生命周期分支。
+- `Processor` 接口保留（`processor.go`），当前由 Engine + Executor **内联**同等逻辑，便于日后拆成独立消费环。
+
+---
+
+## 4. 包结构（与仓库一致）
+
+```text
+processing/
+├── README.md
+├── DESIGN.md
+├── engine.go                 // API、实例锁、写日志、emitter
+├── executor.go               // 令牌推进编排（调用 handlers）
+├── processor.go              // Processor 接口（预留）
+├── id.go                     // UUIDv7
+├── deploy/
+│   └── deploy.go             // Compile + Deployment 查询辅助
+├── handlers/
+│   ├── handler.go            // Effect / 接口 / Registry / InstantLifecycle
+│   ├── process.go
+│   ├── start_event.go
+│   ├── end_event.go
+│   ├── user_task.go
+│   ├── exclusive_gateway.go
+│   └── sequence_flow.go
+├── log/                      // EventLog（Memory）
+├── projection/               // Instance / Token / ApplyEvent
+└── testdata/                 // m1_simple.bpmn 等
+```
+
+扩展新 BPMN 元素时：**新增一个 handler 文件 + 注册到 `DefaultRegistry`**，并在 `deploy.validateM1`（或后续更细校验）中放开该类型。
+
+### 4.1 关键类型
+
+```go
+// EventLog
+type EventLog interface {
+    Append(ctx context.Context, e *eventv1.Event) (position int64, err error)
+    ReadByInstance(ctx context.Context, processInstanceID string) ([]*eventv1.Event, error)
+}
+
+// ElementHandler（handlers 包）
+type ElementHandler interface {
+    Type() eventv1.Element_Type
+    OnEnter(in EnterInput) (*Effect, error)
+    OnComplete(in CompleteInput) (*Effect, error)
+}
+
+// Effect：handler 产出，由 Executor 应用
+// Records / Wait / OutgoingFlowID / TakeOutgoing / TryCompleteProcess
+
+// Engine 对外能力（具体类型实现，非 interface）
+// Deploy / CreateInstance / CompleteUserTask / GetInstance / ListEvents
+```
+
+ID 统一走 `NextID()`（UUIDv7 字符串）。时间戳使用 Unix millis。空 id 用空字符串表示。
+
+### 4.2 Effect 与步进
+
+| Effect 字段 | 含义 |
+|-------------|------|
+| `Records` | 要写成 EVENT 的 Element 行为（经 emitter 追加并 `ApplyEvent`） |
+| `Wait` | 停止自动步进（UserTask ACTIVATED） |
+| `TakeOutgoing` | 取一条出边并发 `SEQUENCE_FLOW_TAKEN`，再 Enter target |
+| `OutgoingFlowID` | 指定出边（XOR 选路）；空则取第一条 outgoing |
+| `TryCompleteProcess` | End 后尝试 PROCESS COMPLETING→COMPLETED |
+
+瞬时元素（Start / XOR / End）可用 `InstantLifecycle` 写出完整 Intent 链。
+
+---
+
+## 5. 处理循环（详细）
+
+### 5.1 当前路径（Engine 内联）
+
+```text
+CreateInstance / CompleteUserTask:
+  1. 取 deployment + instance；加实例锁
+  2. 校验投影（如 UserTask 须 waiting）
+  3. Append(COMMAND)
+  4. Executor.Enter 或 Executor.Complete
+       → handler.OnEnter / OnComplete → Effect
+       → emitter(Records)  // Append EVENT + ApplyEvent
+       → 按 Effect 出边 / 等待 / 尝试完成流程
+  5. 校验失败路径：Append(COMMAND) + Append(REJECTION)
+```
+
+同一 COMMAND 处理中可连续写出多条 EVENT（启动链、瞬时生命周期、流转移），均共享该 COMMAND 的 `source_record_id`。
+
+### 5.2 目标路径（Processor，未拆出）
+
+```text
+Handler(cmd):
+  1. 加载部署与投影；不存在 → REJECTION
+  2. 按 cmd.element.type 找 handler
+  3. 校验失败 → Append(REJECTION)
+  4. Apply → 0..N EVENT；Append 并更新投影
+  5. 自动步进仍归 Executor
+```
+
+**幂等**（待做）：同一 `cmd.id` 已成功处理则直接返回。
+
+### 5.3 投影与令牌
+
+`projection.Instance` 最少包含：
+
+- 实例状态：`active | completed | terminated`
+- `Tokens`：`token_id → {element_id, active|waiting}`
+- 变量表（实例级 `name → json_value`）
+- `ElementIntent`：元素级最近 Intent（辅助校验）
+
+令牌更新：
+
+1. **执行器侧**：Enter/Complete 时直接改 `Tokens`（推进位置、设 active）
+2. **事件侧**：`ApplyEvent` → `applyToken`（按 Intent 对齐 waiting/active；`SEQUENCE_FLOW_TAKEN` 把位置写到 target）
+3. **流程结束**：PROCESS COMPLETED/TERMINATED 清空 `Tokens`
+
+M1 为单 token；Parallel 等多 token 时仍落在同一 map，由 gateway handler 分裂/汇合。
+
+### 5.4 重启恢复（未实现）
+
+```text
+启动 → 打开 EventLog → 按 position 顺序扫描
+     → 对每条 EVENT/REJECTION 更新投影
+     → 恢复未完成实例的等待点（如 UserTask waiting）
+```
+
+M1 后续可采用全量重放；实例量大时再引入快照。
+
+---
+
+## 6. M1 可执行语义
+
+### 6.1 支持的元素 Type
+
+| Type | Handler 文件 | 行为要点 |
+|------|--------------|----------|
+| `PROCESS` | `process.go` | 实例启动 / 正常完成 |
+| `START_EVENT` | `start_event.go` | 瞬时生命周期后沿出口流出 |
+| `USER_TASK` | `user_task.go` | ACTIVATING→ACTIVATED 后 `Wait`；Complete → COMPLETING→COMPLETED |
+| `EXCLUSIVE_GATEWAY` | `exclusive_gateway.go` | 默认流或首条出口；payload 带 `taken_sequence_flow_id` |
+| `SEQUENCE_FLOW` | `sequence_flow.go` | 经 transit 发 `SEQUENCE_FLOW_TAKEN`（不走 OnEnter） |
+| `END_EVENT` | `end_event.go` | 完成后 `TryCompleteProcess` |
+
+部署时 `validateM1` 拒绝 M1 外元素（ServiceTask、Parallel 等）。
+
+### 6.2 (Type, Intent) 使用（M1）
+
+| 场景 | Type | Intent 序列（EVENT） |
+|------|------|----------------------|
+| 创建实例 | PROCESS | ACTIVATING → ACTIVATED |
+| 进入 Start | START_EVENT | ACTIVATING → ACTIVATED → COMPLETING → COMPLETED |
+| 走过流 | SEQUENCE_FLOW | SEQUENCE_FLOW_TAKEN |
+| 进入 UserTask | USER_TASK | ACTIVATING → ACTIVATED（等待） |
+| 完成 UserTask | USER_TASK | COMPLETING → COMPLETED |
+| XOR | EXCLUSIVE_GATEWAY | ACTIVATING → … → COMPLETED（payload 带 taken flow） |
+| End | END_EVENT | … → COMPLETED |
+| 实例结束 | PROCESS | COMPLETING → COMPLETED |
+
+**等待点（UserTask ACTIVATED）** 与 **SEQUENCE_FLOW_TAKEN** 必须在日志中可见。
+
+### 6.3 变量
+
+- `ActivityPayload.variables` / `ProcessPayload.variables`（`name` + `json_value`）
+- 语义为 **delta**：合并进实例变量表
+- CreateInstance 可带初始变量；CompleteUserTask 可带提交变量
+- XOR：M1 先走 **default**，否则第一条 outgoing；条件表达式未实现
+
+### 6.4 拒绝示例
+
+| code | 场景 |
+|------|------|
+| `NOT_FOUND` | 实例、部署或元素不存在 |
+| `INVALID_STATE` | UserTask 未处于 waiting 却 Complete |
+| `UNSUPPORTED_ELEMENT` | 定义含 M1 未支持元素，或无 handler |
+| `NO_OUTGOING_FLOW` | 无法选出边 |
+
+---
+
+## 7. API 语义（M1）
+
+### Deploy
+
+- 输入：BPMN XML bytes  
+- 行为：`deploy.Compile` 解析、M1 校验，内存登记 `Deployment`  
+- 输出：`deployment_id`（UUIDv7）  
+- **不**生成平行可执行图；快照即 `element.Process`
+
+### CreateInstance
+
+- 输入：`deployment_id`，可选变量  
+- 行为：分配 instance/token id；写启动 COMMAND + PROCESS 启动 EVENT；Enter StartEvent  
+- 推进到第一个等待点（通常 UserTask）或直至结束  
+
+### CompleteUserTask
+
+- 输入：`process_instance_id`，`element_id`，`token_id`，可选变量  
+- 行为：写 COMPLETING COMMAND；`Executor.Complete` 后继续自动步进  
+
+查询：
+
+- `GetInstance`：投影快照  
+- `ListEvents(process_instance_id)`：审计时间线  
+
+---
+
+## 8. 与 protocol 的边界
+
+- processing **不**手写 `.pb.go`；只依赖 `protocol/gen/go/event/v1`
+- 缺字段时：先在 `protocol/proto` 增加，再 `buf generate`，再改 processing
+- 演进约定：
+  - 元素行为扩展 → `Intent` / `Type` / **payload 字段**
+  - 非元素事实（如纯 Deployment 元数据）→ 另议；不默认塞进 Element
+
+---
+
+## 9. 后续演进（不在 M1，设计预留）
+
+| 阶段 | 能力 | 落点 |
+|------|------|------|
+| M1.1 | 文件 EventLog + 重启回放 | `log/` 新实现；启动扫描 `ApplyEvent` |
+| M2 | Timer / Message、ServiceTask Job | payload + Intent 等待语义；新 handler 文件 |
+| M3 | Parallel/Inclusive、SubProcess、多 token | `Tokens` 多条目；gateway fork/join |
+| M4 | Boundary / 补偿 / Incident | 新 Intent + payload |
+
+单节点串行模型保持不变；分布式仅增加分区宿主，不改变 Handler 语义。
+
+---
+
+## 10. 测试策略
+
+| 层级 | 内容 |
+|------|------|
+| 单元 | 各 handler：给定输入 → 期望 Effect（可逐步补） |
+| 日志 | 内存 Log Append/Read |
+| 端到端 | `testdata/m1_simple.bpmn`：Deploy → CreateInstance → Complete → PROCESS COMPLETED |
+| 回归 | 不支持元素部署失败；非法 Complete → REJECTION |
+
+---
+
+## 11. 实现进度
+
+| 步骤 | 内容 | 状态 |
+|------|------|------|
+| 1 | `log` 内存 EventLog | 已完成 |
+| 2 | `projection` + `ApplyEvent` | 已完成 |
+| 3 | `deploy` 持有 `element.Process` | 已完成 |
+| 4 | `handlers` 按文件拆分 + Registry | 已完成 |
+| 5 | `engine` + `executor` API | 已完成 |
+| 6 | 文件型 EventLog 与重启回放 | 未开始 |
+| 7 | XOR 条件表达式 / 更多元素 | 未开始 |
+
+---
+
+## 12. 代码对照
+
+| 路径 | 职责 |
+|------|------|
+| `engine.go` | 薄门面：锁、COMMAND/REJECTION、emitter |
+| `executor.go` | Enter/Complete、出边、流程完成判定 |
+| `handlers/*.go` | 每元素一类文件；语义只在此扩展 |
+| `deploy/` | Compile、校验、定义查询（无平行图） |
+| `projection/` | Instance / Token；EVENT → 投影 |
+| `log/` | EventLog；当前仅 Memory |
+| `id.go` | UUIDv7 |
+| `processor.go` | 接口预留，待拆独立消费环 |

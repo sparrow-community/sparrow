@@ -289,21 +289,22 @@ func (Element_Type) EnumDescriptor() ([]byte, []int) {
 // Event is one append-only record in the engine log (audit source of truth).
 type Event struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Snowflake id for this record (not a UUID).
-	Id int64 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	// UUIDv7 for this record (canonical string form).
+	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	// Unix time in milliseconds.
 	Timestamp  int64            `protobuf:"varint,2,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
 	RecordType Event_RecordType `protobuf:"varint,3,opt,name=record_type,json=recordType,proto3,enum=event.v1.Event_RecordType" json:"record_type,omitempty"`
-	// Deployed process definition this record belongs to.
-	DeploymentId int64 `protobuf:"varint,4,opt,name=deployment_id,json=deploymentId,proto3" json:"deployment_id,omitempty"`
-	// Process instance id (partition key for serial processing).
-	ProcessInstanceId int64 `protobuf:"varint,5,opt,name=process_instance_id,json=processInstanceId,proto3" json:"process_instance_id,omitempty"`
+	// Deployed process definition this record belongs to (UUIDv7).
+	DeploymentId string `protobuf:"bytes,4,opt,name=deployment_id,json=deploymentId,proto3" json:"deployment_id,omitempty"`
+	// Process instance id / partition key (UUIDv7).
+	ProcessInstanceId string `protobuf:"bytes,5,opt,name=process_instance_id,json=processInstanceId,proto3" json:"process_instance_id,omitempty"`
 	// Version of the deployed process definition.
 	ProcessVersion int32 `protobuf:"varint,6,opt,name=process_version,json=processVersion,proto3" json:"process_version,omitempty"`
 	// Element execution details when this record is about a flow node / process / sequence flow.
 	Element *Element `protobuf:"bytes,7,opt,name=element,proto3" json:"element,omitempty"`
-	// Id of the command (or prior record) that caused this EVENT or REJECTION. 0 if none.
-	SourceRecordId int64 `protobuf:"varint,8,opt,name=source_record_id,json=sourceRecordId,proto3" json:"source_record_id,omitempty"`
+	// Id of the command (or prior record) that caused this EVENT or REJECTION.
+	// Empty when none.
+	SourceRecordId string `protobuf:"bytes,8,opt,name=source_record_id,json=sourceRecordId,proto3" json:"source_record_id,omitempty"`
 	// Populated when record_type is RECORD_TYPE_REJECTION.
 	Rejection     *Rejection `protobuf:"bytes,9,opt,name=rejection,proto3" json:"rejection,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -340,11 +341,11 @@ func (*Event) Descriptor() ([]byte, []int) {
 	return file_event_v1_event_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *Event) GetId() int64 {
+func (x *Event) GetId() string {
 	if x != nil {
 		return x.Id
 	}
-	return 0
+	return ""
 }
 
 func (x *Event) GetTimestamp() int64 {
@@ -361,18 +362,18 @@ func (x *Event) GetRecordType() Event_RecordType {
 	return Event_RECORD_TYPE_UNSPECIFIED
 }
 
-func (x *Event) GetDeploymentId() int64 {
+func (x *Event) GetDeploymentId() string {
 	if x != nil {
 		return x.DeploymentId
 	}
-	return 0
+	return ""
 }
 
-func (x *Event) GetProcessInstanceId() int64 {
+func (x *Event) GetProcessInstanceId() string {
 	if x != nil {
 		return x.ProcessInstanceId
 	}
-	return 0
+	return ""
 }
 
 func (x *Event) GetProcessVersion() int32 {
@@ -389,11 +390,11 @@ func (x *Event) GetElement() *Element {
 	return nil
 }
 
-func (x *Event) GetSourceRecordId() int64 {
+func (x *Event) GetSourceRecordId() string {
 	if x != nil {
 		return x.SourceRecordId
 	}
-	return 0
+	return ""
 }
 
 func (x *Event) GetRejection() *Rejection {
@@ -461,8 +462,8 @@ type Element struct {
 	Type   Element_Type           `protobuf:"varint,2,opt,name=type,proto3,enum=event.v1.Element_Type" json:"type,omitempty"`
 	// BPMN element id from the process definition.
 	Id string `protobuf:"bytes,3,opt,name=id,proto3" json:"id,omitempty"`
-	// Execution token id; 0 when not applicable (e.g. process-level records).
-	TokenId int64 `protobuf:"varint,4,opt,name=token_id,json=tokenId,proto3" json:"token_id,omitempty"`
+	// Execution token id (UUIDv7); empty when not applicable (e.g. process-level records).
+	TokenId string `protobuf:"bytes,4,opt,name=token_id,json=tokenId,proto3" json:"token_id,omitempty"`
 	// Payload carries data only; specialization is expressed by Type.
 	//
 	// Types that are valid to be assigned to Payload:
@@ -529,11 +530,11 @@ func (x *Element) GetId() string {
 	return ""
 }
 
-func (x *Element) GetTokenId() int64 {
+func (x *Element) GetTokenId() string {
 	if x != nil {
 		return x.TokenId
 	}
-	return 0
+	return ""
 }
 
 func (x *Element) GetPayload() isElement_Payload {
@@ -643,15 +644,15 @@ const file_event_v1_event_proto_rawDesc = "" +
 	"\n" +
 	"\x14event/v1/event.proto\x12\bevent.v1\x1a\x17event/v1/payloads.proto\"\xf0\x03\n" +
 	"\x05Event\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x1c\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1c\n" +
 	"\ttimestamp\x18\x02 \x01(\x03R\ttimestamp\x12;\n" +
 	"\vrecord_type\x18\x03 \x01(\x0e2\x1a.event.v1.Event.RecordTypeR\n" +
 	"recordType\x12#\n" +
-	"\rdeployment_id\x18\x04 \x01(\x03R\fdeploymentId\x12.\n" +
-	"\x13process_instance_id\x18\x05 \x01(\x03R\x11processInstanceId\x12'\n" +
+	"\rdeployment_id\x18\x04 \x01(\tR\fdeploymentId\x12.\n" +
+	"\x13process_instance_id\x18\x05 \x01(\tR\x11processInstanceId\x12'\n" +
 	"\x0fprocess_version\x18\x06 \x01(\x05R\x0eprocessVersion\x12+\n" +
 	"\aelement\x18\a \x01(\v2\x11.event.v1.ElementR\aelement\x12(\n" +
-	"\x10source_record_id\x18\b \x01(\x03R\x0esourceRecordId\x121\n" +
+	"\x10source_record_id\x18\b \x01(\tR\x0esourceRecordId\x121\n" +
 	"\trejection\x18\t \x01(\v2\x13.event.v1.RejectionR\trejection\"t\n" +
 	"\n" +
 	"RecordType\x12\x1b\n" +
@@ -666,7 +667,7 @@ const file_event_v1_event_proto_rawDesc = "" +
 	"\x06intent\x18\x01 \x01(\x0e2\x18.event.v1.Element.IntentR\x06intent\x12*\n" +
 	"\x04type\x18\x02 \x01(\x0e2\x16.event.v1.Element.TypeR\x04type\x12\x0e\n" +
 	"\x02id\x18\x03 \x01(\tR\x02id\x12\x19\n" +
-	"\btoken_id\x18\x04 \x01(\x03R\atokenId\x12C\n" +
+	"\btoken_id\x18\x04 \x01(\tR\atokenId\x12C\n" +
 	"\x0fprocess_payload\x18\x05 \x01(\v2\x18.event.v1.ProcessPayloadH\x00R\x0eprocessPayload\x12=\n" +
 	"\revent_payload\x18\x06 \x01(\v2\x16.event.v1.EventPayloadH\x00R\feventPayload\x12F\n" +
 	"\x10activity_payload\x18\a \x01(\v2\x19.event.v1.ActivityPayloadH\x00R\x0factivityPayload\x12C\n" +

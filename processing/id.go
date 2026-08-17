@@ -1,34 +1,23 @@
 package processing
 
 import (
-	"time"
+	"fmt"
 
-	"github.com/sony/sonyflake/v2"
+	"github.com/google/uuid"
 )
 
-var sf *sonyflake.Sonyflake
-
-func InitSonyflake(startTime time.Time, machineID func() (int, error)) {
-	settings := sonyflake.Settings{
-		StartTime: startTime,
-		MachineID: machineID,
-	}
-	var err error
-	sf, err = sonyflake.New(settings)
+// NextID returns a new UUIDv7 in canonical string form.
+func NextID() (string, error) {
+	id, err := uuid.NewV7()
 	if err != nil {
-		panic(err)
+		return "", fmt.Errorf("generate uuid v7: %w", err)
 	}
-	if sf == nil {
-		panic("sonyflake not created")
-	}
+	return id.String(), nil
 }
 
-// NextID generates a new unique ID using Sonyflake
-func NextID() int64 {
-	if sf == nil {
-		panic("Sonyflake not initialized")
-	}
-	id, err := sf.NextID()
+// MustNextID is like NextID but panics on failure.
+func MustNextID() string {
+	id, err := NextID()
 	if err != nil {
 		panic(err)
 	}
