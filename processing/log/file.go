@@ -21,6 +21,17 @@ type File struct {
 	f    *os.File
 }
 
+type countingReader struct {
+	r io.Reader
+	n int64
+}
+
+func (c *countingReader) Read(p []byte) (int, error) {
+	n, err := c.r.Read(p)
+	c.n += int64(n)
+	return n, err
+}
+
 // OpenFile opens (or creates) a file-backed event log at path.
 func OpenFile(path string) (*File, error) {
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o644)
@@ -97,10 +108,11 @@ func (fl *File) ReadAll(_ context.Context) ([]*eventv1.Event, error) {
 	if _, err := fl.f.Seek(0, io.SeekStart); err != nil {
 		return nil, err
 	}
-	defer func() { _, _ = fl.f.Seek(0, io.SeekEnd) }()
 
-	r := bufio.NewReader(fl.f)
+	cr := &countingReader{r: fl.f}
+	r := bufio.NewReader(cr)
 	out := make([]*eventv1.Event, 0, 64)
+	var lastGood int64
 	for {
 		ev := &eventv1.Event{}
 		if err := protodelim.UnmarshalFrom(r, ev); err != nil {
@@ -108,11 +120,19 @@ func (fl *File) ReadAll(_ context.Context) ([]*eventv1.Event, error) {
 				break
 			}
 			if errors.Is(err, io.ErrUnexpectedEOF) {
-				return nil, fmt.Errorf("corrupt event log: %w", err)
+				// Crash mid-append: drop the incomplete tail so the next Append is valid.
+				if err := fl.f.Truncate(lastGood); err != nil {
+					return nil, fmt.Errorf("truncate incomplete event: %w", err)
+				}
+				break
 			}
 			return nil, fmt.Errorf("read event: %w", err)
 		}
+		lastGood = cr.n - int64(r.Buffered())
 		out = append(out, ev)
+	}
+	if _, err := fl.f.Seek(0, io.SeekEnd); err != nil {
+		return nil, err
 	}
 	return out, nil
 }

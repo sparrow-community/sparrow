@@ -65,6 +65,36 @@ func (inst *Instance) ApplyEvent(e *eventv1.Event) {
 	applyProcessLifecycle(inst, el)
 }
 
+// Clone returns a deep copy for read-only snapshots (GetInstance).
+func (inst *Instance) Clone() *Instance {
+	if inst == nil {
+		return nil
+	}
+	out := &Instance{
+		ID:            inst.ID,
+		DeploymentID:  inst.DeploymentID,
+		Version:       inst.Version,
+		Status:        inst.Status,
+		Variables:     make(map[string]string, len(inst.Variables)),
+		Tokens:        make(map[string]*Token, len(inst.Tokens)),
+		ElementIntent: make(map[string]eventv1.Element_Intent, len(inst.ElementIntent)),
+	}
+	for k, v := range inst.Variables {
+		out.Variables[k] = v
+	}
+	for k, tok := range inst.Tokens {
+		if tok == nil {
+			continue
+		}
+		cp := *tok
+		out.Tokens[k] = &cp
+	}
+	for k, v := range inst.ElementIntent {
+		out.ElementIntent[k] = v
+	}
+	return out
+}
+
 func mergeVariables(inst *Instance, el *eventv1.Element) {
 	switch p := el.GetPayload().(type) {
 	case *eventv1.Element_ProcessPayload:
@@ -90,6 +120,7 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 	}
 	tok.ElementID = el.GetId()
 
+	// Tokens are updated only from EVENT records (not by the executor).
 	switch el.GetIntent() {
 	case eventv1.Element_INTENT_ACTIVATED:
 		if el.GetType() == eventv1.Element_TYPE_USER_TASK {
@@ -98,11 +129,6 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 			tok.Status = TokenActive
 		}
 	case eventv1.Element_INTENT_COMPLETED, eventv1.Element_INTENT_TERMINATED:
-		if el.GetType() == eventv1.Element_TYPE_SEQUENCE_FLOW {
-			tok.Status = TokenActive
-			return
-		}
-		// leave token until moved by sequence flow / process end
 		tok.Status = TokenActive
 	case eventv1.Element_INTENT_SEQUENCE_FLOW_TAKEN:
 		tok.Status = TokenActive

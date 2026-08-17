@@ -38,14 +38,6 @@ func (x *Executor) Enter(
 			return fmt.Errorf("UNSUPPORTED_ELEMENT: %v", err)
 		}
 
-		tok := inst.Tokens[tokenID]
-		if tok == nil {
-			tok = &projection.Token{ID: tokenID}
-			inst.Tokens[tokenID] = tok
-		}
-		tok.ElementID = elementID
-		tok.Status = projection.TokenActive
-
 		h, err := x.Handlers.Get(typ)
 		if err != nil {
 			return err
@@ -117,9 +109,6 @@ func (x *Executor) Complete(
 	}
 	if effect.Wait || !effect.TakeOutgoing {
 		return nil
-	}
-	if tok := inst.Tokens[tokenID]; tok != nil {
-		tok.Status = projection.TokenActive
 	}
 
 	next, err := x.takeOutgoing(dep, tokenID, elementID, effect.OutgoingFlowID, emit)

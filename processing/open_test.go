@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/sparrow-community/sparrow/processing"
+	"github.com/sparrow-community/sparrow/processing/deploy"
+	eventlog "github.com/sparrow-community/sparrow/processing/log"
 	"github.com/sparrow-community/sparrow/processing/projection"
 )
 
@@ -18,7 +20,7 @@ func TestOpenReplayResumeUserTask(t *testing.T) {
 	dir := t.TempDir()
 	ctx := context.Background()
 
-	eng1, err := processing.Open(dir)
+	eng1, err := processing.Open(ctx, dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +50,7 @@ func TestOpenReplayResumeUserTask(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	eng2, err := processing.Open(dir)
+	eng2, err := processing.Open(ctx, dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,5 +83,54 @@ func TestOpenReplayResumeUserTask(t *testing.T) {
 	inst2, _ = eng2.GetInstance(instanceID)
 	if inst2.Status != projection.StatusCompleted {
 		t.Fatalf("status=%s want completed", inst2.Status)
+	}
+}
+
+func TestRecoverReplayWithMemoryBackends(t *testing.T) {
+	xml, err := os.ReadFile(filepath.Join("testdata", "m1_simple.bpmn"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	memLog := eventlog.NewMemory()
+	memStore := deploy.NewMemoryStore()
+
+	eng1, err := processing.Recover(ctx, memLog, memStore)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dep, err := eng1.Deploy(ctx, xml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instanceID, err := eng1.CreateInstance(ctx, dep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	eng2, err := processing.Recover(ctx, memLog, memStore)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inst, ok := eng2.GetInstance(instanceID)
+	if !ok || inst.Status != projection.StatusActive {
+		t.Fatalf("after recover inst=%v ok=%v", inst, ok)
+	}
+	var waitingToken, waitingElement string
+	for _, tok := range inst.Tokens {
+		if tok.Status == projection.TokenWaiting {
+			waitingToken, waitingElement = tok.ID, tok.ElementID
+			break
+		}
+	}
+	if waitingElement != "UserTask_1" {
+		t.Fatalf("tokens=%#v", inst.Tokens)
+	}
+	if err := eng2.CompleteUserTask(ctx, instanceID, waitingElement, waitingToken, nil); err != nil {
+		t.Fatal(err)
+	}
+	inst, _ = eng2.GetInstance(instanceID)
+	if inst.Status != projection.StatusCompleted {
+		t.Fatalf("status=%s", inst.Status)
 	}
 }

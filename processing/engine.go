@@ -15,11 +15,11 @@ import (
 
 // Engine is the single-node BPMN execution facade.
 // Element semantics live in handlers; definitions come from bpmn via deploy.Deployment.
-// When dataDir is set (via Open), deployments are persisted and projections can be rebuilt from the event log.
+// Persistence is injected: EventLog (behavior ledger) and optional deploy.Store (BPMN XML).
 type Engine struct {
 	log      eventlog.EventLog
+	store    deploy.Store
 	executor *Executor
-	dataDir  string
 
 	mu          sync.Mutex
 	deployments map[string]*deploy.Deployment
@@ -68,6 +68,11 @@ func (e *Engine) CreateInstance(ctx context.Context, deploymentID string, vars m
 		return "", fmt.Errorf("NOT_FOUND: deployment %q", deploymentID)
 	}
 
+	startID, err := dep.StartEventID()
+	if err != nil {
+		return "", err
+	}
+
 	instanceID, err := NextID()
 	if err != nil {
 		return "", err
@@ -81,22 +86,7 @@ func (e *Engine) CreateInstance(ctx context.Context, deploymentID string, vars m
 		return "", err
 	}
 
-	inst := projection.NewInstance(instanceID, deploymentID, dep.Version)
 	pv, err := projection.VariablesFromMap(vars)
-	if err != nil {
-		return "", err
-	}
-
-	e.mu.Lock()
-	e.instances[instanceID] = inst
-	e.instMu[instanceID] = &sync.Mutex{}
-	lock := e.instMu[instanceID]
-	e.mu.Unlock()
-
-	lock.Lock()
-	defer lock.Unlock()
-
-	startID, err := dep.StartEventID()
 	if err != nil {
 		return "", err
 	}
@@ -121,17 +111,21 @@ func (e *Engine) CreateInstance(ctx context.Context, deploymentID string, vars m
 		return "", err
 	}
 
+	inst := projection.NewInstance(instanceID, deploymentID, dep.Version)
+	lock := &sync.Mutex{}
+	e.mu.Lock()
+	e.instances[instanceID] = inst
+	e.instMu[instanceID] = lock
+	e.mu.Unlock()
+
+	lock.Lock()
+	defer lock.Unlock()
+
 	emit := e.emitter(ctx, inst, cmdID)
 	for _, rec := range handlers.ProcessStartRecords(dep.ProcessID(), pv) {
 		if err := emit(rec); err != nil {
 			return "", err
 		}
-	}
-
-	inst.Tokens[tokenID] = &projection.Token{
-		ID:        tokenID,
-		ElementID: startID,
-		Status:    projection.TokenActive,
 	}
 	if err := e.executor.Enter(ctx, dep, inst, tokenID, startID, emit); err != nil {
 		return "", err
@@ -199,9 +193,15 @@ func (e *Engine) CompleteUserTask(ctx context.Context, instanceID, elementID, to
 
 func (e *Engine) GetInstance(instanceID string) (*projection.Instance, bool) {
 	e.mu.Lock()
-	defer e.mu.Unlock()
 	inst, ok := e.instances[instanceID]
-	return inst, ok
+	lock := e.instMu[instanceID]
+	e.mu.Unlock()
+	if !ok || inst == nil || lock == nil {
+		return nil, false
+	}
+	lock.Lock()
+	defer lock.Unlock()
+	return inst.Clone(), true
 }
 
 func (e *Engine) ListEvents(ctx context.Context, processInstanceID string) ([]*eventv1.Event, error) {

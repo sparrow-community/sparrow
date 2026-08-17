@@ -2,6 +2,7 @@ package log
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -69,5 +70,56 @@ func TestFileAppendReadRestart(t *testing.T) {
 	byInst, _ = fl2.ReadByInstance(ctx, "i1")
 	if len(byInst) != 2 {
 		t.Fatalf("len=%d want 2 after append", len(byInst))
+	}
+}
+
+func TestFileReadAllTruncatesIncompleteTail(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "events.log")
+	ctx := context.Background()
+
+	fl, err := OpenFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fl.Append(ctx, &eventv1.Event{Id: "e1", ProcessInstanceId: "i1"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := fl.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.Write([]byte{0x0a, 0xff, 0xff, 0xff}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	fl2, err := OpenFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fl2.Close()
+	all, err := fl2.ReadAll(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 1 || all[0].GetId() != "e1" {
+		t.Fatalf("all=%v", all)
+	}
+	if _, err := fl2.Append(ctx, &eventv1.Event{Id: "e2", ProcessInstanceId: "i1"}); err != nil {
+		t.Fatal(err)
+	}
+	all, err = fl2.ReadAll(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 2 || all[1].GetId() != "e2" {
+		t.Fatalf("after repair all=%v", all)
 	}
 }

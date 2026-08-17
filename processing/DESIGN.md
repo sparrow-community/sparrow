@@ -95,15 +95,16 @@ Job / Timer / Message 等待等，视为 **该元素行为的载荷与阶段**�
                     │                                            │
                     │  deploy.Deployment  ← element.Process      │
                     │  projection.Instance ← ApplyEvent          │
-                    │  EventLog（内存；文件型待做）                 │
+                    │  EventLog / deploy.Store（可替换实现）        │
                     └──────────────────────────────────────────┘
 ```
 
 **原则**：
 
-- 投影可丢；EventLog 不可丢（回放尚未落地，但投影更新路径已按 EVENT 驱动）。
+- 投影可丢；EventLog 不可丢。`Recover` 按 EVENT 重建投影。
 - **元素语义在 handlers**；Engine 不写具体生命周期分支。
-- `Processor` 接口保留（`processor.go`），当前由 Engine + Executor **内联**同等逻辑，便于日后拆成独立消费环。
+- 持久化只有两个注入点：`log.EventLog`（行为账本）与 `deploy.Store`（定义字节）。Memory / File 是开发默认实现。
+- COMMAND 处理由 Engine 内联；不另留空的 Processor 接口。
 
 ---
 
@@ -114,12 +115,13 @@ processing/
 ├── README.md
 ├── DESIGN.md
 ├── engine.go                 // API、实例锁、写日志、emitter
-├── open.go                   // Open(dataDir)、部署落盘、EVENT 回放
+├── open.go                   // Recover(ctx, log, store)、Open 便捷封装
 ├── executor.go               // 令牌推进编排（调用 handlers）
-├── processor.go              // Processor 接口（预留）
 ├── id.go                     // UUIDv7
 ├── deploy/
-│   └── deploy.go             // Compile + Deployment 查询辅助
+│   ├── deploy.go             // Compile + Deployment 查询辅助
+│   ├── store.go              // Store 接口 + MemoryStore
+│   └── store_dir.go          // 目录实现
 ├── handlers/
 │   ├── handler.go            // Effect / 接口 / Registry / InstantLifecycle
 │   ├── process.go
@@ -133,22 +135,35 @@ processing/
 └── testdata/                 // m1_simple.bpmn 等
 ```
 
-持久化布局（`Open`）：
+持久化布局（`Open` 文件便捷实现，不是唯一方式）：
 
 ```text
 dataDir/
   events.log                     // length-delimited protobuf Event
   deployments/<id>.bpmn          // 原始定义，供重启后 Compile
 ```
+
+自定义持久化：
+
+```go
+eng, err := processing.Recover(ctx, myEventLog, myDeploymentStore)
+```
 扩展新 BPMN 元素时：**新增一个 handler 文件 + 注册到 `DefaultRegistry`**，并在 `deploy.validateM1`（或后续更细校验）中放开该类型。
 
 ### 4.1 关键类型
 
 ```go
-// EventLog
+// EventLog — 行为账本（Memory / File / 自实现）
 type EventLog interface {
     Append(ctx context.Context, e *eventv1.Event) (position int64, err error)
     ReadByInstance(ctx context.Context, processInstanceID string) ([]*eventv1.Event, error)
+    ReadAll(ctx context.Context) ([]*eventv1.Event, error)
+}
+
+// Store — BPMN 定义字节（MemoryStore / DirStore / 自实现）
+type Store interface {
+    Put(id string, bpmnXML []byte) error
+    LoadAll() (map[string][]byte, error) // id → xml
 }
 
 // ElementHandler（handlers 包）
@@ -158,12 +173,13 @@ type ElementHandler interface {
     OnComplete(in CompleteInput) (*Effect, error)
 }
 
-// Effect：handler 产出，由 Executor 应用
-// Records / Wait / OutgoingFlowID / TakeOutgoing / TryCompleteProcess
-
-// Engine 对外能力（具体类型实现，非 interface）
-// Deploy / CreateInstance / CompleteUserTask / GetInstance / ListEvents
+// Recover(ctx, log, store) 加载定义并回放 EVENT；Open(ctx, dataDir) = Recover(File, DirStore)
+// NewEngine(log) 仅内存定义、不回放（测试 / 无持久化会话）
 ```
+
+Effect：handler 产出，由 Executor 应用（Records / Wait / OutgoingFlowID / TakeOutgoing / TryCompleteProcess）。
+
+Engine 对外能力：Deploy / CreateInstance / CompleteUserTask / GetInstance / ListEvents。
 
 ID 统一走 `NextID()`（UUIDv7 字符串）。时间戳使用 Unix millis。空 id 用空字符串表示。
 
@@ -199,18 +215,9 @@ CreateInstance / CompleteUserTask:
 
 同一 COMMAND 处理中可连续写出多条 EVENT（启动链、瞬时生命周期、流转移），均共享该 COMMAND 的 `source_record_id`。
 
-### 5.2 目标路径（Processor，未拆出）
+### 5.2 幂等（未做）
 
-```text
-Handler(cmd):
-  1. 加载部署与投影；不存在 → REJECTION
-  2. 按 cmd.element.type 找 handler
-  3. 校验失败 → Append(REJECTION)
-  4. Apply → 0..N EVENT；Append 并更新投影
-  5. 自动步进仍归 Executor
-```
-
-**幂等**（待做）：同一 `cmd.id` 已成功处理则直接返回。
+同一 `cmd.id` 已成功处理则直接返回。崩溃导致半截 EVENT 链时，回放得到部分投影；文件日志会丢掉不完整的最后一条记录。
 
 ### 5.3 投影与令牌
 
@@ -221,25 +228,26 @@ Handler(cmd):
 - 变量表（实例级 `name → json_value`）
 - `ElementIntent`：元素级最近 Intent（辅助校验）
 
-令牌更新：
+令牌更新 **只走 EVENT → ApplyEvent → applyToken**：
 
-1. **执行器侧**：Enter/Complete 时直接改 `Tokens`（推进位置、设 active）
-2. **事件侧**：`ApplyEvent` → `applyToken`（按 Intent 对齐 waiting/active；`SEQUENCE_FLOW_TAKEN` 把位置写到 target）
-3. **流程结束**：PROCESS COMPLETED/TERMINATED 清空 `Tokens`
+- Executor 只决定步进（`Effect.Wait` / 出边），不改 `Tokens`
+- `USER_TASK` + `ACTIVATED` → `waiting`；`SEQUENCE_FLOW_TAKEN` 把位置写到 target
+- PROCESS COMPLETED/TERMINATED 清空 `Tokens`
+- 在线与 `Recover` 共用同一套规则
 
-M1 为单 token；Parallel 等多 token 时仍落在同一 map，由 gateway handler 分裂/汇合。
+M1 为单 token；Parallel 等多 token 时仍落在同一 map，由 gateway handler 分裂/汇合。`GetInstance` 返回投影拷贝。
 
 ### 5.4 重启恢复
 
 ```text
-Open(dataDir)
-  → 加载 deployments/*.bpmn → Compile → deployments map
-  → ReadAll(events.log)
+Recover(ctx, eventLog, deploymentStore)
+  → Store.LoadAll → Compile → deployments map
+  → EventLog.ReadAll
   → 按序对每条 EVENT 调用 Instance.ApplyEvent（必要时先创建投影）
   → 恢复等待点（如 UserTask waiting），可继续 CompleteUserTask
 ```
 
-M1 采用全量重放；实例量大时再引入快照。COMMAND / REJECTION 不驱动投影（仅 EVENT）。
+`Open(ctx, dataDir)` 只是文件实现的便捷封装。M1 采用全量重放；实例量大时再引入快照。COMMAND / REJECTION 不驱动投影（仅 EVENT）。文件日志读到不完整尾包时截断，不让 Recover 失败。
 ---
 
 ## 6. M1 可执行语义
@@ -370,11 +378,10 @@ M1 采用全量重放；实例量大时再引入快照。COMMAND / REJECTION 不
 | 路径 | 职责 |
 |------|------|
 | `engine.go` | 薄门面：锁、COMMAND/REJECTION、emitter |
-| `open.go` | `Open(dataDir)`、部署落盘、EVENT 回放 |
+| `open.go` | `Recover(log, store)`；`Open` 为文件便捷封装 |
 | `executor.go` | Enter/Complete、出边、流程完成判定 |
 | `handlers/*.go` | 每元素一类文件；语义只在此扩展 |
-| `deploy/` | Compile、校验、定义查询（无平行图） |
+| `deploy/` | Compile、`Store` 接口（Memory / Dir） |
 | `projection/` | Instance / Token；EVENT → 投影 |
-| `log/` | EventLog：Memory + File |
+| `log/` | `EventLog` 接口（Memory / File） |
 | `id.go` | UUIDv7 |
-| `processor.go` | 接口预留，待拆独立消费环 |

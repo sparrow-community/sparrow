@@ -70,7 +70,8 @@ cd protocol/proto && ./build.sh
 
 - Runtime module: see `processing/README.md` and `processing/DESIGN.md`.
 - M1 engine available: Deploy / CreateInstance / CompleteUserTask with in-memory or file event log.
-- Durable open: `processing.Open(dataDir)` persists `events.log` + `deployments/*.bpmn` and replays projections.
+- Durable open: `processing.Recover(ctx, eventLog, deploymentStore)` rebuilds projections; `Open(ctx, dataDir)` is the file-backed convenience.
+- Persistence is pluggable: `log.EventLog` + `deploy.Store` (Memory/File in-tree; swap in your own).
 - Layout: `deploy` (holds `element.Process`, no parallel graph), `handlers/` (one file per element type), `executor`, `projection`, `log`.
 - IDs via UUIDv7 (`NextID` / `MustNextID`).
 

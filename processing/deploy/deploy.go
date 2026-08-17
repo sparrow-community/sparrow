@@ -14,6 +14,11 @@ type Deployment struct {
 	ID      string
 	Version int32
 	Process element.Process
+
+	types    map[string]eventv1.Element_Type
+	outgoing map[string][]string
+	flows    map[string]element.SequenceFlow
+	xor      map[string]element.ExclusiveGateway
 }
 
 // Compile parses BPMN XML and keeps the first executable process (M1 subset).
@@ -46,7 +51,44 @@ func Compile(bpmnXML []byte) (*Deployment, error) {
 		return nil, err
 	}
 
-	return &Deployment{Version: 1, Process: *proc}, nil
+	d := &Deployment{Version: 1, Process: *proc}
+	d.buildIndex()
+	return d, nil
+}
+
+func (d *Deployment) buildIndex() {
+	p := &d.Process
+	d.types = map[string]eventv1.Element_Type{p.ID: eventv1.Element_TYPE_PROCESS}
+	d.outgoing = make(map[string][]string)
+	d.flows = make(map[string]element.SequenceFlow, len(p.SequenceFlows))
+	d.xor = make(map[string]element.ExclusiveGateway, len(p.ExclusiveGatewaies))
+
+	indexNode := func(id string, typ eventv1.Element_Type, outs []string) {
+		d.types[id] = typ
+		if len(outs) > 0 {
+			d.outgoing[id] = append([]string{}, outs...)
+		}
+	}
+	for _, e := range p.StartEvents {
+		indexNode(e.ID, eventv1.Element_TYPE_START_EVENT, e.Outgoing)
+	}
+	for _, e := range p.EndEvents {
+		indexNode(e.ID, eventv1.Element_TYPE_END_EVENT, e.Outgoing)
+	}
+	for _, e := range p.UserTasks {
+		indexNode(e.ID, eventv1.Element_TYPE_USER_TASK, e.Outgoing)
+	}
+	for _, g := range p.ExclusiveGatewaies {
+		indexNode(g.ID, eventv1.Element_TYPE_EXCLUSIVE_GATEWAY, g.Outgoing)
+		d.xor[g.ID] = g
+	}
+	for _, f := range p.SequenceFlows {
+		d.types[f.ID] = eventv1.Element_TYPE_SEQUENCE_FLOW
+		d.flows[f.ID] = f
+		if _, ok := d.outgoing[f.SourceRef]; !ok {
+			d.outgoing[f.SourceRef] = append(d.outgoing[f.SourceRef], f.ID)
+		}
+	}
 }
 
 func validateM1(proc *element.Process) error {
@@ -89,41 +131,11 @@ func (d *Deployment) StartEventID() (string, error) {
 	return StartEventID(&d.Process)
 }
 
-// TypeOf returns the event.v1 Element.Type for a BPMN element id.
-func TypeOf(proc *element.Process, id string) (eventv1.Element_Type, error) {
-	for _, e := range proc.StartEvents {
-		if e.ID == id {
-			return eventv1.Element_TYPE_START_EVENT, nil
-		}
-	}
-	for _, e := range proc.EndEvents {
-		if e.ID == id {
-			return eventv1.Element_TYPE_END_EVENT, nil
-		}
-	}
-	for _, e := range proc.UserTasks {
-		if e.ID == id {
-			return eventv1.Element_TYPE_USER_TASK, nil
-		}
-	}
-	for _, e := range proc.ExclusiveGatewaies {
-		if e.ID == id {
-			return eventv1.Element_TYPE_EXCLUSIVE_GATEWAY, nil
-		}
-	}
-	for _, e := range proc.SequenceFlows {
-		if e.ID == id {
-			return eventv1.Element_TYPE_SEQUENCE_FLOW, nil
-		}
-	}
-	if proc.ID == id {
-		return eventv1.Element_TYPE_PROCESS, nil
+func (d *Deployment) TypeOf(id string) (eventv1.Element_Type, error) {
+	if t, ok := d.types[id]; ok {
+		return t, nil
 	}
 	return eventv1.Element_TYPE_UNSPECIFIED, fmt.Errorf("NOT_FOUND: element %q", id)
-}
-
-func (d *Deployment) TypeOf(id string) (eventv1.Element_Type, error) {
-	return TypeOf(&d.Process, id)
 }
 
 // Outgoing returns sequence flow ids leaving the element.
@@ -141,7 +153,7 @@ func Outgoing(proc *element.Process, elementID string) []string {
 }
 
 func (d *Deployment) Outgoing(elementID string) []string {
-	return Outgoing(&d.Process, elementID)
+	return append([]string{}, d.outgoing[elementID]...)
 }
 
 func flowNodeOutgoing(proc *element.Process, id string) []string {
@@ -168,35 +180,19 @@ func flowNodeOutgoing(proc *element.Process, id string) []string {
 	return nil
 }
 
-// SequenceFlow returns the BPMN sequence flow by id.
-func SequenceFlow(proc *element.Process, id string) (element.SequenceFlow, error) {
-	for _, f := range proc.SequenceFlows {
-		if f.ID == id {
-			return f, nil
-		}
-	}
-	return element.SequenceFlow{}, fmt.Errorf("NOT_FOUND: sequence flow %q", id)
-}
-
 func (d *Deployment) SequenceFlow(id string) (element.SequenceFlow, error) {
-	return SequenceFlow(&d.Process, id)
-}
-
-// ExclusiveGateway returns the gateway by id.
-func ExclusiveGateway(proc *element.Process, id string) (element.ExclusiveGateway, error) {
-	for _, g := range proc.ExclusiveGatewaies {
-		if g.ID == id {
-			return g, nil
-		}
+	f, ok := d.flows[id]
+	if !ok {
+		return element.SequenceFlow{}, fmt.Errorf("NOT_FOUND: sequence flow %q", id)
 	}
-	return element.ExclusiveGateway{}, fmt.Errorf("NOT_FOUND: exclusive gateway %q", id)
+	return f, nil
 }
 
 // ChooseExclusiveOutgoing picks default flow, else first outgoing.
 func (d *Deployment) ChooseExclusiveOutgoing(gatewayID string) (string, error) {
-	g, err := ExclusiveGateway(&d.Process, gatewayID)
-	if err != nil {
-		return "", err
+	g, ok := d.xor[gatewayID]
+	if !ok {
+		return "", fmt.Errorf("NOT_FOUND: exclusive gateway %q", gatewayID)
 	}
 	if g.Default != "" {
 		if _, err := d.SequenceFlow(g.Default); err == nil {

@@ -210,3 +210,37 @@ func TestExclusiveGatewayTakesDefault(t *testing.T) {
 		t.Fatalf("default route missing: tookDefault=%v reachedOK=%v", tookDefault, reachedOK)
 	}
 }
+
+func TestGetInstanceReturnsSnapshot(t *testing.T) {
+	xml, err := os.ReadFile(filepath.Join("testdata", "m1_simple.bpmn"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	eng := processing.NewEngine(eventlog.NewMemory())
+	ctx := context.Background()
+	dep, err := eng.Deploy(ctx, xml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instanceID, err := eng.CreateInstance(ctx, dep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, ok := eng.GetInstance(instanceID)
+	if !ok {
+		t.Fatal("missing")
+	}
+	a.Status = projection.StatusTerminated
+	for _, tok := range a.Tokens {
+		tok.Status = "mutated"
+	}
+	b, _ := eng.GetInstance(instanceID)
+	if b.Status != projection.StatusActive {
+		t.Fatalf("snapshot leaked, status=%s", b.Status)
+	}
+	for _, tok := range b.Tokens {
+		if tok.Status == "mutated" {
+			t.Fatal("token snapshot leaked")
+		}
+	}
+}

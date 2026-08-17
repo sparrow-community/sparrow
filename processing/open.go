@@ -3,9 +3,7 @@ package processing
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 
 	"github.com/sparrow-community/sparrow/processing/deploy"
@@ -14,38 +12,50 @@ import (
 	eventv1 "github.com/sparrow-community/sparrow/protocol/gen/go/event/v1"
 )
 
-// Open opens a durable engine under dataDir:
+// Recover builds an Engine from caller-supplied persistence:
+// EventLog for the behavior ledger, Store for BPMN definitions.
+// Both may be in-memory, files, or a custom implementation.
+func Recover(ctx context.Context, l eventlog.EventLog, store deploy.Store) (*Engine, error) {
+	if l == nil {
+		return nil, fmt.Errorf("event log is required")
+	}
+	e := NewEngine(l)
+	e.store = store
+	if err := e.loadDeployments(); err != nil {
+		return nil, err
+	}
+	if err := e.replay(ctx); err != nil {
+		return nil, err
+	}
+	return e, nil
+}
+
+// Open is a file-backed Recover:
 //
-//	dataDir/events.log          append-only event ledger
+//	dataDir/events.log
 //	dataDir/deployments/<id>.bpmn
-//
-// It reloads deployments and rebuilds instance projections by replaying EVENT records.
-func Open(dataDir string) (*Engine, error) {
+func Open(ctx context.Context, dataDir string) (*Engine, error) {
 	if dataDir == "" {
 		return nil, fmt.Errorf("dataDir is required")
-	}
-	depDir := filepath.Join(dataDir, "deployments")
-	if err := os.MkdirAll(depDir, 0o755); err != nil {
-		return nil, fmt.Errorf("mkdir deployments: %w", err)
 	}
 	fl, err := eventlog.OpenFile(filepath.Join(dataDir, "events.log"))
 	if err != nil {
 		return nil, err
 	}
-	e := NewEngine(fl)
-	e.dataDir = dataDir
-	if err := e.loadDeployments(); err != nil {
+	ds, err := deploy.OpenDirStore(filepath.Join(dataDir, "deployments"))
+	if err != nil {
 		_ = fl.Close()
 		return nil, err
 	}
-	if err := e.recover(context.Background()); err != nil {
+	e, err := Recover(ctx, fl, ds)
+	if err != nil {
 		_ = fl.Close()
 		return nil, err
 	}
 	return e, nil
 }
 
-// Close releases durable resources (file event log). Safe on memory engines.
+// Close releases resources if the EventLog implements Close. Safe for memory backends.
 func (e *Engine) Close() error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -56,20 +66,14 @@ func (e *Engine) Close() error {
 }
 
 func (e *Engine) loadDeployments() error {
-	dir := filepath.Join(e.dataDir, "deployments")
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return err
+	if e.store == nil {
+		return nil
 	}
-	for _, ent := range entries {
-		if ent.IsDir() || !strings.HasSuffix(ent.Name(), ".bpmn") {
-			continue
-		}
-		id := strings.TrimSuffix(ent.Name(), ".bpmn")
-		xml, err := os.ReadFile(filepath.Join(dir, ent.Name()))
-		if err != nil {
-			return err
-		}
+	docs, err := e.store.LoadAll()
+	if err != nil {
+		return fmt.Errorf("load deployments: %w", err)
+	}
+	for id, xml := range docs {
 		dep, err := deploy.Compile(xml)
 		if err != nil {
 			return fmt.Errorf("load deployment %q: %w", id, err)
@@ -81,14 +85,13 @@ func (e *Engine) loadDeployments() error {
 }
 
 func (e *Engine) persistDeployment(id string, bpmnXML []byte) error {
-	if e.dataDir == "" {
+	if e.store == nil {
 		return nil
 	}
-	path := filepath.Join(e.dataDir, "deployments", id+".bpmn")
-	return os.WriteFile(path, bpmnXML, 0o644)
+	return e.store.Put(id, bpmnXML)
 }
 
-func (e *Engine) recover(ctx context.Context) error {
+func (e *Engine) replay(ctx context.Context) error {
 	events, err := e.log.ReadAll(ctx)
 	if err != nil {
 		return fmt.Errorf("read event log: %w", err)
