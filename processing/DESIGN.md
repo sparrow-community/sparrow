@@ -118,6 +118,7 @@ processing/
 ├── open.go                   // Recover(ctx, log, store)、Open 便捷封装
 ├── executor.go               // 令牌推进编排（调用 handlers）
 ├── id.go                     // UUIDv7
+├── expr/                     // M1 条件表达式
 ├── deploy/
 │   ├── deploy.go             // Compile + Deployment 查询辅助
 │   ├── store.go              // Store 接口 + MemoryStore
@@ -285,7 +286,8 @@ Recover(ctx, eventLog, deploymentStore)
 - `ActivityPayload.variables` / `ProcessPayload.variables`（`name` + `json_value`）
 - 语义为 **delta**：合并进实例变量表
 - CreateInstance 可带初始变量；CompleteUserTask 可带提交变量
-- XOR：M1 先走 **default**，否则第一条 outgoing；条件表达式未实现
+- XOR：按 outgoing 顺序求值非 default 的条件（`expr.Eval`）；都不成立则走 default
+- M1 条件：`${ident}` / `!ident` / `ident == literal` / `ident != literal`（literal：bool / null / 数字 / 字符串）
 
 ### 6.4 拒绝示例
 
@@ -294,6 +296,7 @@ Recover(ctx, eventLog, deploymentStore)
 | `NOT_FOUND` | 实例、部署或元素不存在 |
 | `INVALID_STATE` | UserTask 未处于 waiting 却 Complete |
 | `UNSUPPORTED_ELEMENT` | 定义含 M1 未支持元素，或无 handler |
+| `INVALID_CONDITION` | XOR 条件表达式无法解析 |
 | `NO_OUTGOING_FLOW` | 无法选出边 |
 
 ---
@@ -339,7 +342,7 @@ Recover(ctx, eventLog, deploymentStore)
 
 | 阶段 | 能力 | 落点 |
 |------|------|------|
-| M2 | Timer / Message、ServiceTask Job；XOR 条件表达式 | payload + Intent；新 handler / 表达式求值 |
+| M2 | Timer / Message、ServiceTask Job | payload + Intent 等待语义；新 handler 文件 |
 | M3 | Parallel/Inclusive、SubProcess、多 token | `Tokens` 多条目；gateway fork/join |
 | M4 | Boundary / 补偿 / Incident | 新 Intent + payload |
 
@@ -354,7 +357,7 @@ Recover(ctx, eventLog, deploymentStore)
 | 单元 | 各 handler：给定输入 → 期望 Effect（可逐步补） |
 | 日志 | Memory / File Append/Read；File 重启后可读 |
 | 端到端 | `testdata/m1_simple.bpmn`：Deploy → CreateInstance → Complete → PROCESS COMPLETED |
-| 回归 | 不支持元素部署失败；非法 Complete → REJECTION；XOR 走 default |
+| 回归 | 不支持元素部署失败；非法 Complete → REJECTION；XOR default / 条件选路 |
 | 恢复 | `Open` 后仍在 UserTask waiting，Complete 可完成实例 |
 
 ---
@@ -369,7 +372,8 @@ Recover(ctx, eventLog, deploymentStore)
 | 4 | `handlers` 按文件拆分 + Registry | 已完成 |
 | 5 | `engine` + `executor` API | 已完成 |
 | 6 | 文件型 EventLog 与重启回放 | 已完成 |
-| 7 | XOR 条件表达式 / 更多元素 | 未开始 |
+| 7 | XOR 条件表达式（M1 子集） | 已完成 |
+| 8 | ServiceTask / Timer / 更多元素 | 未开始 |
 
 ---
 
@@ -381,7 +385,8 @@ Recover(ctx, eventLog, deploymentStore)
 | `open.go` | `Recover(log, store)`；`Open` 为文件便捷封装 |
 | `executor.go` | Enter/Complete、出边、流程完成判定 |
 | `handlers/*.go` | 每元素一类文件；语义只在此扩展 |
-| `deploy/` | Compile、`Store` 接口（Memory / Dir） |
+| `expr/` | M1 条件：ident / 比较 |
+| `deploy/` | Compile、`Store`、XOR 选路 |
 | `projection/` | Instance / Token；EVENT → 投影 |
 | `log/` | `EventLog` 接口（Memory / File） |
 | `id.go` | UUIDv7 |

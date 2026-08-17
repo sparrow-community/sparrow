@@ -5,6 +5,7 @@ import (
 
 	"github.com/sparrow-community/sparrow/bpmn"
 	"github.com/sparrow-community/sparrow/bpmn/element"
+	"github.com/sparrow-community/sparrow/processing/expr"
 	eventv1 "github.com/sparrow-community/sparrow/protocol/gen/go/event/v1"
 )
 
@@ -188,20 +189,46 @@ func (d *Deployment) SequenceFlow(id string) (element.SequenceFlow, error) {
 	return f, nil
 }
 
-// ChooseExclusiveOutgoing picks default flow, else first outgoing.
-func (d *Deployment) ChooseExclusiveOutgoing(gatewayID string) (string, error) {
+// ConditionText returns the sequence flow condition body, or empty if none.
+func ConditionText(f element.SequenceFlow) string {
+	switch e := f.ConditionExpression.ExpressionSubstitution.(type) {
+	case *element.FormalExpression:
+		return e.Value
+	default:
+		return ""
+	}
+}
+
+// ChooseExclusiveOutgoing picks the first matching non-default condition, else default.
+func (d *Deployment) ChooseExclusiveOutgoing(gatewayID string, vars map[string]string) (string, error) {
 	g, ok := d.xor[gatewayID]
 	if !ok {
 		return "", fmt.Errorf("NOT_FOUND: exclusive gateway %q", gatewayID)
+	}
+	for _, flowID := range d.Outgoing(gatewayID) {
+		if g.Default != "" && flowID == g.Default {
+			continue
+		}
+		flow, err := d.SequenceFlow(flowID)
+		if err != nil {
+			return "", err
+		}
+		text := ConditionText(flow)
+		if text == "" {
+			return flowID, nil
+		}
+		match, err := expr.Eval(text, vars)
+		if err != nil {
+			return "", fmt.Errorf("INVALID_CONDITION: flow %s: %w", flowID, err)
+		}
+		if match {
+			return flowID, nil
+		}
 	}
 	if g.Default != "" {
 		if _, err := d.SequenceFlow(g.Default); err == nil {
 			return g.Default, nil
 		}
 	}
-	outs := d.Outgoing(gatewayID)
-	if len(outs) == 0 {
-		return "", fmt.Errorf("NO_OUTGOING_FLOW")
-	}
-	return outs[0], nil
+	return "", fmt.Errorf("NO_OUTGOING_FLOW")
 }

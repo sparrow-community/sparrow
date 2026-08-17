@@ -11,7 +11,11 @@ func (ExclusiveGatewayHandler) Type() eventv1.Element_Type {
 }
 
 func (ExclusiveGatewayHandler) OnEnter(in EnterInput) (*Effect, error) {
-	flowID, err := in.Deployment.ChooseExclusiveOutgoing(in.ElementID)
+	var vars map[string]string
+	if in.Instance != nil {
+		vars = in.Instance.Variables
+	}
+	flowID, err := in.Deployment.ChooseExclusiveOutgoing(in.ElementID, vars)
 	if err != nil {
 		return nil, err
 	}

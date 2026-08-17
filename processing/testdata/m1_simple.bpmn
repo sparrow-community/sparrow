@@ -25,6 +25,8 @@
     <sequenceFlow id="Flow_start_to_task" sourceRef="StartEvent_1" targetRef="UserTask_1"/>
     <sequenceFlow id="Flow_task_to_gw" sourceRef="UserTask_1" targetRef="Gateway_1"/>
     <sequenceFlow id="Flow_gw_to_end_ok" sourceRef="Gateway_1" targetRef="EndEvent_ok"/>
-    <sequenceFlow id="Flow_gw_to_end_other" sourceRef="Gateway_1" targetRef="EndEvent_other"/>
+    <sequenceFlow id="Flow_gw_to_end_other" sourceRef="Gateway_1" targetRef="EndEvent_other">
+      <conditionExpression xsi:type="tFormalExpression">${approved == false}</conditionExpression>
+    </sequenceFlow>
   </process>
 </definitions>

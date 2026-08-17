@@ -24,6 +24,7 @@ Sparrow 运行时模块：单节点、事件驱动的 BPMN 执行引擎。
 | Engine：Deploy / CreateInstance / CompleteUserTask | 已有 |
 | 文件 / 内存 EventLog + Store（可替换） | 已有 |
 | `Recover` 回放 / `Open` 文件便捷入口 | 已有 |
+| XOR 条件选路（`expr`，default 回退） | 已有 |
 
 端到端夹具：`testdata/m1_simple.bpmn`（Start → UserTask → XOR → End）。
 
@@ -34,6 +35,7 @@ Sparrow 运行时模块：单节点、事件驱动的 BPMN 执行引擎。
 ```text
 processing/
 ├── engine.go / executor.go / open.go   # API、Recover、Open
+├── expr/            # M1 条件表达式
 ├── deploy/          # Compile + Store 接口
 ├── handlers/        # 一元素一文件 + Registry
 ├── projection/      # Instance / Token / ApplyEvent

@@ -211,6 +211,65 @@ func TestExclusiveGatewayTakesDefault(t *testing.T) {
 	}
 }
 
+func TestExclusiveGatewayTakesCondition(t *testing.T) {
+	xml, err := os.ReadFile(filepath.Join("testdata", "m1_simple.bpmn"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	eng := processing.NewEngine(eventlog.NewMemory())
+	ctx := context.Background()
+	dep, err := eng.Deploy(ctx, xml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instanceID, err := eng.CreateInstance(ctx, dep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inst, _ := eng.GetInstance(instanceID)
+	var waitingToken, waitingElement string
+	for _, tok := range inst.Tokens {
+		if tok.Status == projection.TokenWaiting {
+			waitingToken, waitingElement = tok.ID, tok.ElementID
+			break
+		}
+	}
+	if err := eng.CompleteUserTask(ctx, instanceID, waitingElement, waitingToken, map[string]any{"approved": false}); err != nil {
+		t.Fatal(err)
+	}
+
+	events, err := eng.ListEvents(ctx, instanceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var tookOther, reachedOther bool
+	for _, ev := range events {
+		if ev.GetRecordType() != eventv1.Event_RECORD_TYPE_EVENT {
+			continue
+		}
+		el := ev.GetElement()
+		if el == nil {
+			continue
+		}
+		if el.GetType() == eventv1.Element_TYPE_EXCLUSIVE_GATEWAY &&
+			el.GetIntent() == eventv1.Element_INTENT_COMPLETED {
+			gp := el.GetGatewayPayload()
+			if gp == nil || gp.GetTakenSequenceFlowId() != "Flow_gw_to_end_other" {
+				t.Fatalf("XOR taken=%v want Flow_gw_to_end_other", gp)
+			}
+			tookOther = true
+		}
+		if el.GetType() == eventv1.Element_TYPE_END_EVENT &&
+			el.GetId() == "EndEvent_other" &&
+			el.GetIntent() == eventv1.Element_INTENT_COMPLETED {
+			reachedOther = true
+		}
+	}
+	if !tookOther || !reachedOther {
+		t.Fatalf("conditioned route missing: tookOther=%v reachedOther=%v", tookOther, reachedOther)
+	}
+}
+
 func TestGetInstanceReturnsSnapshot(t *testing.T) {
 	xml, err := os.ReadFile(filepath.Join("testdata", "m1_simple.bpmn"))
 	if err != nil {
