@@ -77,7 +77,7 @@ func TestOpenReplayResumeUserTask(t *testing.T) {
 		t.Fatalf("token after replay=%#v tokens=%#v", tok2, inst2.Tokens)
 	}
 
-	if err := eng2.CompleteUserTask(ctx, instanceID, waitingElement, waitingToken, map[string]any{"approved": true}); err != nil {
+	if err := eng2.Complete(ctx, instanceID, waitingElement, waitingToken, map[string]any{"approved": true}); err != nil {
 		t.Fatalf("Complete after replay: %v", err)
 	}
 	inst2, _ = eng2.GetInstance(instanceID)
@@ -126,7 +126,7 @@ func TestRecoverReplayWithMemoryBackends(t *testing.T) {
 	if waitingElement != "UserTask_1" {
 		t.Fatalf("tokens=%#v", inst.Tokens)
 	}
-	if err := eng2.CompleteUserTask(ctx, instanceID, waitingElement, waitingToken, nil); err != nil {
+	if err := eng2.Complete(ctx, instanceID, waitingElement, waitingToken, nil); err != nil {
 		t.Fatal(err)
 	}
 	inst, _ = eng2.GetInstance(instanceID)

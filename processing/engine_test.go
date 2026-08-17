@@ -58,8 +58,8 @@ func TestM1DeployCreateComplete(t *testing.T) {
 		t.Fatalf("expected wait at UserTask_1, tokens=%#v", inst.Tokens)
 	}
 
-	if err := eng.CompleteUserTask(ctx, instanceID, waitingElement, waitingToken, map[string]any{"approved": true}); err != nil {
-		t.Fatalf("CompleteUserTask: %v", err)
+	if err := eng.Complete(ctx, instanceID, waitingElement, waitingToken, map[string]any{"approved": true}); err != nil {
+		t.Fatalf("Complete: %v", err)
 	}
 
 	inst, _ = eng.GetInstance(instanceID)
@@ -102,7 +102,7 @@ func TestM1DeployCreateComplete(t *testing.T) {
 	}
 }
 
-func TestCompleteUserTaskInvalidState(t *testing.T) {
+func TestCompleteInvalidState(t *testing.T) {
 	xml, err := os.ReadFile(filepath.Join("testdata", "m1_simple.bpmn"))
 	if err != nil {
 		t.Fatal(err)
@@ -117,7 +117,7 @@ func TestCompleteUserTaskInvalidState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = eng.CompleteUserTask(ctx, instanceID, "UserTask_1", "missing-token", nil)
+	err = eng.Complete(ctx, instanceID, "UserTask_1", "missing-token", nil)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -175,7 +175,7 @@ func TestExclusiveGatewayTakesDefault(t *testing.T) {
 			break
 		}
 	}
-	if err := eng.CompleteUserTask(ctx, instanceID, waitingElement, waitingToken, nil); err != nil {
+	if err := eng.Complete(ctx, instanceID, waitingElement, waitingToken, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -234,7 +234,7 @@ func TestExclusiveGatewayTakesCondition(t *testing.T) {
 			break
 		}
 	}
-	if err := eng.CompleteUserTask(ctx, instanceID, waitingElement, waitingToken, map[string]any{"approved": false}); err != nil {
+	if err := eng.Complete(ctx, instanceID, waitingElement, waitingToken, map[string]any{"approved": false}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -356,8 +356,8 @@ func TestServiceTaskWaitAndComplete(t *testing.T) {
 		t.Fatal("missing SERVICE_TASK ACTIVATED with job_type")
 	}
 
-	if err := eng.CompleteServiceTask(ctx, instanceID, waitingElement, waitingToken, map[string]any{"result": "ok"}); err != nil {
-		t.Fatalf("CompleteServiceTask: %v", err)
+	if err := eng.Complete(ctx, instanceID, waitingElement, waitingToken, map[string]any{"result": "ok"}); err != nil {
+		t.Fatalf("Complete: %v", err)
 	}
 	inst, _ = eng.GetInstance(instanceID)
 	if inst.Status != projection.StatusCompleted {

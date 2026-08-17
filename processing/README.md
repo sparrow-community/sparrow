@@ -21,12 +21,11 @@ Sparrow 运行时模块：单节点、事件驱动的 BPMN 执行引擎。
 | Deploy（`deploy`，直接持有 `element.Process`） | 已有 |
 | 元素 Handler（`handlers/`，按类型分文件） | 已有 |
 | Executor 令牌推进 | 已有 |
-| Engine：Deploy / CreateInstance / CompleteUserTask / CompleteServiceTask | 已有 |
+| Engine：Deploy / CreateInstance / Complete | 已有 |
 | XOR 条件选路（`expr`，default 回退） | 已有 |
 | ServiceTask 等待 + `job_type` | 已有 |
 | 文件 / 内存 EventLog + Store（可替换） | 已有 |
 | `Recover` 回放 / `Open` 文件便捷入口 | 已有 |
-| XOR 条件选路（`expr`，default 回退） | 已有 |
 
 端到端夹具：`testdata/m1_simple.bpmn`（Start → UserTask → XOR → End）；`testdata/m2_service_task.bpmn`。
 

@@ -3,8 +3,8 @@
 本文描述 `processing` 模块的目标形态、核心模型、包结构、处理流程与 M1 实现边界。  
 实现应以本文为准；协议字段变更在 `protocol` 中进行，并保持「Event = 元素行为」的定位。
 
-**M1 状态**：Deploy / CreateInstance / CompleteUserTask、XOR 条件、内存与文件 EventLog、`Open` 重启回放已可用。  
-**M2 起步**：CompleteServiceTask；Job 细节在 `ActivityPayload.job_type`。  
+**M1 状态**：Deploy / CreateInstance / Complete、XOR 条件、内存与文件 EventLog、`Open` 重启回放已可用。  
+**M2 起步**：ServiceTask 等待；Job 细节在 `ActivityPayload.job_type`。  
 尚未实现：Timer / Message、COMMAND 幂等、更多 BPMN 元素。
 
 ---
@@ -182,7 +182,7 @@ type ElementHandler interface {
 
 Effect：handler 产出，由 Executor 应用（Records / Wait / OutgoingFlowID / TakeOutgoing / TryCompleteProcess）。
 
-Engine 对外能力：Deploy / CreateInstance / CompleteUserTask / GetInstance / ListEvents。
+Engine 对外能力：Deploy / CreateInstance / Complete / GetInstance / ListEvents。
 
 ID 统一走 `NextID()`（UUIDv7 字符串）。时间戳使用 Unix millis。空 id 用空字符串表示。
 
@@ -205,7 +205,7 @@ ID 统一走 `NextID()`（UUIDv7 字符串）。时间戳使用 Unix millis。�
 ### 5.1 当前路径（Engine 内联）
 
 ```text
-CreateInstance / CompleteUserTask:
+CreateInstance / Complete:
   1. 取 deployment + instance；加实例锁
   2. 校验投影（如 UserTask 须 waiting）
   3. Append(COMMAND)
@@ -247,7 +247,7 @@ Recover(ctx, eventLog, deploymentStore)
   → Store.LoadAll → Compile → deployments map
   → EventLog.ReadAll
   → 按序对每条 EVENT 调用 Instance.ApplyEvent（必要时先创建投影）
-  → 恢复等待点（如 UserTask waiting），可继续 CompleteUserTask
+  → 恢复等待点（如 UserTask waiting），可继续 Complete
 ```
 
 `Open(ctx, dataDir)` 只是文件实现的便捷封装。M1 采用全量重放；实例量大时再引入快照。COMMAND / REJECTION 不驱动投影（仅 EVENT）。文件日志读到不完整尾包时截断，不让 Recover 失败。
@@ -262,7 +262,7 @@ Recover(ctx, eventLog, deploymentStore)
 | `PROCESS` | `process.go` | 实例启动 / 正常完成 |
 | `START_EVENT` | `start_event.go` | 瞬时生命周期后沿出口流出 |
 | `USER_TASK` | `user_task.go` | ACTIVATING→ACTIVATED 后 `Wait`；Complete → COMPLETING→COMPLETED |
-| `SERVICE_TASK` | `service_task.go` | 同上等待；ACTIVATED 带 `ActivityPayload.job_type`；`CompleteServiceTask` |
+| `SERVICE_TASK` | `service_task.go` | 同上等待；ACTIVATED 带 `ActivityPayload.job_type`；经 `Complete` 完成 |
 | `EXCLUSIVE_GATEWAY` | `exclusive_gateway.go` | 非 default 条件按序求值，否则 default；payload 带 `taken_sequence_flow_id` |
 | `SEQUENCE_FLOW` | `sequence_flow.go` | 经 transit 发 `SEQUENCE_FLOW_TAKEN`（不走 OnEnter） |
 | `END_EVENT` | `end_event.go` | 完成后 `TryCompleteProcess` |
@@ -290,7 +290,7 @@ Recover(ctx, eventLog, deploymentStore)
 
 - `ActivityPayload.variables` / `ProcessPayload.variables`（`name` + `json_value`）
 - 语义为 **delta**：合并进实例变量表
-- CreateInstance 可带初始变量；CompleteUserTask 可带提交变量
+- CreateInstance 可带初始变量；Complete 可带提交变量
 - XOR：按 outgoing 顺序求值非 default 的条件（`expr.Eval` / expr-lang）；都不成立则走 default
 - 条件：剥掉 BPMN `${...}` 后交给 [expr-lang/expr](https://github.com/expr-lang/expr)；变量为实例 JSON 值。单引号字符串会先归一成双引号。
 
@@ -321,11 +321,11 @@ Recover(ctx, eventLog, deploymentStore)
 - 行为：分配 instance/token id；写启动 COMMAND + PROCESS 启动 EVENT；Enter StartEvent  
 - 推进到第一个等待点（通常 UserTask）或直至结束  
 
-### CompleteUserTask / CompleteServiceTask
+### Complete
 
 - 输入：`process_instance_id`，`element_id`，`token_id`，可选变量  
-- 行为：写 COMPLETING COMMAND；`Executor.Complete` 后继续自动步进  
-- ServiceTask 须处于 waiting；ACTIVATED 时 `job_type` 来自 BPMN `implementation`（否则 name / id）  
+- 行为：校验 token 在该元素 waiting；`Type` 从定义读取并写入 COMMAND；handler `OnComplete` 后继续自动步进  
+- 不按 BPMN 类型拆 API；UserTask / ServiceTask / 日后等待点都走同一入口  
 
 查询：
 

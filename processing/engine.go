@@ -133,15 +133,7 @@ func (e *Engine) CreateInstance(ctx context.Context, deploymentID string, vars m
 	return instanceID, nil
 }
 
-func (e *Engine) CompleteUserTask(ctx context.Context, instanceID, elementID, tokenID string, vars map[string]any) error {
-	return e.completeWaiting(ctx, instanceID, elementID, tokenID, eventv1.Element_TYPE_USER_TASK, "user task", vars)
-}
-
-func (e *Engine) CompleteServiceTask(ctx context.Context, instanceID, elementID, tokenID string, vars map[string]any) error {
-	return e.completeWaiting(ctx, instanceID, elementID, tokenID, eventv1.Element_TYPE_SERVICE_TASK, "service task", vars)
-}
-
-func (e *Engine) completeWaiting(ctx context.Context, instanceID, elementID, tokenID string, wantType eventv1.Element_Type, label string, vars map[string]any) error {
+func (e *Engine) Complete(ctx context.Context, instanceID, elementID, tokenID string, vars map[string]any) error {
 	e.mu.Lock()
 	inst := e.instances[instanceID]
 	lock := e.instMu[instanceID]
@@ -157,13 +149,17 @@ func (e *Engine) completeWaiting(ctx context.Context, instanceID, elementID, tok
 	lock.Lock()
 	defer lock.Unlock()
 
+	typ, typeErr := dep.TypeOf(elementID)
+	if typeErr != nil {
+		typ = eventv1.Element_TYPE_UNSPECIFIED
+	}
+
 	tok := inst.Tokens[tokenID]
 	if tok == nil || tok.ElementID != elementID || tok.Status != projection.TokenWaiting {
-		return e.reject(ctx, inst, elementID, tokenID, wantType, eventv1.Element_INTENT_COMPLETING, "INVALID_STATE", label+" is not waiting for completion")
+		return e.reject(ctx, inst, elementID, tokenID, typ, eventv1.Element_INTENT_COMPLETING, "INVALID_STATE", "element is not waiting for completion")
 	}
-	typ, err := dep.TypeOf(elementID)
-	if err != nil || typ != wantType {
-		return e.reject(ctx, inst, elementID, tokenID, wantType, eventv1.Element_INTENT_COMPLETING, "NOT_FOUND", label+" element not found")
+	if typeErr != nil {
+		return e.reject(ctx, inst, elementID, tokenID, typ, eventv1.Element_INTENT_COMPLETING, "NOT_FOUND", "element not found")
 	}
 
 	cmdID, err := NextID()
@@ -184,7 +180,7 @@ func (e *Engine) completeWaiting(ctx context.Context, instanceID, elementID, tok
 		ProcessVersion:    inst.Version,
 		Element: &eventv1.Element{
 			Intent:  eventv1.Element_INTENT_COMPLETING,
-			Type:    wantType,
+			Type:    typ,
 			Id:      elementID,
 			TokenId: tokenID,
 			Payload: &eventv1.Element_ActivityPayload{
