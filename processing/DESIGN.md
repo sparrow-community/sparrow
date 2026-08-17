@@ -118,7 +118,7 @@ processing/
 ├── open.go                   // Recover(ctx, log, store)、Open 便捷封装
 ├── executor.go               // 令牌推进编排（调用 handlers）
 ├── id.go                     // UUIDv7
-├── expr/                     // M1 条件表达式
+├── expr/                     // 条件表达式（expr-lang）
 ├── deploy/
 │   ├── deploy.go             // Compile + Deployment 查询辅助
 │   ├── store.go              // Store 接口 + MemoryStore
@@ -286,8 +286,8 @@ Recover(ctx, eventLog, deploymentStore)
 - `ActivityPayload.variables` / `ProcessPayload.variables`（`name` + `json_value`）
 - 语义为 **delta**：合并进实例变量表
 - CreateInstance 可带初始变量；CompleteUserTask 可带提交变量
-- XOR：按 outgoing 顺序求值非 default 的条件（`expr.Eval`）；都不成立则走 default
-- M1 条件：`${ident}` / `!ident` / `ident == literal` / `ident != literal`（literal：bool / null / 数字 / 字符串）
+- XOR：按 outgoing 顺序求值非 default 的条件（`expr.Eval` / expr-lang）；都不成立则走 default
+- 条件：剥掉 BPMN `${...}` 后交给 [expr-lang/expr](https://github.com/expr-lang/expr)；变量为实例 JSON 值。单引号字符串会先归一成双引号。
 
 ### 6.4 拒绝示例
 
@@ -385,7 +385,7 @@ Recover(ctx, eventLog, deploymentStore)
 | `open.go` | `Recover(log, store)`；`Open` 为文件便捷封装 |
 | `executor.go` | Enter/Complete、出边、流程完成判定 |
 | `handlers/*.go` | 每元素一类文件；语义只在此扩展 |
-| `expr/` | M1 条件：ident / 比较 |
+| `expr/` | `${...}` → expr-lang 求值 |
 | `deploy/` | Compile、`Store`、XOR 选路 |
 | `projection/` | Instance / Token；EVENT → 投影 |
 | `log/` | `EventLog` 接口（Memory / File） |

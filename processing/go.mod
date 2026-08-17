@@ -8,6 +8,8 @@ require (
 	github.com/sparrow-community/sparrow/protocol v0.0.0
 )
 
+require github.com/expr-lang/expr v1.17.8
+
 require (
 	golang.org/x/net v0.57.0 // indirect
 	golang.org/x/text v0.40.0 // indirect

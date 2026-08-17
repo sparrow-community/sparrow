@@ -28,6 +28,9 @@ func TestEval(t *testing.T) {
 		{"name != 'bob'", true},
 		{"n == 2", true},
 		{"n != 1", true},
+		{"n > 1", true},
+		{"approved && !flag", true},
+		{"!approved == true", false},
 	}
 	for _, tc := range cases {
 		got, err := Eval(tc.in, vars)
@@ -44,10 +47,7 @@ func TestEvalRejects(t *testing.T) {
 	if _, err := Eval("", nil); err == nil {
 		t.Fatal("expected error")
 	}
-	if _, err := Eval("!approved == true", map[string]string{"approved": "true"}); err == nil {
-		t.Fatal("expected error")
-	}
-	if _, err := Eval("approved > 1", map[string]string{"approved": "true"}); err == nil {
+	if _, err := Eval("approved +", map[string]string{"approved": "true"}); err == nil {
 		t.Fatal("expected error")
 	}
 }

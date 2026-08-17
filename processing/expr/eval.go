@@ -3,70 +3,57 @@ package expr
 import (
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"strings"
-	"unicode"
+
+	"github.com/expr-lang/expr"
+	"github.com/expr-lang/expr/ast"
 )
 
-// Eval evaluates an M1 condition against instance variables (name → json_value).
-// Supported forms (optional ${...} wrapper):
-//
-//	ident
-//	!ident
-//	ident == literal
-//	ident != literal
-//
-// Literals: true, false, null, numbers, 'strings' or "strings".
+const notFn = "__sparrow_not"
+
+// Eval evaluates a condition against instance variables (name → json_value).
+// BPMN `${...}` wrappers are stripped. Evaluation uses github.com/expr-lang/expr
+// so comparisons, boolean ops, and property access are available.
+// Single-quoted strings are accepted as in typical BPMN conditions.
+// Missing variables are treated as nil/false, so `!missing` is true.
 func Eval(text string, vars map[string]string) (bool, error) {
 	s := unwrap(text)
 	if s == "" {
 		return false, fmt.Errorf("empty expression")
 	}
+	s = normalizeSingleQuotes(s)
 
-	neg := false
-	if strings.HasPrefix(s, "!") {
-		neg = true
-		s = strings.TrimSpace(s[1:])
-	}
-
-	ident, rest := splitIdent(s)
-	if ident == "" {
-		return false, fmt.Errorf("expected identifier in %q", text)
-	}
-	rest = strings.TrimSpace(rest)
-	if rest == "" {
-		ok := truthy(vars, ident)
-		if neg {
-			return !ok, nil
-		}
-		return ok, nil
-	}
-	if neg {
-		return false, fmt.Errorf("! cannot be combined with comparison in %q", text)
-	}
-
-	op := ""
-	switch {
-	case strings.HasPrefix(rest, "=="):
-		op = "=="
-		rest = strings.TrimSpace(rest[2:])
-	case strings.HasPrefix(rest, "!="):
-		op = "!="
-		rest = strings.TrimSpace(rest[2:])
-	default:
-		return false, fmt.Errorf("unsupported expression %q", text)
-	}
-
-	want, err := parseLiteral(rest)
+	env := envFrom(vars)
+	program, err := expr.Compile(s,
+		expr.Env(env),
+		expr.AllowUndefinedVariables(),
+		expr.Patch(notPatcher{}),
+	)
 	if err != nil {
-		return false, fmt.Errorf("literal in %q: %w", text, err)
+		return false, fmt.Errorf("compile %q: %w", text, err)
 	}
-	got, ok := lookup(vars, ident)
-	eq := ok && equal(got, want)
-	if op == "!=" {
-		return !eq, nil
+	out, err := expr.Run(program, env)
+	if err != nil {
+		return false, fmt.Errorf("eval %q: %w", text, err)
 	}
-	return eq, nil
+	return asBool(out)
+}
+
+type notPatcher struct{}
+
+func (notPatcher) Visit(node *ast.Node) {
+	n, ok := (*node).(*ast.UnaryNode)
+	if !ok || (n.Operator != "!" && n.Operator != "not") {
+		return
+	}
+	ast.Patch(node, &ast.CallNode{
+		Callee:    &ast.IdentifierNode{Value: notFn},
+		Arguments: []ast.Node{n.Node},
+	})
+}
+
+func sparrowNot(v any) bool {
+	return !isTruthy(v)
 }
 
 func unwrap(text string) string {
@@ -77,69 +64,62 @@ func unwrap(text string) string {
 	return s
 }
 
-func splitIdent(s string) (ident, rest string) {
-	if s == "" {
-		return "", ""
-	}
-	if !isIdentStart(rune(s[0])) {
-		return "", s
-	}
-	i := 1
-	for i < len(s) && isIdentPart(rune(s[i])) {
-		i++
-	}
-	return s[:i], s[i:]
-}
-
-func isIdentStart(r rune) bool {
-	return r == '_' || unicode.IsLetter(r)
-}
-
-func isIdentPart(r rune) bool {
-	return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r)
-}
-
-func parseLiteral(s string) (any, error) {
-	s = strings.TrimSpace(s)
-	switch s {
-	case "true":
-		return true, nil
-	case "false":
-		return false, nil
-	case "null":
-		return nil, nil
-	}
-	if len(s) >= 2 {
-		if (s[0] == '"' && s[len(s)-1] == '"') || (s[0] == '\'' && s[len(s)-1] == '\'') {
-			return s[1 : len(s)-1], nil
+// normalizeSingleQuotes turns 'alice' into "alice" without touching double-quoted spans.
+func normalizeSingleQuotes(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	inDouble := false
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if inDouble {
+			b.WriteByte(c)
+			if c == '"' && (i == 0 || s[i-1] != '\\') {
+				inDouble = false
+			}
+			continue
 		}
+		if c == '"' {
+			inDouble = true
+			b.WriteByte(c)
+			continue
+		}
+		if c == '\'' {
+			j := i + 1
+			for j < len(s) && s[j] != '\'' {
+				j++
+			}
+			if j >= len(s) {
+				b.WriteByte(c)
+				continue
+			}
+			b.WriteByte('"')
+			b.WriteString(s[i+1 : j])
+			b.WriteByte('"')
+			i = j
+			continue
+		}
+		b.WriteByte(c)
 	}
-	if n, err := strconv.ParseFloat(s, 64); err == nil {
-		return n, nil
-	}
-	return nil, fmt.Errorf("bad literal %q", s)
+	return b.String()
 }
 
-func lookup(vars map[string]string, name string) (any, bool) {
-	if vars == nil {
-		return nil, false
+func envFrom(vars map[string]string) map[string]any {
+	out := map[string]any{notFn: sparrowNot}
+	for k, raw := range vars {
+		if k == notFn {
+			continue
+		}
+		var v any
+		if err := json.Unmarshal([]byte(raw), &v); err != nil {
+			out[k] = raw
+			continue
+		}
+		out[k] = v
 	}
-	raw, ok := vars[name]
-	if !ok {
-		return nil, false
-	}
-	var v any
-	if err := json.Unmarshal([]byte(raw), &v); err != nil {
-		return raw, true
-	}
-	return v, true
+	return out
 }
 
-func truthy(vars map[string]string, name string) bool {
-	v, ok := lookup(vars, name)
-	if !ok {
-		return false
-	}
+func isTruthy(v any) bool {
 	switch t := v.(type) {
 	case nil:
 		return false
@@ -147,9 +127,10 @@ func truthy(vars map[string]string, name string) bool {
 		return t
 	case float64:
 		return t != 0
-	case json.Number:
-		n, _ := t.Float64()
-		return n != 0
+	case int:
+		return t != 0
+	case int64:
+		return t != 0
 	case string:
 		return t != ""
 	case []any:
@@ -161,41 +142,13 @@ func truthy(vars map[string]string, name string) bool {
 	}
 }
 
-func equal(a, b any) bool {
-	af, aok := asFloat(a)
-	bf, bok := asFloat(b)
-	if aok && bok {
-		return af == bf
-	}
-	return fmt.Sprint(a) == fmt.Sprint(b) && typeKind(a) == typeKind(b)
-}
-
-func asFloat(v any) (float64, bool) {
+func asBool(v any) (bool, error) {
 	switch t := v.(type) {
-	case float64:
-		return t, true
-	case json.Number:
-		n, err := t.Float64()
-		return n, err == nil
-	case int:
-		return float64(t), true
-	default:
-		return 0, false
-	}
-}
-
-func typeKind(v any) string {
-	switch v.(type) {
-	case nil:
-		return "null"
 	case bool:
-		return "bool"
-	case string:
-		return "string"
+		return t, nil
+	case nil:
+		return false, nil
 	default:
-		if _, ok := asFloat(v); ok {
-			return "number"
-		}
-		return fmt.Sprintf("%T", v)
+		return false, fmt.Errorf("condition did not return a boolean (got %T)", v)
 	}
 }

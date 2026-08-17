@@ -35,7 +35,7 @@ Sparrow 运行时模块：单节点、事件驱动的 BPMN 执行引擎。
 ```text
 processing/
 ├── engine.go / executor.go / open.go   # API、Recover、Open
-├── expr/            # M1 条件表达式
+├── expr/            # 条件表达式（expr-lang）
 ├── deploy/          # Compile + Store 接口
 ├── handlers/        # 一元素一文件 + Registry
 ├── projection/      # Instance / Token / ApplyEvent
