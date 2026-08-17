@@ -260,7 +260,7 @@ Recover(ctx, eventLog, deploymentStore)
 | `PROCESS` | `process.go` | 实例启动 / 正常完成 |
 | `START_EVENT` | `start_event.go` | 瞬时生命周期后沿出口流出 |
 | `USER_TASK` | `user_task.go` | ACTIVATING→ACTIVATED 后 `Wait`；Complete → COMPLETING→COMPLETED |
-| `EXCLUSIVE_GATEWAY` | `exclusive_gateway.go` | 默认流或首条出口；payload 带 `taken_sequence_flow_id` |
+| `EXCLUSIVE_GATEWAY` | `exclusive_gateway.go` | 非 default 条件按序求值，否则 default；payload 带 `taken_sequence_flow_id` |
 | `SEQUENCE_FLOW` | `sequence_flow.go` | 经 transit 发 `SEQUENCE_FLOW_TAKEN`（不走 OnEnter） |
 | `END_EVENT` | `end_event.go` | 完成后 `TryCompleteProcess` |
 
