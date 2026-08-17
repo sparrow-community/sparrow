@@ -8,7 +8,11 @@ require (
 	github.com/sparrow-community/sparrow/protocol v0.0.0
 )
 
-require google.golang.org/protobuf v1.36.11 // indirect
+require (
+	golang.org/x/net v0.57.0 // indirect
+	golang.org/x/text v0.40.0 // indirect
+	google.golang.org/protobuf v1.36.11
+)
 
 replace (
 	github.com/sparrow-community/sparrow/bpmn => ../bpmn

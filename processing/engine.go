@@ -15,9 +15,11 @@ import (
 
 // Engine is the single-node BPMN execution facade.
 // Element semantics live in handlers; definitions come from bpmn via deploy.Deployment.
+// When dataDir is set (via Open), deployments are persisted and projections can be rebuilt from the event log.
 type Engine struct {
 	log      eventlog.EventLog
 	executor *Executor
+	dataDir  string
 
 	mu          sync.Mutex
 	deployments map[string]*deploy.Deployment
@@ -48,6 +50,9 @@ func (e *Engine) Deploy(_ context.Context, bpmnXML []byte) (string, error) {
 		return "", err
 	}
 	dep.ID = id
+	if err := e.persistDeployment(id, bpmnXML); err != nil {
+		return "", fmt.Errorf("persist deployment: %w", err)
+	}
 
 	e.mu.Lock()
 	e.deployments[id] = dep

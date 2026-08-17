@@ -121,4 +121,92 @@ func TestCompleteUserTaskInvalidState(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
+
+	events, err := eng.ListEvents(ctx, instanceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sawRejection bool
+	for _, ev := range events {
+		if ev.GetRecordType() == eventv1.Event_RECORD_TYPE_REJECTION {
+			sawRejection = true
+			if ev.GetRejection() == nil || ev.GetRejection().GetCode() != "INVALID_STATE" {
+				t.Fatalf("rejection=%v", ev.GetRejection())
+			}
+		}
+	}
+	if !sawRejection {
+		t.Fatal("expected REJECTION record in event log")
+	}
+}
+
+func TestDeployRejectsUnsupportedElement(t *testing.T) {
+	xml, err := os.ReadFile(filepath.Join("testdata", "m1_unsupported_service_task.bpmn"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	eng := processing.NewEngine(eventlog.NewMemory())
+	_, err = eng.Deploy(context.Background(), xml)
+	if err == nil {
+		t.Fatal("expected deploy to reject ServiceTask")
+	}
+}
+
+func TestExclusiveGatewayTakesDefault(t *testing.T) {
+	xml, err := os.ReadFile(filepath.Join("testdata", "m1_simple.bpmn"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	eng := processing.NewEngine(eventlog.NewMemory())
+	ctx := context.Background()
+	dep, err := eng.Deploy(ctx, xml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instanceID, err := eng.CreateInstance(ctx, dep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inst, _ := eng.GetInstance(instanceID)
+	var waitingToken, waitingElement string
+	for _, tok := range inst.Tokens {
+		if tok.Status == projection.TokenWaiting {
+			waitingToken, waitingElement = tok.ID, tok.ElementID
+			break
+		}
+	}
+	if err := eng.CompleteUserTask(ctx, instanceID, waitingElement, waitingToken, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	events, err := eng.ListEvents(ctx, instanceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var tookDefault, reachedOK bool
+	for _, ev := range events {
+		if ev.GetRecordType() != eventv1.Event_RECORD_TYPE_EVENT {
+			continue
+		}
+		el := ev.GetElement()
+		if el == nil {
+			continue
+		}
+		if el.GetType() == eventv1.Element_TYPE_EXCLUSIVE_GATEWAY &&
+			el.GetIntent() == eventv1.Element_INTENT_COMPLETED {
+			gp := el.GetGatewayPayload()
+			if gp == nil || gp.GetTakenSequenceFlowId() != "Flow_gw_to_end_ok" {
+				t.Fatalf("XOR taken=%v want Flow_gw_to_end_ok", gp)
+			}
+			tookDefault = true
+		}
+		if el.GetType() == eventv1.Element_TYPE_END_EVENT &&
+			el.GetId() == "EndEvent_ok" &&
+			el.GetIntent() == eventv1.Element_INTENT_COMPLETED {
+			reachedOK = true
+		}
+	}
+	if !tookDefault || !reachedOK {
+		t.Fatalf("default route missing: tookDefault=%v reachedOK=%v", tookDefault, reachedOK)
+	}
 }

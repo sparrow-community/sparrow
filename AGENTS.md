@@ -69,11 +69,10 @@ cd protocol/proto && ./build.sh
 ## processing
 
 - Runtime module: see `processing/README.md` and `processing/DESIGN.md`.
-- M1 engine available: Deploy / CreateInstance / CompleteUserTask with in-memory event log.
+- M1 engine available: Deploy / CreateInstance / CompleteUserTask with in-memory or file event log.
+- Durable open: `processing.Open(dataDir)` persists `events.log` + `deployments/*.bpmn` and replays projections.
 - Layout: `deploy` (holds `element.Process`, no parallel graph), `handlers/` (one file per element type), `executor`, `projection`, `log`.
 - IDs via UUIDv7 (`NextID` / `MustNextID`).
-
-File-backed event log and restart replay are not implemented yet.
 
 ## Commands
 

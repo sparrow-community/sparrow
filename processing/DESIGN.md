@@ -3,8 +3,8 @@
 本文描述 `processing` 模块的目标形态、核心模型、包结构、处理流程与 M1 实现边界。  
 实现应以本文为准；协议字段变更在 `protocol` 中进行，并保持「Event = 元素行为」的定位。
 
-**M1 状态**：Deploy / CreateInstance / CompleteUserTask、内存 EventLog、实例投影、按元素 Handler 执行已可用。  
-尚未实现：文件型 EventLog、重启回放。
+**M1 状态**：Deploy / CreateInstance / CompleteUserTask、内存与文件 EventLog、`Open` 重启回放、实例投影、按元素 Handler 执行已可用。  
+尚未实现：XOR 条件表达式、更多 BPMN 元素、COMMAND 幂等。
 
 ---
 
@@ -114,6 +114,7 @@ processing/
 ├── README.md
 ├── DESIGN.md
 ├── engine.go                 // API、实例锁、写日志、emitter
+├── open.go                   // Open(dataDir)、部署落盘、EVENT 回放
 ├── executor.go               // 令牌推进编排（调用 handlers）
 ├── processor.go              // Processor 接口（预留）
 ├── id.go                     // UUIDv7
@@ -127,11 +128,18 @@ processing/
 │   ├── user_task.go
 │   ├── exclusive_gateway.go
 │   └── sequence_flow.go
-├── log/                      // EventLog（Memory）
+├── log/                      // EventLog（Memory / File）
 ├── projection/               // Instance / Token / ApplyEvent
 └── testdata/                 // m1_simple.bpmn 等
 ```
 
+持久化布局（`Open`）：
+
+```text
+dataDir/
+  events.log                     // length-delimited protobuf Event
+  deployments/<id>.bpmn          // 原始定义，供重启后 Compile
+```
 扩展新 BPMN 元素时：**新增一个 handler 文件 + 注册到 `DefaultRegistry`**，并在 `deploy.validateM1`（或后续更细校验）中放开该类型。
 
 ### 4.1 关键类型
@@ -221,16 +229,17 @@ Handler(cmd):
 
 M1 为单 token；Parallel 等多 token 时仍落在同一 map，由 gateway handler 分裂/汇合。
 
-### 5.4 重启恢复（未实现）
+### 5.4 重启恢复
 
 ```text
-启动 → 打开 EventLog → 按 position 顺序扫描
-     → 对每条 EVENT/REJECTION 更新投影
-     → 恢复未完成实例的等待点（如 UserTask waiting）
+Open(dataDir)
+  → 加载 deployments/*.bpmn → Compile → deployments map
+  → ReadAll(events.log)
+  → 按序对每条 EVENT 调用 Instance.ApplyEvent（必要时先创建投影）
+  → 恢复等待点（如 UserTask waiting），可继续 CompleteUserTask
 ```
 
-M1 后续可采用全量重放；实例量大时再引入快照。
-
+M1 采用全量重放；实例量大时再引入快照。COMMAND / REJECTION 不驱动投影（仅 EVENT）。
 ---
 
 ## 6. M1 可执行语义
@@ -322,8 +331,7 @@ M1 后续可采用全量重放；实例量大时再引入快照。
 
 | 阶段 | 能力 | 落点 |
 |------|------|------|
-| M1.1 | 文件 EventLog + 重启回放 | `log/` 新实现；启动扫描 `ApplyEvent` |
-| M2 | Timer / Message、ServiceTask Job | payload + Intent 等待语义；新 handler 文件 |
+| M2 | Timer / Message、ServiceTask Job；XOR 条件表达式 | payload + Intent；新 handler / 表达式求值 |
 | M3 | Parallel/Inclusive、SubProcess、多 token | `Tokens` 多条目；gateway fork/join |
 | M4 | Boundary / 补偿 / Incident | 新 Intent + payload |
 
@@ -336,9 +344,10 @@ M1 后续可采用全量重放；实例量大时再引入快照。
 | 层级 | 内容 |
 |------|------|
 | 单元 | 各 handler：给定输入 → 期望 Effect（可逐步补） |
-| 日志 | 内存 Log Append/Read |
+| 日志 | Memory / File Append/Read；File 重启后可读 |
 | 端到端 | `testdata/m1_simple.bpmn`：Deploy → CreateInstance → Complete → PROCESS COMPLETED |
-| 回归 | 不支持元素部署失败；非法 Complete → REJECTION |
+| 回归 | 不支持元素部署失败；非法 Complete → REJECTION；XOR 走 default |
+| 恢复 | `Open` 后仍在 UserTask waiting，Complete 可完成实例 |
 
 ---
 
@@ -351,7 +360,7 @@ M1 后续可采用全量重放；实例量大时再引入快照。
 | 3 | `deploy` 持有 `element.Process` | 已完成 |
 | 4 | `handlers` 按文件拆分 + Registry | 已完成 |
 | 5 | `engine` + `executor` API | 已完成 |
-| 6 | 文件型 EventLog 与重启回放 | 未开始 |
+| 6 | 文件型 EventLog 与重启回放 | 已完成 |
 | 7 | XOR 条件表达式 / 更多元素 | 未开始 |
 
 ---
@@ -361,10 +370,11 @@ M1 后续可采用全量重放；实例量大时再引入快照。
 | 路径 | 职责 |
 |------|------|
 | `engine.go` | 薄门面：锁、COMMAND/REJECTION、emitter |
+| `open.go` | `Open(dataDir)`、部署落盘、EVENT 回放 |
 | `executor.go` | Enter/Complete、出边、流程完成判定 |
 | `handlers/*.go` | 每元素一类文件；语义只在此扩展 |
 | `deploy/` | Compile、校验、定义查询（无平行图） |
 | `projection/` | Instance / Token；EVENT → 投影 |
-| `log/` | EventLog；当前仅 Memory |
+| `log/` | EventLog：Memory + File |
 | `id.go` | UUIDv7 |
 | `processor.go` | 接口预留，待拆独立消费环 |
