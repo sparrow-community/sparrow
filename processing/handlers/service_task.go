@@ -19,6 +19,11 @@ func (ServiceTaskHandler) OnEnter(in EnterInput) (*Effect, error) {
 			jobType = st.Name
 		}
 	}
+	p := &eventv1.ActivityPayload{JobType: jobType}
+	p, err := attachInterruptingTimer(in.Deployment, in.ElementID, in.Now, p)
+	if err != nil {
+		return nil, err
+	}
 	return &Effect{
 		Records: []*eventv1.Element{
 			{Intent: eventv1.Element_INTENT_ACTIVATING, Type: in.Type, Id: in.ElementID, TokenId: in.TokenID},
@@ -27,9 +32,7 @@ func (ServiceTaskHandler) OnEnter(in EnterInput) (*Effect, error) {
 				Type:    in.Type,
 				Id:      in.ElementID,
 				TokenId: in.TokenID,
-				Payload: &eventv1.Element_ActivityPayload{
-					ActivityPayload: &eventv1.ActivityPayload{JobType: jobType},
-				},
+				Payload: &eventv1.Element_ActivityPayload{ActivityPayload: p},
 			},
 		},
 		Wait: true,
@@ -48,11 +51,13 @@ func (ServiceTaskHandler) OnComplete(in CompleteInput) (*Effect, error) {
 			ActivityPayload: &eventv1.ActivityPayload{Variables: in.Variables},
 		}
 	}
+	records := []*eventv1.Element{
+		completing,
+		{Intent: eventv1.Element_INTENT_COMPLETED, Type: in.Type, Id: in.ElementID, TokenId: in.TokenID},
+	}
+	records = append(records, cancelAttachedTimer(in.Deployment, in.ElementID, in.TokenID)...)
 	return &Effect{
-		Records: []*eventv1.Element{
-			completing,
-			{Intent: eventv1.Element_INTENT_COMPLETED, Type: in.Type, Id: in.ElementID, TokenId: in.TokenID},
-		},
+		Records:      records,
 		TakeOutgoing: true,
 	}, nil
 }

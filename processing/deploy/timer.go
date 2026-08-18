@@ -28,13 +28,39 @@ type messageCatch struct {
 }
 
 func timerCatchSpec(ev element.IntermediateCatchEvent) (timerCatch, error) {
-	if n := otherCatchDefinitions(ev); n > 0 {
-		return timerCatch{}, fmt.Errorf("UNSUPPORTED_ELEMENT: intermediateCatchEvent %q is not a timer catch", ev.ID)
+	return timerCatchFromDefs(ev.ID, ev.EventDefinitions)
+}
+
+type timerBoundary struct {
+	Catch      timerCatch
+	AttachedTo string
+}
+
+func timerBoundarySpec(ev element.BoundaryEvent) (timerBoundary, error) {
+	if !ev.CancelActivity {
+		return timerBoundary{}, fmt.Errorf("UNSUPPORTED_ELEMENT: boundaryEvent %q must be interrupting (cancelActivity=true)", ev.ID)
 	}
-	if len(ev.TimerEventDefinitions) != 1 {
-		return timerCatch{}, fmt.Errorf("UNSUPPORTED_ELEMENT: intermediateCatchEvent %q needs exactly one timerEventDefinition", ev.ID)
+	if strings.TrimSpace(ev.AttachedToRef) == "" {
+		return timerBoundary{}, fmt.Errorf("UNSUPPORTED_ELEMENT: boundaryEvent %q needs attachedToRef", ev.ID)
 	}
-	def := ev.TimerEventDefinitions[0]
+	if extraCatchDefinitions(ev.EventDefinitions) > 0 || len(ev.TimerEventDefinitions) == 0 {
+		return timerBoundary{}, fmt.Errorf("UNSUPPORTED_ELEMENT: boundaryEvent %q must be an interrupting timer boundary", ev.ID)
+	}
+	catch, err := timerCatchFromDefs(ev.ID, ev.EventDefinitions)
+	if err != nil {
+		return timerBoundary{}, err
+	}
+	return timerBoundary{Catch: catch, AttachedTo: ev.AttachedToRef}, nil
+}
+
+func timerCatchFromDefs(id string, defs element.EventDefinitions) (timerCatch, error) {
+	if extraCatchDefinitions(defs) > 0 {
+		return timerCatch{}, fmt.Errorf("UNSUPPORTED_ELEMENT: intermediateCatchEvent %q is not a timer catch", id)
+	}
+	if len(defs.TimerEventDefinitions) != 1 {
+		return timerCatch{}, fmt.Errorf("UNSUPPORTED_ELEMENT: %q needs exactly one timerEventDefinition", id)
+	}
+	def := defs.TimerEventDefinitions[0]
 	dateText := expressionText(def.TimeDate)
 	durText := expressionText(def.TimeDuration)
 	cycleText := expressionText(def.TimeCycle)
@@ -49,7 +75,7 @@ func timerCatchSpec(ev element.IntermediateCatchEvent) (timerCatch, error) {
 		n++
 	}
 	if n > 1 {
-		return timerCatch{}, fmt.Errorf("UNSUPPORTED_ELEMENT: intermediateCatchEvent %q has multiple timer expressions", ev.ID)
+		return timerCatch{}, fmt.Errorf("UNSUPPORTED_ELEMENT: %q has multiple timer expressions", id)
 	}
 	if cycleText != "" {
 		cyc, err := ParseISO8601Cycle(cycleText)
@@ -66,7 +92,7 @@ func timerCatchSpec(ev element.IntermediateCatchEvent) (timerCatch, error) {
 		return timerCatch{Date: at, Text: dateText}, nil
 	}
 	if durText == "" {
-		return timerCatch{}, fmt.Errorf("UNSUPPORTED_ELEMENT: intermediateCatchEvent %q needs timeDuration, timeDate, or timeCycle", ev.ID)
+		return timerCatch{}, fmt.Errorf("UNSUPPORTED_ELEMENT: %q needs timeDuration, timeDate, or timeCycle", id)
 	}
 	dur, err := ParseISO8601Duration(durText)
 	if err != nil {
@@ -113,17 +139,21 @@ func resolveMessageName(ref string, messages []element.Message) string {
 	return ref
 }
 
-func otherCatchDefinitions(ev element.IntermediateCatchEvent) int {
+func extraCatchDefinitions(d element.EventDefinitions) int {
 	n := 0
-	n += len(ev.MessageEventDefinitions)
-	n += len(ev.EscalationEventDefinitions)
-	n += len(ev.TerminateEventDefinitions)
-	n += len(ev.SignalEventDefinitions)
-	n += len(ev.ConditionalEventDefinitions)
-	n += len(ev.ErrorEventDefinitions)
-	n += len(ev.LinkEventDefinitions)
-	n += len(ev.CompensateEventDefinitions)
+	n += len(d.MessageEventDefinitions)
+	n += len(d.EscalationEventDefinitions)
+	n += len(d.TerminateEventDefinitions)
+	n += len(d.SignalEventDefinitions)
+	n += len(d.ConditionalEventDefinitions)
+	n += len(d.ErrorEventDefinitions)
+	n += len(d.LinkEventDefinitions)
+	n += len(d.CompensateEventDefinitions)
 	return n
+}
+
+func otherCatchDefinitions(ev element.IntermediateCatchEvent) int {
+	return extraCatchDefinitions(ev.EventDefinitions)
 }
 
 func expressionText(e element.ExpressionUnMarshal) string {
@@ -181,9 +211,38 @@ func (d *Deployment) MessageName(id string) (string, error) {
 }
 
 func (d *Deployment) CatchKind(id string) (CatchKind, error) {
-	kind, ok := d.catchKinds[id]
-	if !ok {
-		return "", fmt.Errorf("NOT_FOUND: intermediate catch %q", id)
+	for _, e := range d.Process.IntermediateCatchEvents {
+		if e.ID != id {
+			continue
+		}
+		if _, err := timerCatchSpec(e); err == nil {
+			return CatchKindTimer, nil
+		}
+		return CatchKindMessage, nil
 	}
-	return kind, nil
+	return "", fmt.Errorf("NOT_FOUND: intermediate catch %q", id)
+}
+
+// TimerBoundary returns the interrupting timer boundary attached to an activity.
+func (d *Deployment) TimerBoundary(activityID string) (string, bool) {
+	for _, e := range d.Process.BoundaryEvents {
+		if e.AttachedToRef != activityID {
+			continue
+		}
+		if _, err := timerBoundarySpec(e); err != nil {
+			continue
+		}
+		return e.ID, true
+	}
+	return "", false
+}
+
+// AttachedActivity returns the activity a timer boundary is attached to.
+func (d *Deployment) AttachedActivity(boundaryID string) (string, bool) {
+	for _, e := range d.Process.BoundaryEvents {
+		if e.ID == boundaryID && e.AttachedToRef != "" {
+			return e.AttachedToRef, true
+		}
+	}
+	return "", false
 }

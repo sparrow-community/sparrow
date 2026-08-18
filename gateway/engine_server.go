@@ -145,6 +145,8 @@ func instanceToProto(inst *projection.Instance) *enginev1.Instance {
 			Status:      string(tok.Status),
 			JobType:     tok.JobType,
 			MessageName: tok.MessageName,
+			DueUnixMs:   tok.DueUnixMs,
+			BoundaryId:  tok.BoundaryID,
 		})
 	}
 	return out

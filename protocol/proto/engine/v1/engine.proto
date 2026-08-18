@@ -16,6 +16,10 @@ message Token {
   string job_type = 4;
   // BPMN message name when waiting on a message catch; empty otherwise.
   string message_name = 5;
+  // Timer due (unix milliseconds) when waiting on a timer catch or interrupting timer boundary.
+  int64 due_unix_ms = 6;
+  // Attached interrupting timer boundary id; empty otherwise.
+  string boundary_id = 7;
 }
 
 // Instance is a read-only projection snapshot. It is not an EventLog record.

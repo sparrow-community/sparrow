@@ -59,7 +59,11 @@ func (e *Engine) collectDue(nowUnixMs int64) []dueWait {
 				continue
 			}
 			if tok.DueUnixMs > 0 && tok.DueUnixMs <= nowUnixMs {
-				due = append(due, dueWait{instanceID: iid, elementID: tok.ElementID, tokenID: tok.ID})
+				elementID := tok.ElementID
+				if tok.BoundaryID != "" {
+					elementID = tok.BoundaryID
+				}
+				due = append(due, dueWait{instanceID: iid, elementID: elementID, tokenID: tok.ID})
 			}
 		}
 		lock.Unlock()

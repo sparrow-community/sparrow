@@ -4,8 +4,8 @@
 实现应以本文为准；协议字段变更在 `protocol` 中进行，并保持「Event = 元素行为」的定位。
 
 **M1 状态**：Deploy / CreateInstance / Complete、XOR 条件、内存与文件 EventLog、`Open` 重启回放已可用。  
-**M2 起步**：ServiceTask 等待；Job 经 `Activate` / `Fail` / `Heartbeat`；中间捕获 Timer（`timeDuration` / `timeDate` / `timeCycle`）+ `FireDue`；中间捕获 Message + `PublishMessage`（correlation keys + 内存缓冲）；gRPC 在 `gateway`（`engine.v1` + `job.v1`），进程入口 `gateway/cmd/sparrow`（含 `FireDue` 轮询）。  
-尚未实现：Timer boundary、更多 BPMN 元素、跨重启的 Job 租约 / 消息缓冲。
+**M2 起步**：ServiceTask 等待；Job 经 `Activate` / `Fail` / `Heartbeat`；中间捕获 Timer（`timeDuration` / `timeDate` / `timeCycle`）+ `FireDue`；打断型 Timer boundary（挂 UserTask/ServiceTask）；中间捕获 Message + `PublishMessage`（correlation keys + 内存缓冲）；gRPC 在 `gateway`（`engine.v1` + `job.v1`），进程入口 `gateway/cmd/sparrow`（含 `FireDue` 轮询）。  
+尚未实现：非打断 boundary、更多 BPMN 元素、跨重启的 Job 租约 / 消息缓冲。
 
 ---
 
@@ -73,7 +73,7 @@ Job / Timer / Message 等待等，视为 **该元素行为的载荷与阶段**�
 | 实例 | `projection.Instance` | 一次执行的投影（状态 / 变量 / 令牌） |
 | 令牌 | `token_id` → `{element_id, active\|waiting, job_type, due_unix_ms, message_name}` | 实例内控制流位置（M1 单 token） |
 
-**不另建** `graph.Node` / `graph.Flow`。`deploy` 在 `element.Process` 上提供查询辅助（`TypeOf`、`Outgoing`、`SequenceFlow`、`ChooseExclusiveOutgoing`）。
+**不另建** `graph.Node` / `graph.Flow`。`deploy` 在 `element.Process` 上查询（`TypeOf`、`Outgoing`、`SequenceFlow`、`ChooseExclusiveOutgoing`）；仅缓存已解析的 timer 与 message 名。
 
 ---
 
@@ -277,11 +277,12 @@ Recover(ctx, eventLog, deploymentStore)
 | `USER_TASK` | `user_task.go` | ACTIVATING→ACTIVATED 后 `Wait`；Complete → COMPLETING→COMPLETED |
 | `SERVICE_TASK` | `service_task.go` | 同上等待；ACTIVATED 带 `ActivityPayload.job_type`；经 `Complete` 完成 |
 | `INTERMEDIATE_CATCH_EVENT` | `intermediate_catch_event.go` | Timer：`timeDuration` / `timeDate` / `timeCycle`（只算第一次到期），ACTIVATED 写 `due_unix_ms`，`FireDue` → `Complete`。Message：ACTIVATED 写 `message_name`，`PublishMessage` → `Complete`。均 `Wait`。 |
+| `BOUNDARY_EVENT` | `boundary_event.go` | 仅打断型 Timer：活动 ACTIVATED 写 `ActivityPayload.due_unix_ms`；`FireDue` → `Complete(boundary)`：活动 TERMINATED，沿 boundary 出边。非打断拒绝。 |
 | `EXCLUSIVE_GATEWAY` | `exclusive_gateway.go` | 非 default 条件按序求值，否则 default；payload 带 `taken_sequence_flow_id` |
 | `SEQUENCE_FLOW` | `sequence_flow.go` | 经 transit 发 `SEQUENCE_FLOW_TAKEN`（不走 OnEnter） |
 | `END_EVENT` | `end_event.go` | 完成后 `TryCompleteProcess` |
 
-部署时 `validateM1` 拒绝尚未实现的元素（Parallel、SubProcess、throw/boundary、更多元素等）。ServiceTask 与中间捕获（Timer + Message catch）已纳入可执行子集。
+部署时 `validateM1` 拒绝尚未实现的元素（Parallel、SubProcess、throw、非打断/非 Timer boundary、更多元素等）。ServiceTask、中间捕获（Timer + Message catch）与打断型 Timer boundary 已纳入可执行子集。
 
 ### Timer catch（timeDuration / timeDate）时序链（M2）
 
@@ -300,6 +301,18 @@ Recover(ctx, eventLog, deploymentStore)
 5. `Complete` 后 `TakeOutgoing=true` 推进 `SEQUENCE_FLOW_TAKEN`
 
 重启恢复：回放 `ACTIVATED{due_unix_ms}` 还原 due，仍需 `FireDue` 或手动 Complete。
+
+### Timer boundary（打断型，M2）
+
+以 `Start → UserTask`（附 interrupting timer boundary `PT0S`）→ `End_ok` / `End_timeout` 为例：
+
+1. token 进入 UserTask（或 ServiceTask）后 `Wait`；ACTIVATED 的 `ActivityPayload` 带 `due_unix_ms`、`duration`、`boundary_id`
+2. 活动先 Complete：取消 boundary（`TERMINATED`），沿活动出边（`End_ok`）
+3. `FireDue` 先到期：`Complete(boundary_id)`（token 仍在活动上）
+   - 活动 `TERMINATING` → `TERMINATED`
+   - boundary `COMPLETING` → `COMPLETED`
+   - 沿 boundary 出边（`End_timeout`）
+4. **不做**非打断 boundary（需要第二枚 token）
 
 ### Message catch 时序链（M2）
 
@@ -327,10 +340,11 @@ Recover(ctx, eventLog, deploymentStore)
 | 创建实例 | PROCESS | ACTIVATING → ACTIVATED |
 | 进入 Start | START_EVENT | ACTIVATING → ACTIVATED → COMPLETING → COMPLETED |
 | 走过流 | SEQUENCE_FLOW | SEQUENCE_FLOW_TAKEN |
-| 进入 UserTask | USER_TASK | ACTIVATING → ACTIVATED（等待） |
-| 完成 UserTask | USER_TASK | COMPLETING → COMPLETED |
-| 进入 ServiceTask | SERVICE_TASK | ACTIVATING → ACTIVATED（等待；payload.job_type） |
+| 进入 UserTask | USER_TASK | ACTIVATING → ACTIVATED（等待；可带 interrupting timer 的 due） |
+| 完成 UserTask | USER_TASK | COMPLETING → COMPLETED（若有 boundary 则 boundary TERMINATED） |
+| 进入 ServiceTask | SERVICE_TASK | ACTIVATING → ACTIVATED（等待；payload.job_type；可带 interrupting timer 的 due） |
 | 完成 ServiceTask | SERVICE_TASK | COMPLETING → COMPLETED |
+| Timer boundary 到期 | BOUNDARY_EVENT + 挂接活动 | 活动 TERMINATING → TERMINATED；boundary COMPLETING → COMPLETED |
 | 进入 Timer catch | INTERMEDIATE_CATCH_EVENT | ACTIVATING → ACTIVATED（等待；payload.due_unix_ms / 原文 duration 或 timeDate） |
 | 完成 Timer catch | INTERMEDIATE_CATCH_EVENT | COMPLETING → COMPLETED |
 | 进入 Message catch | INTERMEDIATE_CATCH_EVENT | ACTIVATING → ACTIVATED（等待；payload.message_name） |
@@ -387,7 +401,7 @@ Recover(ctx, eventLog, deploymentStore)
 ### FireDue
 
 - 输入：无（扫描投影）
-- 行为：收集 **waiting 且 `token.due_unix_ms` 已到** 的中间捕获 Timer，逐个调用 `Complete`
+- 行为：收集 **waiting 且 `token.due_unix_ms` 已到** 的 Timer：中间捕获走 `Complete(catch)`；打断型 boundary 走 `Complete(boundary)`（打断挂接活动）
 - **不**把 Timer 写成与 Element 平级的账本主语；到期只是触发统一 Complete
 - `Recover` 从 `EventPayload.due_unix_ms` 还原 due；到期后仍需 `FireDue`（或手动 Complete）
 - `gateway/cmd/sparrow` 每 200ms 调用一次；无独立 Timer RPC
@@ -445,7 +459,7 @@ Recover(ctx, eventLog, deploymentStore)
 
 | 阶段 | 能力 | 落点 |
 |------|------|------|
-| M2 | Timer boundary | payload + 新 API 或扩展 catch |
+| M2 | 非打断 boundary；更多元素 | payload + 多 token |
 | M3 | Parallel/Inclusive、SubProcess、多 token | `Tokens` 多条目；gateway fork/join |
 | M4 | Boundary / 补偿 / Incident | 新 Intent + payload |
 
@@ -462,7 +476,7 @@ Recover(ctx, eventLog, deploymentStore)
 | 端到端 | `testdata/m1_simple.bpmn`：Deploy → CreateInstance → Complete → PROCESS COMPLETED |
 | 回归 | 不支持元素部署失败；非法 Complete → REJECTION；XOR default / 条件选路 |
 | Job | Activate 领取 / Fail 释放重领 / Heartbeat 续租 / Recover 后仍可 Activate |
-| Timer | `PT0S` / 过去 `timeDate` / `R/PT0S` 后 `FireDue` 完成；`PT1H` / 未来 `timeDate` / `R/PT1H` 未到期仍 waiting；Recover 后 due 仍在 |
+| Timer | `PT0S` / 过去 `timeDate` / `R/PT0S` 后 `FireDue` 完成；`PT1H` / 未来 `timeDate` / `R/PT1H` 未到期仍 waiting；Recover 后 due 仍在；打断型 boundary `PT0S` 走超时出边，活动 Complete 则取消 boundary |
 | Message | `PublishMessage` 按 name 完成 catch；`correlation_keys` 只命中变量匹配的实例；无 waiter 则内存缓冲，catch 进入后投递；Recover 后缓冲丢失 |
 | 恢复 | `Open` 后仍在 UserTask waiting，Complete 可完成实例 |
 
@@ -489,7 +503,8 @@ Recover(ctx, eventLog, deploymentStore)
 | 15 | Message catch + `PublishMessage` | 已完成 |
 | 16 | Message correlation keys（按实例变量匹配） | 已完成 |
 | 17 | Message 内存缓冲（迟到消息；非账本） | 已完成 |
-| 18 | Timer boundary；更多元素 | 未开始 |
+| 18 | 打断型 Timer boundary（UserTask/ServiceTask） | 已完成 |
+| 19 | 非打断 boundary；更多元素 | 未开始 |
 
 ---
 
@@ -505,7 +520,7 @@ Recover(ctx, eventLog, deploymentStore)
 | `executor.go` | Enter/Complete、出边、流程完成判定 |
 | `handlers/*.go` | 每元素一类文件；语义只在此扩展 |
 | `expr/` | `${...}` → expr-lang 求值 |
-| `deploy/` | Compile、`Store`、XOR 选路 |
+| `deploy/` | Compile、`Store`、XOR 选路；结构查 `Process`，缓存已解析 timer/message |
 | `projection/` | Instance / Token；EVENT → 投影 |
 | `log/` | `EventLog` 接口（Memory / File） |
 | `id.go` | UUIDv7 |

@@ -28,9 +28,10 @@ Sparrow 运行时模块：单节点、事件驱动的 BPMN 执行引擎。
 | 文件 / 内存 EventLog + Store（可替换） | 已有 |
 | `Recover` 回放 / `Open` 文件便捷入口 | 已有 |
 | 中间捕获 Timer（`timeDuration` / `timeDate` / `timeCycle`）+ `FireDue` | 已有 |
+| 打断型 Timer boundary（UserTask/ServiceTask） | 已有 |
 | 中间捕获 Message catch + `PublishMessage`（correlation keys + 内存缓冲） | 已有 |
 
-端到端夹具：`testdata/m1_simple.bpmn`（Start → UserTask → XOR → End）；`testdata/m2_service_task.bpmn`；`testdata/m2_timer_catch.bpmn`（Start → Timer catch `PT0S` → End）；`testdata/m2_timer_catch_date.bpmn`（`timeDate` 已过期）；`testdata/m2_timer_catch_cycle.bpmn`（`R/PT0S`）；`testdata/m2_message_catch.bpmn`（Start → Message catch → End）；`testdata/m2_message_after_task.bpmn`（UserTask 后再 Message catch）。
+端到端夹具：`testdata/m1_simple.bpmn`（Start → UserTask → XOR → End）；`testdata/m2_service_task.bpmn`；`testdata/m2_timer_catch.bpmn`（Start → Timer catch `PT0S` → End）；`testdata/m2_timer_catch_date.bpmn`（`timeDate` 已过期）；`testdata/m2_timer_catch_cycle.bpmn`（`R/PT0S`）；`testdata/m2_timer_boundary.bpmn`（UserTask + interrupting `PT0S` boundary）；`testdata/m2_message_catch.bpmn`（Start → Message catch → End）；`testdata/m2_message_after_task.bpmn`（UserTask 后再 Message catch）。
 
 详细程序设计见 [DESIGN.md](./DESIGN.md)。
 
@@ -40,7 +41,7 @@ Sparrow 运行时模块：单节点、事件驱动的 BPMN 执行引擎。
 processing/
 ├── engine.go / jobs.go / timers.go / messages.go / executor.go / open.go   # API、Activate、FireDue、PublishMessage、Recover
 ├── expr/            # 条件表达式（expr-lang）
-├── deploy/          # Compile + Store 接口
+├── deploy/          # Compile + Store；查询走 Process
 ├── handlers/        # 一元素一文件 + Registry
 ├── projection/      # Instance / Token / ApplyEvent
 └── log/             # EventLog 接口（Memory / File）

@@ -34,6 +34,13 @@ message ActivityPayload {
   string job_type = 2;
   // Worker-reported reason on SERVICE_TASK FAILED. Empty for other intents.
   string error_message = 3;
+  // Due time for an interrupting timer boundary attached to this activity (unix milliseconds).
+  // Set on ACTIVATED; zero if unused.
+  int64 due_unix_ms = 4;
+  // Original timer expression text for the attached interrupting timer. Empty if unused.
+  string duration = 5;
+  // BPMN id of the interrupting timer boundary. Empty if unused.
+  string boundary_id = 6;
 }
 
 message GatewayPayload {

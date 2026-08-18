@@ -34,7 +34,11 @@ type Token struct {
 	// Worker subscription key when waiting on a job-backed activity; empty otherwise.
 	JobType string `protobuf:"bytes,4,opt,name=job_type,json=jobType,proto3" json:"job_type,omitempty"`
 	// BPMN message name when waiting on a message catch; empty otherwise.
-	MessageName   string `protobuf:"bytes,5,opt,name=message_name,json=messageName,proto3" json:"message_name,omitempty"`
+	MessageName string `protobuf:"bytes,5,opt,name=message_name,json=messageName,proto3" json:"message_name,omitempty"`
+	// Timer due (unix milliseconds) when waiting on a timer catch or interrupting timer boundary.
+	DueUnixMs int64 `protobuf:"varint,6,opt,name=due_unix_ms,json=dueUnixMs,proto3" json:"due_unix_ms,omitempty"`
+	// Attached interrupting timer boundary id; empty otherwise.
+	BoundaryId    string `protobuf:"bytes,7,opt,name=boundary_id,json=boundaryId,proto3" json:"boundary_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -100,6 +104,20 @@ func (x *Token) GetJobType() string {
 func (x *Token) GetMessageName() string {
 	if x != nil {
 		return x.MessageName
+	}
+	return ""
+}
+
+func (x *Token) GetDueUnixMs() int64 {
+	if x != nil {
+		return x.DueUnixMs
+	}
+	return 0
+}
+
+func (x *Token) GetBoundaryId() string {
+	if x != nil {
+		return x.BoundaryId
 	}
 	return ""
 }
@@ -818,14 +836,17 @@ var File_engine_v1_engine_proto protoreflect.FileDescriptor
 
 const file_engine_v1_engine_proto_rawDesc = "" +
 	"\n" +
-	"\x16engine/v1/engine.proto\x12\tengine.v1\x1a\x14event/v1/event.proto\"\x8c\x01\n" +
+	"\x16engine/v1/engine.proto\x12\tengine.v1\x1a\x14event/v1/event.proto\"\xcd\x01\n" +
 	"\x05Token\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
 	"element_id\x18\x02 \x01(\tR\telementId\x12\x16\n" +
 	"\x06status\x18\x03 \x01(\tR\x06status\x12\x19\n" +
 	"\bjob_type\x18\x04 \x01(\tR\ajobType\x12!\n" +
-	"\fmessage_name\x18\x05 \x01(\tR\vmessageName\"\xaa\x02\n" +
+	"\fmessage_name\x18\x05 \x01(\tR\vmessageName\x12\x1e\n" +
+	"\vdue_unix_ms\x18\x06 \x01(\x03R\tdueUnixMs\x12\x1f\n" +
+	"\vboundary_id\x18\a \x01(\tR\n" +
+	"boundaryId\"\xaa\x02\n" +
 	"\bInstance\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12#\n" +
 	"\rdeployment_id\x18\x02 \x01(\tR\fdeploymentId\x12'\n" +

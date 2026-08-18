@@ -184,7 +184,14 @@ func (e *Engine) completeLocked(ctx context.Context, dep *deploy.Deployment, ins
 	}
 
 	tok := inst.Tokens[tokenID]
-	if tok == nil || tok.ElementID != elementID || tok.Status != projection.TokenWaiting {
+	waiting := tok != nil && tok.Status == projection.TokenWaiting
+	if waiting && typ == eventv1.Element_TYPE_BOUNDARY_EVENT {
+		attached, ok := dep.AttachedActivity(elementID)
+		waiting = ok && tok.ElementID == attached && tok.BoundaryID == elementID
+	} else if waiting {
+		waiting = tok.ElementID == elementID
+	}
+	if tok == nil || !waiting {
 		return e.reject(ctx, inst, elementID, tokenID, typ, eventv1.Element_INTENT_COMPLETING, "INVALID_STATE", "element is not waiting for completion")
 	}
 	if typeErr != nil {

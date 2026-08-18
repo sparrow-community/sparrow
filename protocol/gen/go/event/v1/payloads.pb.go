@@ -201,7 +201,14 @@ type ActivityPayload struct {
 	// Set on ACTIVATED when a job is created; empty for user tasks.
 	JobType string `protobuf:"bytes,2,opt,name=job_type,json=jobType,proto3" json:"job_type,omitempty"`
 	// Worker-reported reason on SERVICE_TASK FAILED. Empty for other intents.
-	ErrorMessage  string `protobuf:"bytes,3,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
+	ErrorMessage string `protobuf:"bytes,3,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
+	// Due time for an interrupting timer boundary attached to this activity (unix milliseconds).
+	// Set on ACTIVATED; zero if unused.
+	DueUnixMs int64 `protobuf:"varint,4,opt,name=due_unix_ms,json=dueUnixMs,proto3" json:"due_unix_ms,omitempty"`
+	// Original timer expression text for the attached interrupting timer. Empty if unused.
+	Duration string `protobuf:"bytes,5,opt,name=duration,proto3" json:"duration,omitempty"`
+	// BPMN id of the interrupting timer boundary. Empty if unused.
+	BoundaryId    string `protobuf:"bytes,6,opt,name=boundary_id,json=boundaryId,proto3" json:"boundary_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -253,6 +260,27 @@ func (x *ActivityPayload) GetJobType() string {
 func (x *ActivityPayload) GetErrorMessage() string {
 	if x != nil {
 		return x.ErrorMessage
+	}
+	return ""
+}
+
+func (x *ActivityPayload) GetDueUnixMs() int64 {
+	if x != nil {
+		return x.DueUnixMs
+	}
+	return 0
+}
+
+func (x *ActivityPayload) GetDuration() string {
+	if x != nil {
+		return x.Duration
+	}
+	return ""
+}
+
+func (x *ActivityPayload) GetBoundaryId() string {
+	if x != nil {
+		return x.BoundaryId
 	}
 	return ""
 }
@@ -406,11 +434,15 @@ const file_event_v1_payloads_proto_rawDesc = "" +
 	"\vdue_unix_ms\x18\x01 \x01(\x03R\tdueUnixMs\x12\x1a\n" +
 	"\bduration\x18\x02 \x01(\tR\bduration\x12!\n" +
 	"\fmessage_name\x18\x03 \x01(\tR\vmessageName\x120\n" +
-	"\tvariables\x18\x04 \x03(\v2\x12.event.v1.VariableR\tvariables\"\x83\x01\n" +
+	"\tvariables\x18\x04 \x03(\v2\x12.event.v1.VariableR\tvariables\"\xe0\x01\n" +
 	"\x0fActivityPayload\x120\n" +
 	"\tvariables\x18\x01 \x03(\v2\x12.event.v1.VariableR\tvariables\x12\x19\n" +
 	"\bjob_type\x18\x02 \x01(\tR\ajobType\x12#\n" +
-	"\rerror_message\x18\x03 \x01(\tR\ferrorMessage\"E\n" +
+	"\rerror_message\x18\x03 \x01(\tR\ferrorMessage\x12\x1e\n" +
+	"\vdue_unix_ms\x18\x04 \x01(\x03R\tdueUnixMs\x12\x1a\n" +
+	"\bduration\x18\x05 \x01(\tR\bduration\x12\x1f\n" +
+	"\vboundary_id\x18\x06 \x01(\tR\n" +
+	"boundaryId\"E\n" +
 	"\x0eGatewayPayload\x123\n" +
 	"\x16taken_sequence_flow_id\x18\x01 \x01(\tR\x13takenSequenceFlowId\"O\n" +
 	"\x13SequenceFlowPayload\x12\x1b\n" +

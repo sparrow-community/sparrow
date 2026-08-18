@@ -57,7 +57,7 @@ Current `Event` shape (high level):
 - Nested `Element`: `Intent`, `Type`, `id`, `token_id` (token id is UUIDv7 string)
 - `Element.Type` = one value per independent BPMN element (`PROCESS` + `FlowElements` concrete types); no generic TASK/GATEWAY + kind
 - Payloads are data-only groups: process / event / activity / gateway / sequence-flow / data
-- `EventPayload` may carry `due_unix_ms` + original timer text (`duration` field, timeDuration / timeDate / timeCycle) for timer catch ACTIVATED, `message_name` for message catch ACTIVATED, and `variables` on catch COMPLETING
+- `EventPayload` may carry `due_unix_ms` + original timer text (`duration` field, timeDuration / timeDate / timeCycle) for timer catch ACTIVATED, `message_name` for message catch ACTIVATED, and `variables` on catch COMPLETING. `ActivityPayload` may carry `due_unix_ms` / `duration` / `boundary_id` when an interrupting timer boundary is armed on a waiting activity.
 
 ### Regenerate
 
@@ -75,7 +75,7 @@ cd protocol/proto && ./build.sh
 
 - Runtime module: see `processing/README.md` and `processing/DESIGN.md`.
 - M1 engine available: Deploy / CreateInstance / Complete with in-memory or file event log.
-- Waiting activities (UserTask, ServiceTask, intermediate timer catch, intermediate message catch) complete via one `Complete` API; type comes from the deployment. ServiceTask job type is `ActivityPayload.job_type`. Timer due is `EventPayload.due_unix_ms` from `timeDuration`, `timeDate`, or `timeCycle` (first due only); `FireDue` completes expired timer catches. Message catch name is `EventPayload.message_name`; `PublishMessage` completes matching waiters by name plus optional `correlation_keys` (instance variable JSON match). Late messages are buffered in memory until a catch waits (not an EventLog record; empty after Recover). `cmd/sparrow` ticks `FireDue`.
+- Waiting activities (UserTask, ServiceTask, intermediate timer catch, intermediate message catch) complete via one `Complete` API; type comes from the deployment. ServiceTask job type is `ActivityPayload.job_type`. Timer due is `EventPayload.due_unix_ms` from `timeDuration`, `timeDate`, or `timeCycle` (first due only); `FireDue` completes expired timer catches. An interrupting timer boundary on UserTask/ServiceTask stores due on `ActivityPayload` (`due_unix_ms` / `boundary_id`); `FireDue` completes the boundary (activity TERMINATED, boundary outgoing). Message catch name is `EventPayload.message_name`; `PublishMessage` completes matching waiters by name plus optional `correlation_keys` (instance variable JSON match). Late messages are buffered in memory until a catch waits (not an EventLog record; empty after Recover). `cmd/sparrow` ticks `FireDue`.
 - Workers pull ServiceTask jobs with `Activate` (in-memory lease; not an EventLog record). `Fail` keeps the token waiting and releases the lease; `Heartbeat` extends it. Complete still finishes the waiting token.
 - External clients use `gateway` (`engine.v1` + `job.v1` gRPC). Process entry is `gateway/cmd/sparrow` (`Open` + Serve). Do not put transport in `processing`.
 - Durable open: `processing.Recover(ctx, eventLog, deploymentStore)` rebuilds projections and finishes any COMMAND whose EVENT chain was interrupted. `Open(ctx, dataDir)` is the file-backed convenience.

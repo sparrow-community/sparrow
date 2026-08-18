@@ -34,6 +34,9 @@ type Token struct {
 	// MessageName is the BPMN message name copied from a message catch ACTIVATED.
 	// Empty when the token is not waiting on a message.
 	MessageName string
+	// BoundaryID is the interrupting timer boundary armed on a waiting activity.
+	// Empty when the token is not waiting on an attached timer.
+	BoundaryID string
 }
 
 type Instance struct {
@@ -144,11 +147,16 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 		tok.JobType = ""
 		tok.DueUnixMs = 0
 		tok.MessageName = ""
+		tok.BoundaryID = ""
 		if p := el.GetActivityPayload(); p != nil {
 			tok.JobType = p.GetJobType()
+			tok.DueUnixMs = p.GetDueUnixMs()
+			tok.BoundaryID = p.GetBoundaryId()
 		}
 		if p := el.GetEventPayload(); p != nil {
-			tok.DueUnixMs = p.GetDueUnixMs()
+			if p.GetDueUnixMs() != 0 {
+				tok.DueUnixMs = p.GetDueUnixMs()
+			}
 			tok.MessageName = p.GetMessageName()
 		}
 	case eventv1.Element_INTENT_COMPLETED, eventv1.Element_INTENT_TERMINATED:
@@ -156,6 +164,7 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 		tok.JobType = ""
 		tok.DueUnixMs = 0
 		tok.MessageName = ""
+		tok.BoundaryID = ""
 	case eventv1.Element_INTENT_FAILED:
 		// Job failure does not complete the activity; worker may retry.
 		tok.Status = TokenWaiting
@@ -167,6 +176,7 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 		tok.JobType = ""
 		tok.DueUnixMs = 0
 		tok.MessageName = ""
+		tok.BoundaryID = ""
 		if sp := el.GetSequenceFlowPayload(); sp != nil && sp.GetTargetId() != "" {
 			tok.ElementID = sp.GetTargetId()
 		}
