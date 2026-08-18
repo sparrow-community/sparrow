@@ -4,8 +4,8 @@
 实现应以本文为准；协议字段变更在 `protocol` 中进行，并保持「Event = 元素行为」的定位。
 
 **M1 状态**：Deploy / CreateInstance / Complete、XOR 条件、内存与文件 EventLog、`Open` 重启回放已可用。  
-**M2 起步**：ServiceTask 等待；Job 经 `Activate` / `Fail` / `Heartbeat`；中间捕获 Timer（`timeDuration` / `timeDate`）+ `FireDue`；中间捕获 Message + `PublishMessage`；gRPC 在 `gateway`（`engine.v1` + `job.v1`），进程入口 `gateway/cmd/sparrow`（含 `FireDue` 轮询）。  
-尚未实现：Message 缓冲 / correlation key、Timer 的 cycle/boundary、更多 BPMN 元素、跨重启的 Job 租约。
+**M2 起步**：ServiceTask 等待；Job 经 `Activate` / `Fail` / `Heartbeat`；中间捕获 Timer（`timeDuration` / `timeDate` / `timeCycle`）+ `FireDue`；中间捕获 Message + `PublishMessage`（可选 correlation keys）；gRPC 在 `gateway`（`engine.v1` + `job.v1`），进程入口 `gateway/cmd/sparrow`（含 `FireDue` 轮询）。  
+尚未实现：Message 缓冲、Timer boundary、更多 BPMN 元素、跨重启的 Job 租约。
 
 ---
 
@@ -276,7 +276,7 @@ Recover(ctx, eventLog, deploymentStore)
 | `START_EVENT` | `start_event.go` | 瞬时生命周期后沿出口流出 |
 | `USER_TASK` | `user_task.go` | ACTIVATING→ACTIVATED 后 `Wait`；Complete → COMPLETING→COMPLETED |
 | `SERVICE_TASK` | `service_task.go` | 同上等待；ACTIVATED 带 `ActivityPayload.job_type`；经 `Complete` 完成 |
-| `INTERMEDIATE_CATCH_EVENT` | `intermediate_catch_event.go` | Timer：`timeDuration`（`PTnHnMnS`）或 `timeDate`（ISO-8601），ACTIVATED 写 `due_unix_ms`，`FireDue` → `Complete`。Message：ACTIVATED 写 `message_name`，`PublishMessage` → `Complete`。均 `Wait`。 |
+| `INTERMEDIATE_CATCH_EVENT` | `intermediate_catch_event.go` | Timer：`timeDuration` / `timeDate` / `timeCycle`（只算第一次到期），ACTIVATED 写 `due_unix_ms`，`FireDue` → `Complete`。Message：ACTIVATED 写 `message_name`，`PublishMessage` → `Complete`。均 `Wait`。 |
 | `EXCLUSIVE_GATEWAY` | `exclusive_gateway.go` | 非 default 条件按序求值，否则 default；payload 带 `taken_sequence_flow_id` |
 | `SEQUENCE_FLOW` | `sequence_flow.go` | 经 transit 发 `SEQUENCE_FLOW_TAKEN`（不走 OnEnter） |
 | `END_EVENT` | `end_event.go` | 完成后 `TryCompleteProcess` |
@@ -293,9 +293,9 @@ Recover(ctx, eventLog, deploymentStore)
 3. `OnEnter` 从 `deploy.Deployment` 读取 timer 定义并写出到期时刻：
    - `timeDuration`（`PTnHnMnS`）：`due_unix_ms = now + duration`
    - `timeDate`（ISO-8601）：`due_unix_ms` 为该绝对时间
+   - `timeCycle`（`R[n]/PTnHnMnS`，可选 start/end）：第一次到期；中间捕获 **不重新武装**
    - `EVENT(ACTIVATING)` + `EVENT(ACTIVATED, EventPayload{due_unix_ms, duration=原文})`
    - `Wait=true`；投影 `Token.DueUnixMs`
-   - `timeCycle` 仍拒绝
 4. `gateway/cmd/sparrow` 循环 `Engine.FireDue`：`waiting && due_unix_ms <= now` → `Complete`
 5. `Complete` 后 `TakeOutgoing=true` 推进 `SEQUENCE_FLOW_TAKEN`
 
@@ -310,10 +310,11 @@ Recover(ctx, eventLog, deploymentStore)
    - `EVENT(INTERMEDIATE_CATCH_EVENT, ACTIVATING)`
    - `EVENT(INTERMEDIATE_CATCH_EVENT, ACTIVATED, EventPayload{message_name})`
    - `Wait=true`；投影 `Token.MessageName`
-3. 外部调用 `Engine.PublishMessage({name, optional instance_id, vars})`
+3. 外部调用 `Engine.PublishMessage({name, optional instance_id, optional correlation_keys, vars})`
    - 扫描 `waiting && Token.MessageName == name`（可限定实例）
+   - `correlation_keys` 与实例变量 JSON 值全等匹配（Camunda 7 风格；不写新 payload 字段）
    - 对每个匹配 token 调用统一 `Engine.Complete`（变量走 `EventPayload.variables`）
-4. **不缓冲**：到达时若无 waiter → `NOT_FOUND`（correlation key / 迟到消息以后再做）
+4. **不缓冲**：到达时若无 waiter → `NOT_FOUND`（迟到消息以后再做）
 5. `gateway` 通过 `engine.v1.PublishMessage` 暴露；无独立 Message 账本主语
 
 重启后 `Recover` 从 `ACTIVATED{message_name}` 还原 `Token.MessageName`，再 `PublishMessage` 即可。
@@ -356,7 +357,7 @@ Recover(ctx, eventLog, deploymentStore)
 | `INVALID_STATE` | UserTask 未处于 waiting 却 Complete |
 | `UNSUPPORTED_ELEMENT` | 定义含 M1 未支持元素，或无 handler |
 | `INVALID_CONDITION` | XOR 条件表达式无法解析 |
-| `INVALID_ARGUMENT` | Activate 缺少 `job_type`；PublishMessage 缺少 name |
+| `INVALID_ARGUMENT` | Activate 缺少 `job_type`；PublishMessage 缺少 name 或 correlation_keys 无法编码 |
 | `INVALID_STATE` | Fail 作用于非 job（如 UserTask），或 Heartbeat 无锁 / worker 不匹配 |
 
 ---
@@ -392,11 +393,12 @@ Recover(ctx, eventLog, deploymentStore)
 
 ### PublishMessage
 
-- 输入：`name`（必填），可选 `process_instance_id`，可选变量
+- 输入：`name`（必填），可选 `process_instance_id`，可选 `correlation_keys`，可选变量
 - 行为：收集 **waiting 且 `token.message_name` 匹配** 的中间捕获 Message，逐个 `Complete`
+- `correlation_keys`：与实例变量（JSON 文本）全等；未设则只按 name / instance 匹配（可广播）
 - **不**把 Message 写成与 Element 平级的账本主语；投递只是触发统一 Complete
 - **不缓冲**迟到消息；无 waiter → `NOT_FOUND`
-- `Recover` 从 `EventPayload.message_name` 还原；gateway 暴露 `engine.v1.PublishMessage`
+- `Recover` 从 `EventPayload.message_name` 与实例变量还原；gateway 暴露 `engine.v1.PublishMessage`
 
 ### Activate
 
@@ -441,7 +443,7 @@ Recover(ctx, eventLog, deploymentStore)
 
 | 阶段 | 能力 | 落点 |
 |------|------|------|
-| M2 | Message 缓冲 / correlation key；Timer cycle/boundary | payload + 新 API 或扩展 catch |
+| M2 | Message 缓冲；Timer boundary | payload + 新 API 或扩展 catch |
 | M3 | Parallel/Inclusive、SubProcess、多 token | `Tokens` 多条目；gateway fork/join |
 | M4 | Boundary / 补偿 / Incident | 新 Intent + payload |
 
@@ -458,8 +460,8 @@ Recover(ctx, eventLog, deploymentStore)
 | 端到端 | `testdata/m1_simple.bpmn`：Deploy → CreateInstance → Complete → PROCESS COMPLETED |
 | 回归 | 不支持元素部署失败；非法 Complete → REJECTION；XOR default / 条件选路 |
 | Job | Activate 领取 / Fail 释放重领 / Heartbeat 续租 / Recover 后仍可 Activate |
-| Timer | `PT0S` / 过去 `timeDate` 后 `FireDue` 完成；`PT1H` / 未来 `timeDate` 未到期仍 waiting；Recover 后 due 仍在 |
-| Message | `PublishMessage` 按 name 完成 catch；未知 name / 无 waiter → NOT_FOUND；Recover 后仍可投递 |
+| Timer | `PT0S` / 过去 `timeDate` / `R/PT0S` 后 `FireDue` 完成；`PT1H` / 未来 `timeDate` / `R/PT1H` 未到期仍 waiting；Recover 后 due 仍在 |
+| Message | `PublishMessage` 按 name 完成 catch；`correlation_keys` 只命中变量匹配的实例；未知 name / 无 waiter → NOT_FOUND；Recover 后仍可按 key 投递 |
 | 恢复 | `Open` 后仍在 UserTask waiting，Complete 可完成实例 |
 
 ---
@@ -481,9 +483,10 @@ Recover(ctx, eventLog, deploymentStore)
 | 11 | Job gRPC（`protocol/job.v1` + `gateway`） | 已完成 |
 | 12 | Engine gRPC + `cmd/sparrow` | 已完成 |
 | 13 | COMMAND 幂等 / 半截链 Recover | 已完成 |
-| 14 | 中间捕获 Timer（duration / date）+ `FireDue` | 已完成 |
+| 14 | 中间捕获 Timer（duration / date / cycle）+ `FireDue` | 已完成 |
 | 15 | Message catch + `PublishMessage` | 已完成 |
-| 16 | Message 缓冲 / correlation；更多元素 | 未开始 |
+| 16 | Message correlation keys（按实例变量匹配） | 已完成 |
+| 17 | Message 缓冲；更多元素 | 未开始 |
 
 ---
 
@@ -493,7 +496,7 @@ Recover(ctx, eventLog, deploymentStore)
 |------|------|
 | `engine.go` | 薄门面：锁、COMMAND/REJECTION、emitter |
 | `timers.go` | `FireDue`：到期的 timer catch 走 `Complete` |
-| `messages.go` | `PublishMessage`：按 name 匹配的 message catch 走 `Complete` |
+| `messages.go` | `PublishMessage`：按 name + 可选 correlation keys 匹配的 message catch 走 `Complete` |
 | `jobs.go` | `Activate` / `Fail` / `Heartbeat`：Job 快照、长轮询、内存租约 |
 | `open.go` / `recover.go` | `Recover` 回放 EVENT；未完成 COMMAND 接着跑 |
 | `executor.go` | Enter/Complete、出边、流程完成判定 |

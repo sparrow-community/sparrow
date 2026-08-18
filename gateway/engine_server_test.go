@@ -183,6 +183,69 @@ func TestEngineServicePublishMessage(t *testing.T) {
 	}
 }
 
+func TestEngineServicePublishMessageCorrelation(t *testing.T) {
+	_, conn, stop := startGRPC(t)
+	defer stop()
+	ctx := context.Background()
+	client := enginev1.NewEngineServiceClient(conn)
+
+	xml, err := os.ReadFile(filepath.Join("..", "processing", "testdata", "m2_message_catch.bpmn"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dep, err := client.Deploy(ctx, &enginev1.DeployRequest{BpmnXml: xml})
+	if err != nil {
+		t.Fatal(err)
+	}
+	createdA, err := client.CreateInstance(ctx, &enginev1.CreateInstanceRequest{
+		DeploymentId: dep.GetDeploymentId(),
+		Variables:    map[string]string{"orderId": `"A"`},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	createdB, err := client.CreateInstance(ctx, &enginev1.CreateInstanceRequest{
+		DeploymentId: dep.GetDeploymentId(),
+		Variables:    map[string]string{"orderId": `"B"`},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = client.PublishMessage(ctx, &enginev1.PublishMessageRequest{
+		Name:            "order.confirmed",
+		CorrelationKeys: map[string]string{"orderId": `"missing"`},
+	})
+	if status.Code(err) != codes.NotFound {
+		t.Fatalf("unmatched code=%v err=%v", status.Code(err), err)
+	}
+
+	pub, err := client.PublishMessage(ctx, &enginev1.PublishMessageRequest{
+		Name:            "order.confirmed",
+		CorrelationKeys: map[string]string{"orderId": `"A"`},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pub.GetDelivered() != 1 {
+		t.Fatalf("delivered=%d", pub.GetDelivered())
+	}
+	gotA, err := client.GetInstance(ctx, &enginev1.GetInstanceRequest{ProcessInstanceId: createdA.GetProcessInstanceId()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotB, err := client.GetInstance(ctx, &enginev1.GetInstanceRequest{ProcessInstanceId: createdB.GetProcessInstanceId()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotA.GetInstance().GetStatus() != string(projection.StatusCompleted) {
+		t.Fatalf("A status=%s", gotA.GetInstance().GetStatus())
+	}
+	if gotB.GetInstance().GetStatus() != string(projection.StatusActive) {
+		t.Fatalf("B status=%s want still active", gotB.GetInstance().GetStatus())
+	}
+}
+
 func startGRPC(t *testing.T) (*processing.Engine, *grpc.ClientConn, func()) {
 	t.Helper()
 	eng := processing.NewEngine(eventlog.NewMemory())

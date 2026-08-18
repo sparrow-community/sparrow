@@ -96,6 +96,10 @@ message PublishMessageRequest {
   string process_instance_id = 2;
   // Variable deltas applied via Complete: name -> JSON text.
   map<string, string> variables = 3;
+  // Optional correlation keys: name -> JSON text, same encoding as instance variables.
+  // When set, a waiter matches only if the instance already has each key with the same JSON value.
+  // Empty means name (and optional process_instance_id) only.
+  map<string, string> correlation_keys = 4;
 }
 
 // PublishMessageResponse reports how many waiting catches were completed.
@@ -125,7 +129,7 @@ service EngineService {
   rpc CreateInstance(CreateInstanceRequest) returns (CreateInstanceResponse);
   // Complete maps to Engine.Complete for any waiting element.
   rpc Complete(CompleteRequest) returns (CompleteResponse);
-  // PublishMessage completes waiting message catches whose name matches.
+  // PublishMessage completes waiting message catches whose name (and optional correlation keys) match.
   rpc PublishMessage(PublishMessageRequest) returns (PublishMessageResponse);
   // GetInstance returns a projection snapshot.
   rpc GetInstance(GetInstanceRequest) returns (GetInstanceResponse);

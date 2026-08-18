@@ -19,6 +19,7 @@ const (
 type timerCatch struct {
 	Duration time.Duration
 	Date     time.Time
+	Cycle    *cycleSpec
 	Text     string
 }
 
@@ -34,13 +35,28 @@ func timerCatchSpec(ev element.IntermediateCatchEvent) (timerCatch, error) {
 		return timerCatch{}, fmt.Errorf("UNSUPPORTED_ELEMENT: intermediateCatchEvent %q needs exactly one timerEventDefinition", ev.ID)
 	}
 	def := ev.TimerEventDefinitions[0]
-	if text := expressionText(def.TimeCycle); text != "" {
-		return timerCatch{}, fmt.Errorf("UNSUPPORTED_ELEMENT: intermediateCatchEvent %q uses timeCycle", ev.ID)
-	}
 	dateText := expressionText(def.TimeDate)
 	durText := expressionText(def.TimeDuration)
-	if dateText != "" && durText != "" {
-		return timerCatch{}, fmt.Errorf("UNSUPPORTED_ELEMENT: intermediateCatchEvent %q has both timeDate and timeDuration", ev.ID)
+	cycleText := expressionText(def.TimeCycle)
+	n := 0
+	if dateText != "" {
+		n++
+	}
+	if durText != "" {
+		n++
+	}
+	if cycleText != "" {
+		n++
+	}
+	if n > 1 {
+		return timerCatch{}, fmt.Errorf("UNSUPPORTED_ELEMENT: intermediateCatchEvent %q has multiple timer expressions", ev.ID)
+	}
+	if cycleText != "" {
+		cyc, err := ParseISO8601Cycle(cycleText)
+		if err != nil {
+			return timerCatch{}, err
+		}
+		return timerCatch{Cycle: &cyc, Text: cycleText}, nil
 	}
 	if dateText != "" {
 		at, err := ParseISO8601Date(dateText)
@@ -50,7 +66,7 @@ func timerCatchSpec(ev element.IntermediateCatchEvent) (timerCatch, error) {
 		return timerCatch{Date: at, Text: dateText}, nil
 	}
 	if durText == "" {
-		return timerCatch{}, fmt.Errorf("UNSUPPORTED_ELEMENT: intermediateCatchEvent %q needs timeDuration or timeDate", ev.ID)
+		return timerCatch{}, fmt.Errorf("UNSUPPORTED_ELEMENT: intermediateCatchEvent %q needs timeDuration, timeDate, or timeCycle", ev.ID)
 	}
 	dur, err := ParseISO8601Duration(durText)
 	if err != nil {
@@ -125,14 +141,15 @@ func (d *Deployment) TimerDuration(id string) (time.Duration, string, error) {
 	if !ok {
 		return 0, "", fmt.Errorf("NOT_FOUND: timer catch %q", id)
 	}
-	if !spec.Date.IsZero() {
-		return 0, "", fmt.Errorf("NOT_FOUND: timer catch %q is timeDate, not timeDuration", id)
+	if !spec.Date.IsZero() || spec.Cycle != nil {
+		return 0, "", fmt.Errorf("NOT_FOUND: timer catch %q is not timeDuration", id)
 	}
 	return spec.Duration, spec.Text, nil
 }
 
 // TimerDue returns the absolute due time for a timer catch.
-// timeDate uses the parsed instant; timeDuration is now + duration.
+// timeDate uses the parsed instant; timeDuration is now + duration;
+// timeCycle uses the first occurrence at or after now (intermediate catch does not re-arm).
 func (d *Deployment) TimerDue(id string, now time.Time) (dueUnixMs int64, text string, err error) {
 	spec, ok := d.timerCatch[id]
 	if !ok {
@@ -140,6 +157,13 @@ func (d *Deployment) TimerDue(id string, now time.Time) (dueUnixMs int64, text s
 	}
 	if now.IsZero() {
 		now = time.Now()
+	}
+	if spec.Cycle != nil {
+		due, err := spec.Cycle.FirstDue(now)
+		if err != nil {
+			return 0, "", err
+		}
+		return due.UnixMilli(), spec.Text, nil
 	}
 	if !spec.Date.IsZero() {
 		return spec.Date.UnixMilli(), spec.Text, nil

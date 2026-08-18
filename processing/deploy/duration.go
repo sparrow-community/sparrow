@@ -9,7 +9,7 @@ import (
 )
 
 // ParseISO8601Duration parses a BPMN timeDuration subset: PTnHnMnS.
-// Days, weeks, months, years, and timeDate/timeCycle are not accepted.
+// Days, weeks, months, and years are not accepted.
 func ParseISO8601Duration(s string) (time.Duration, error) {
 	s = strings.ToUpper(strings.TrimSpace(s))
 	if !strings.HasPrefix(s, "PT") {
@@ -78,4 +78,115 @@ func ParseISO8601Date(s string) (time.Time, error) {
 		last = err
 	}
 	return time.Time{}, fmt.Errorf("INVALID_CONDITION: timeDate %q is not ISO-8601 datetime: %w", s, last)
+}
+
+type cycleSpec struct {
+	Repeat int // -1 unlimited; >= 1 finite (intermediate catch only uses first due)
+	Start  time.Time
+	End    time.Time
+	Period time.Duration
+}
+
+// ParseISO8601Cycle parses a BPMN timeCycle subset:
+//
+//	R[n]/PTnHnMnS
+//	R[n]/<timeDate>/PTnHnMnS
+//	R[n]/PTnHnMnS/<timeDate>
+//
+// Intermediate catch uses only the first due instant; it does not re-arm.
+func ParseISO8601Cycle(s string) (cycleSpec, error) {
+	raw := strings.TrimSpace(s)
+	if raw == "" {
+		return cycleSpec{}, fmt.Errorf("INVALID_CONDITION: empty timeCycle")
+	}
+	if len(raw) < 1 || (raw[0] != 'R' && raw[0] != 'r') {
+		return cycleSpec{}, fmt.Errorf("INVALID_CONDITION: timeCycle %q must start with R", s)
+	}
+	rest := raw[1:]
+	i := 0
+	for i < len(rest) && rest[i] >= '0' && rest[i] <= '9' {
+		i++
+	}
+	repeat := -1
+	if i > 0 {
+		n, err := strconv.Atoi(rest[:i])
+		if err != nil || n <= 0 {
+			return cycleSpec{}, fmt.Errorf("INVALID_CONDITION: timeCycle %q has invalid repeat count", s)
+		}
+		repeat = n
+		rest = rest[i:]
+	}
+	if !strings.HasPrefix(rest, "/") {
+		return cycleSpec{}, fmt.Errorf("INVALID_CONDITION: timeCycle %q is not ISO-8601 repeating interval", s)
+	}
+	parts := strings.Split(rest[1:], "/")
+	if len(parts) == 0 || len(parts) > 2 || parts[0] == "" {
+		return cycleSpec{}, fmt.Errorf("INVALID_CONDITION: timeCycle %q is not ISO-8601 repeating interval", s)
+	}
+	out := cycleSpec{Repeat: repeat}
+	if len(parts) == 1 {
+		dur, err := ParseISO8601Duration(parts[0])
+		if err != nil {
+			return cycleSpec{}, fmt.Errorf("INVALID_CONDITION: timeCycle %q: %w", s, err)
+		}
+		out.Period = dur
+		return out, nil
+	}
+	a, b := parts[0], parts[1]
+	if isDurationPart(a) {
+		dur, err := ParseISO8601Duration(a)
+		if err != nil {
+			return cycleSpec{}, err
+		}
+		end, err := ParseISO8601Date(b)
+		if err != nil {
+			return cycleSpec{}, fmt.Errorf("INVALID_CONDITION: timeCycle %q: %w", s, err)
+		}
+		out.Period = dur
+		out.End = end
+		return out, nil
+	}
+	start, err := ParseISO8601Date(a)
+	if err != nil {
+		return cycleSpec{}, fmt.Errorf("INVALID_CONDITION: timeCycle %q: %w", s, err)
+	}
+	dur, err := ParseISO8601Duration(b)
+	if err != nil {
+		return cycleSpec{}, fmt.Errorf("INVALID_CONDITION: timeCycle %q: %w", s, err)
+	}
+	out.Start = start
+	out.Period = dur
+	return out, nil
+}
+
+func isDurationPart(s string) bool {
+	u := strings.ToUpper(strings.TrimSpace(s))
+	return strings.HasPrefix(u, "PT")
+}
+
+func (c cycleSpec) FirstDue(now time.Time) (time.Time, error) {
+	if now.IsZero() {
+		now = time.Now()
+	}
+	var due time.Time
+	if !c.Start.IsZero() {
+		due = c.Start
+		if due.Before(now) {
+			if c.Period <= 0 {
+				due = now
+			} else {
+				n := now.Sub(c.Start) / c.Period
+				due = c.Start.Add(n * c.Period)
+				if due.Before(now) {
+					due = due.Add(c.Period)
+				}
+			}
+		}
+	} else {
+		due = now.Add(c.Period)
+	}
+	if !c.End.IsZero() && due.After(c.End) {
+		return time.Time{}, fmt.Errorf("INVALID_CONDITION: timeCycle has no occurrence after now")
+	}
+	return due, nil
 }

@@ -128,13 +128,15 @@ func validateM1(proc *element.Process) error {
 		return fmt.Errorf("UNSUPPORTED_ELEMENT: process contains elements outside M1 subset")
 	}
 	for _, e := range proc.IntermediateCatchEvents {
-		if _, err := timerCatchSpec(e); err == nil {
+		if len(e.TimerEventDefinitions) > 0 {
+			if _, err := timerCatchSpec(e); err != nil {
+				return err
+			}
 			continue
 		}
-		if _, err := messageCatchSpec(e, nil); err == nil {
-			continue
+		if _, err := messageCatchSpec(e, nil); err != nil {
+			return fmt.Errorf("UNSUPPORTED_ELEMENT: intermediateCatchEvent %q must be either timer catch or message catch", e.ID)
 		}
-		return fmt.Errorf("UNSUPPORTED_ELEMENT: intermediateCatchEvent %q must be either timer catch or message catch", e.ID)
 	}
 	if len(proc.StartEvents) == 0 {
 		return fmt.Errorf("no startEvent in process")

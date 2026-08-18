@@ -40,7 +40,7 @@ type EngineServiceClient interface {
 	CreateInstance(ctx context.Context, in *CreateInstanceRequest, opts ...grpc.CallOption) (*CreateInstanceResponse, error)
 	// Complete maps to Engine.Complete for any waiting element.
 	Complete(ctx context.Context, in *CompleteRequest, opts ...grpc.CallOption) (*CompleteResponse, error)
-	// PublishMessage completes waiting message catches whose name matches.
+	// PublishMessage completes waiting message catches whose name (and optional correlation keys) match.
 	PublishMessage(ctx context.Context, in *PublishMessageRequest, opts ...grpc.CallOption) (*PublishMessageResponse, error)
 	// GetInstance returns a projection snapshot.
 	GetInstance(ctx context.Context, in *GetInstanceRequest, opts ...grpc.CallOption) (*GetInstanceResponse, error)
@@ -129,7 +129,7 @@ type EngineServiceServer interface {
 	CreateInstance(context.Context, *CreateInstanceRequest) (*CreateInstanceResponse, error)
 	// Complete maps to Engine.Complete for any waiting element.
 	Complete(context.Context, *CompleteRequest) (*CompleteResponse, error)
-	// PublishMessage completes waiting message catches whose name matches.
+	// PublishMessage completes waiting message catches whose name (and optional correlation keys) match.
 	PublishMessage(context.Context, *PublishMessageRequest) (*PublishMessageResponse, error)
 	// GetInstance returns a projection snapshot.
 	GetInstance(context.Context, *GetInstanceRequest) (*GetInstanceResponse, error)

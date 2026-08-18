@@ -74,3 +74,89 @@ func TestParseISO8601Date(t *testing.T) {
 		}
 	}
 }
+
+func TestParseISO8601Cycle(t *testing.T) {
+	cases := []struct {
+		in       string
+		repeat   int
+		period   time.Duration
+		hasStart bool
+		hasEnd   bool
+		wantErr  bool
+	}{
+		{in: "R/PT1H", repeat: -1, period: time.Hour},
+		{in: "R3/PT10S", repeat: 3, period: 10 * time.Second},
+		{in: "R/2000-01-01T00:00:00Z/PT1H", repeat: -1, period: time.Hour, hasStart: true},
+		{in: "R/PT1H/2099-01-01T00:00:00Z", repeat: -1, period: time.Hour, hasEnd: true},
+		{in: "", wantErr: true},
+		{in: "PT1H", wantErr: true},
+		{in: "R/P1D", wantErr: true},
+		{in: "R0/PT1H", wantErr: true},
+	}
+	for _, tc := range cases {
+		got, err := ParseISO8601Cycle(tc.in)
+		if tc.wantErr {
+			if err == nil {
+				t.Errorf("ParseISO8601Cycle(%q) err=nil want error", tc.in)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("ParseISO8601Cycle(%q) err=%v", tc.in, err)
+			continue
+		}
+		if got.Repeat != tc.repeat || got.Period != tc.period {
+			t.Errorf("ParseISO8601Cycle(%q) repeat=%d period=%v want %d %v", tc.in, got.Repeat, got.Period, tc.repeat, tc.period)
+		}
+		if tc.hasStart != !got.Start.IsZero() || tc.hasEnd != !got.End.IsZero() {
+			t.Errorf("ParseISO8601Cycle(%q) start=%v end=%v", tc.in, got.Start, got.End)
+		}
+	}
+}
+
+func TestCycleFirstDue(t *testing.T) {
+	now := time.Date(2020, 1, 1, 10, 0, 0, 0, time.UTC)
+	c, err := ParseISO8601Cycle("R/PT1H")
+	if err != nil {
+		t.Fatal(err)
+	}
+	due, err := c.FirstDue(now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if due != now.Add(time.Hour) {
+		t.Fatalf("R/PT1H due=%v want %v", due, now.Add(time.Hour))
+	}
+
+	c, err = ParseISO8601Cycle("R/2000-01-01T00:00:00Z/PT1H")
+	if err != nil {
+		t.Fatal(err)
+	}
+	due, err = c.FirstDue(now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if due != now {
+		t.Fatalf("aligned start due=%v want %v", due, now)
+	}
+
+	c, err = ParseISO8601Cycle("R/2099-01-01T00:00:00Z/PT1H")
+	if err != nil {
+		t.Fatal(err)
+	}
+	due, err = c.FirstDue(now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if due != time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC) {
+		t.Fatalf("future start due=%v", due)
+	}
+
+	c, err = ParseISO8601Cycle("R/PT1H/2000-01-01T00:00:00Z")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.FirstDue(now); err == nil {
+		t.Fatal("expected no occurrence after end")
+	}
+}

@@ -75,9 +75,14 @@ func (s *EngineServer) PublishMessage(ctx context.Context, req *enginev1.Publish
 	if err != nil {
 		return nil, statusFromEngine(err)
 	}
+	keys, err := variablesFromJSONMap(req.GetCorrelationKeys())
+	if err != nil {
+		return nil, statusFromEngine(err)
+	}
 	n, err := s.engine.PublishMessage(ctx, processing.PublishMessageRequest{
 		Name:              req.GetName(),
 		ProcessInstanceID: req.GetProcessInstanceId(),
+		CorrelationKeys:   keys,
 		Variables:         vars,
 	})
 	if err != nil {

@@ -219,6 +219,127 @@ func TestPublishMessageNotFoundAndScope(t *testing.T) {
 	}
 }
 
+func TestPublishMessageCorrelationKeys(t *testing.T) {
+	xml := readTestdataMessage(t, "m2_message_catch.bpmn")
+	eng := processing.NewEngine(eventlog.NewMemory())
+	ctx := context.Background()
+	dep, err := eng.Deploy(ctx, xml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, err := eng.CreateInstance(ctx, dep, map[string]any{"orderId": "A"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := eng.CreateInstance(ctx, dep, map[string]any{"orderId": "B"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := eng.PublishMessage(ctx, processing.PublishMessageRequest{
+		Name:            "order.confirmed",
+		CorrelationKeys: map[string]any{"orderId": "missing"},
+	}); err == nil {
+		t.Fatal("expected NOT_FOUND for unmatched correlation keys")
+	}
+
+	n, err := eng.PublishMessage(ctx, processing.PublishMessageRequest{
+		Name:            "order.confirmed",
+		CorrelationKeys: map[string]any{"orderId": "A"},
+	})
+	if err != nil || n != 1 {
+		t.Fatalf("correlated A n=%d err=%v", n, err)
+	}
+	instA, _ := eng.GetInstance(a)
+	instB, _ := eng.GetInstance(b)
+	if instA.Status != projection.StatusCompleted {
+		t.Fatalf("A status=%s want completed", instA.Status)
+	}
+	if instB.Status != projection.StatusActive {
+		t.Fatalf("B status=%s want still active", instB.Status)
+	}
+
+	n, err = eng.PublishMessage(ctx, processing.PublishMessageRequest{
+		Name:            "order.confirmed",
+		CorrelationKeys: map[string]any{"orderId": "B"},
+	})
+	if err != nil || n != 1 {
+		t.Fatalf("correlated B n=%d err=%v", n, err)
+	}
+	instB, _ = eng.GetInstance(b)
+	if instB.Status != projection.StatusCompleted {
+		t.Fatalf("B status=%s want completed", instB.Status)
+	}
+}
+
+func TestPublishMessageWithoutKeysCompletesAll(t *testing.T) {
+	xml := readTestdataMessage(t, "m2_message_catch.bpmn")
+	eng := processing.NewEngine(eventlog.NewMemory())
+	ctx := context.Background()
+	dep, err := eng.Deploy(ctx, xml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := eng.CreateInstance(ctx, dep, map[string]any{"orderId": "A"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := eng.CreateInstance(ctx, dep, map[string]any{"orderId": "B"}); err != nil {
+		t.Fatal(err)
+	}
+	n, err := eng.PublishMessage(ctx, processing.PublishMessageRequest{Name: "order.confirmed"})
+	if err != nil || n != 2 {
+		t.Fatalf("broadcast n=%d err=%v", n, err)
+	}
+}
+
+func TestPublishMessageCorrelationAfterRecover(t *testing.T) {
+	xml := readTestdataMessage(t, "m2_message_catch.bpmn")
+	dir := t.TempDir()
+	ctx := context.Background()
+
+	eng1, err := processing.Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dep, err := eng1.Deploy(ctx, xml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, err := eng1.CreateInstance(ctx, dep, map[string]any{"orderId": "A"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := eng1.CreateInstance(ctx, dep, map[string]any{"orderId": "B"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := eng1.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	eng2, err := processing.Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer eng2.Close()
+
+	n, err := eng2.PublishMessage(ctx, processing.PublishMessageRequest{
+		Name:            "order.confirmed",
+		CorrelationKeys: map[string]any{"orderId": "A"},
+	})
+	if err != nil || n != 1 {
+		t.Fatalf("n=%d err=%v", n, err)
+	}
+	instA, _ := eng2.GetInstance(a)
+	instB, _ := eng2.GetInstance(b)
+	if instA.Status != projection.StatusCompleted {
+		t.Fatalf("A status=%s", instA.Status)
+	}
+	if instB.Status != projection.StatusActive {
+		t.Fatalf("B status=%s want still waiting", instB.Status)
+	}
+}
+
 func TestPublishMessageIgnoresTimerCatch(t *testing.T) {
 	xml := readTestdata(t, "m2_timer_catch_1h.bpmn")
 	eng := processing.NewEngine(eventlog.NewMemory())
@@ -280,4 +401,3 @@ func readTestdataMessage(t *testing.T, name string) []byte {
 	}
 	return xml
 }
-
