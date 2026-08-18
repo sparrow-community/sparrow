@@ -25,6 +25,13 @@ type Engine struct {
 	deployments map[string]*deploy.Deployment
 	instances   map[string]*projection.Instance
 	instMu      map[string]*sync.Mutex
+
+	jobMu   sync.Mutex
+	leases  map[string]jobLease
+	jobWake chan struct{}
+
+	seenMu sync.Mutex
+	seen   map[string]struct{}
 }
 
 func NewEngine(l eventlog.EventLog) *Engine {
@@ -37,6 +44,9 @@ func NewEngine(l eventlog.EventLog) *Engine {
 		deployments: make(map[string]*deploy.Deployment),
 		instances:   make(map[string]*projection.Instance),
 		instMu:      make(map[string]*sync.Mutex),
+		leases:      make(map[string]jobLease),
+		jobWake:     make(chan struct{}, 1),
+		seen:        make(map[string]struct{}),
 	}
 }
 
@@ -99,9 +109,10 @@ func (e *Engine) CreateInstance(ctx context.Context, deploymentID string, vars m
 		ProcessInstanceId: instanceID,
 		ProcessVersion:    dep.Version,
 		Element: &eventv1.Element{
-			Intent: eventv1.Element_INTENT_ACTIVATING,
-			Type:   eventv1.Element_TYPE_PROCESS,
-			Id:     dep.ProcessID(),
+			Intent:  eventv1.Element_INTENT_ACTIVATING,
+			Type:    eventv1.Element_TYPE_PROCESS,
+			Id:      dep.ProcessID(),
+			TokenId: tokenID,
 			Payload: &eventv1.Element_ProcessPayload{
 				ProcessPayload: &eventv1.ProcessPayload{Variables: pv},
 			},
@@ -192,7 +203,11 @@ func (e *Engine) Complete(ctx context.Context, instanceID, elementID, tokenID st
 		return err
 	}
 
-	return e.executor.Complete(ctx, dep, inst, tokenID, elementID, pv, e.emitter(ctx, inst, cmdID))
+	if err := e.executor.Complete(ctx, dep, inst, tokenID, elementID, pv, e.emitter(ctx, inst, cmdID)); err != nil {
+		return err
+	}
+	e.releaseLease(instanceID, tokenID)
+	return nil
 }
 
 func (e *Engine) GetInstance(instanceID string) (*projection.Instance, bool) {
@@ -214,6 +229,9 @@ func (e *Engine) ListEvents(ctx context.Context, processInstanceID string) ([]*e
 
 func (e *Engine) emitter(ctx context.Context, inst *projection.Instance, sourceCmdID string) Emitter {
 	return func(el *eventv1.Element) error {
+		if e.alreadySeen(sourceCmdID, el) {
+			return nil
+		}
 		id, err := NextID()
 		if err != nil {
 			return err
@@ -231,9 +249,36 @@ func (e *Engine) emitter(ctx context.Context, inst *projection.Instance, sourceC
 		if _, err := e.log.Append(ctx, ev); err != nil {
 			return err
 		}
+		e.markSeen(sourceCmdID, el)
 		inst.ApplyEvent(ev)
+		if el.GetType() == eventv1.Element_TYPE_SERVICE_TASK &&
+			el.GetIntent() == eventv1.Element_INTENT_ACTIVATED {
+			e.notifyJobs()
+		}
 		return nil
 	}
+}
+
+func intentKey(sourceCmdID string, el *eventv1.Element) string {
+	if el == nil {
+		return sourceCmdID
+	}
+	return fmt.Sprintf("%s/%d/%d/%s/%s", sourceCmdID, int32(el.GetType()), int32(el.GetIntent()), el.GetId(), el.GetTokenId())
+}
+
+func (e *Engine) alreadySeen(sourceCmdID string, el *eventv1.Element) bool {
+	key := intentKey(sourceCmdID, el)
+	e.seenMu.Lock()
+	defer e.seenMu.Unlock()
+	_, ok := e.seen[key]
+	return ok
+}
+
+func (e *Engine) markSeen(sourceCmdID string, el *eventv1.Element) {
+	key := intentKey(sourceCmdID, el)
+	e.seenMu.Lock()
+	e.seen[key] = struct{}{}
+	e.seenMu.Unlock()
 }
 
 func (e *Engine) reject(ctx context.Context, inst *projection.Instance, elementID, tokenID string, typ eventv1.Element_Type, intent eventv1.Element_Intent, code, message string) error {

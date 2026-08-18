@@ -4,8 +4,8 @@
 实现应以本文为准；协议字段变更在 `protocol` 中进行，并保持「Event = 元素行为」的定位。
 
 **M1 状态**：Deploy / CreateInstance / Complete、XOR 条件、内存与文件 EventLog、`Open` 重启回放已可用。  
-**M2 起步**：ServiceTask 等待；Job 细节在 `ActivityPayload.job_type`。  
-尚未实现：Timer / Message、COMMAND 幂等、更多 BPMN 元素。
+**M2 起步**：ServiceTask 等待；Job 经 `Activate` / `Fail` / `Heartbeat`；gRPC 在 `gateway`（`engine.v1` + `job.v1`），进程入口 `gateway/cmd/sparrow`。  
+尚未实现：Timer / Message、更多 BPMN 元素、跨重启的 Job 租约。
 
 ---
 
@@ -71,7 +71,7 @@ Job / Timer / Message 等待等，视为 **该元素行为的载荷与阶段**�
 | 定义 | `bpmn` 解析的 `element.Process` | 静态结构：节点、边、默认流等 |
 | 部署 | `deploy.Deployment` | 校验后的不可变定义快照 + `deployment_id` |
 | 实例 | `projection.Instance` | 一次执行的投影（状态 / 变量 / 令牌） |
-| 令牌 | `token_id` → `{element_id, active\|waiting}` | 实例内控制流位置（M1 单 token） |
+| 令牌 | `token_id` → `{element_id, active\|waiting, job_type}` | 实例内控制流位置（M1 单 token） |
 
 **不另建** `graph.Node` / `graph.Flow`。`deploy` 在 `element.Process` 上提供查询辅助（`TypeOf`、`Outgoing`、`SequenceFlow`、`ChooseExclusiveOutgoing`）。
 
@@ -82,7 +82,8 @@ Job / Timer / Message 等待等，视为 **该元素行为的载荷与阶段**�
 ```text
                     ┌──────────────────────────────────────────┐
                     │              Engine（薄门面）               │
-                    │  Deploy / CreateInstance / Complete…       │
+                    │  Deploy / CreateInstance / Complete        │
+                    │  Activate / Fail / Heartbeat（Job 拉模型）   │
                     │  实例锁 · 写 COMMAND/EVENT/REJECTION        │
                     │              │                             │
                     │              ▼                             │
@@ -116,6 +117,7 @@ processing/
 ├── README.md
 ├── DESIGN.md
 ├── engine.go                 // API、实例锁、写日志、emitter
+├── jobs.go                   // Activate、Job 快照、内存租约
 ├── open.go                   // Recover(ctx, log, store)、Open 便捷封装
 ├── executor.go               // 令牌推进编排（调用 handlers）
 ├── id.go                     // UUIDv7
@@ -182,7 +184,7 @@ type ElementHandler interface {
 
 Effect：handler 产出，由 Executor 应用（Records / Wait / OutgoingFlowID / TakeOutgoing / TryCompleteProcess）。
 
-Engine 对外能力：Deploy / CreateInstance / Complete / GetInstance / ListEvents。
+Engine 对外能力：Deploy / CreateInstance / Complete / Activate / Fail / Heartbeat / GetInstance / ListEvents。
 
 ID 统一走 `NextID()`（UUIDv7 字符串）。时间戳使用 Unix millis。空 id 用空字符串表示。
 
@@ -218,23 +220,32 @@ CreateInstance / Complete:
 
 同一 COMMAND 处理中可连续写出多条 EVENT（启动链、瞬时生命周期、流转移），均共享该 COMMAND 的 `source_record_id`。
 
-### 5.2 幂等（未做）
+### 5.2 幂等与半截链
 
-同一 `cmd.id` 已成功处理则直接返回。崩溃导致半截 EVENT 链时，回放得到部分投影；文件日志会丢掉不完整的最后一条记录。
+COMMAND 先入账，再连写多条 EVENT（共享 `source_record_id`）。崩溃可能停在「只有 COMMAND」或「EVENT 链写了一半」。
+
+`Recover` 回放 EVENT 后按日志顺序检查每条 COMMAND：
+
+- 已有对应 REJECTION → 跳过  
+- 已有至少一条 EVENT **且** 投影稳定（waiting / completed / terminated）→ 视为该命令已做完，跳过  
+- 否则 **接着执行同一条 COMMAND**（不新写 COMMAND）。Emitter 对 `(source_record_id, Type, Intent, element.id, token_id)` 已出现过的 EVENT 不再追加，因此重入 `Enter` / `Complete` 只会补上缺失的步骤。
+
+客户端未带 `cmd.id` 的重试仍是新 COMMAND；成功后的第二次 Complete 仍是 `INVALID_STATE`。幂等保证的是 **磁盘上那条未完成的命令** 能被 `Open` 做完。
 
 ### 5.3 投影与令牌
 
 `projection.Instance` 最少包含：
 
 - 实例状态：`active | completed | terminated`
-- `Tokens`：`token_id → {element_id, active|waiting}`
+- `Tokens`：`token_id → {element_id, active|waiting, job_type}`
 - 变量表（实例级 `name → json_value`）
 - `ElementIntent`：元素级最近 Intent（辅助校验）
 
 令牌更新 **只走 EVENT → ApplyEvent → applyToken**：
 
 - Executor 只决定步进（`Effect.Wait` / 出边），不改 `Tokens`
-- `USER_TASK` + `ACTIVATED` → `waiting`；`SEQUENCE_FLOW_TAKEN` 把位置写到 target
+- `USER_TASK` + `ACTIVATED` → `waiting`；`SERVICE_TASK` + `ACTIVATED` → `waiting` 且拷贝 `payload.job_type`
+- `SEQUENCE_FLOW_TAKEN` 把位置写到 target
 - PROCESS COMPLETED/TERMINATED 清空 `Tokens`
 - 在线与 `Recover` 共用同一套规则
 
@@ -247,6 +258,7 @@ Recover(ctx, eventLog, deploymentStore)
   → Store.LoadAll → Compile → deployments map
   → EventLog.ReadAll
   → 按序对每条 EVENT 调用 Instance.ApplyEvent（必要时先创建投影）
+  → 未完成的 COMMAND 用同一 cmd.id 接着跑（幂等 emitter 不重复写已有 EVENT）
   → 恢复等待点（如 UserTask waiting），可继续 Complete
 ```
 
@@ -280,6 +292,7 @@ Recover(ctx, eventLog, deploymentStore)
 | 完成 UserTask | USER_TASK | COMPLETING → COMPLETED |
 | 进入 ServiceTask | SERVICE_TASK | ACTIVATING → ACTIVATED（等待；payload.job_type） |
 | 完成 ServiceTask | SERVICE_TASK | COMPLETING → COMPLETED |
+| Job 失败 | SERVICE_TASK | FAILED（仍 waiting；payload.error_message） |
 | XOR | EXCLUSIVE_GATEWAY | ACTIVATING → … → COMPLETED（payload 带 taken flow） |
 | End | END_EVENT | … → COMPLETED |
 | 实例结束 | PROCESS | COMPLETING → COMPLETED |
@@ -302,7 +315,8 @@ Recover(ctx, eventLog, deploymentStore)
 | `INVALID_STATE` | UserTask 未处于 waiting 却 Complete |
 | `UNSUPPORTED_ELEMENT` | 定义含 M1 未支持元素，或无 handler |
 | `INVALID_CONDITION` | XOR 条件表达式无法解析 |
-| `NO_OUTGOING_FLOW` | 无法选出边 |
+| `INVALID_ARGUMENT` | Activate 缺少 `job_type` |
+| `INVALID_STATE` | Fail 作用于非 job（如 UserTask），或 Heartbeat 无锁 / worker 不匹配 |
 
 ---
 
@@ -327,6 +341,27 @@ Recover(ctx, eventLog, deploymentStore)
 - 行为：校验 token 在该元素 waiting；`Type` 从定义读取并写入 COMMAND；handler `OnComplete` 后继续自动步进  
 - 不按 BPMN 类型拆 API；UserTask / ServiceTask / 日后等待点都走同一入口  
 
+### Activate
+
+- 输入：`job_type`，可选 `max_jobs` / `wait` / `worker_id` / `lock_duration`  
+- 行为：从投影收集 **waiting 且 `token.job_type` 匹配** 的 ServiceTask；加上内存租约后返回 Job 快照（含 instance / element / token / variables）  
+- `wait=0` 立即返回（可为空）；否则长轮询，新的 `SERVICE_TASK ACTIVATED` 会唤醒  
+- **不写 EventLog**。租约不是账本事实；`Recover` 后租约为空，waiting token 仍可再次 Activate  
+- Worker 完成仍调用 `Complete(instance, element, token, vars)`；租约在成功 Complete 后释放  
+
+### Fail
+
+- 输入：`process_instance_id`，`element_id`，`token_id`，可选 `error_message`  
+- 行为：仅 waiting 且带 `job_type` 的活动（ServiceTask）；写 FAILED COMMAND + EVENT；token **保持 waiting**；释放租约并唤醒 `Activate`  
+- UserTask 等非 job 等待点 → `INVALID_STATE`  
+- 不推进流程；重试靠再次 Activate，完成仍走 `Complete`  
+
+### Heartbeat
+
+- 输入：`process_instance_id`，`token_id`，`worker_id`，可选 `lock_duration`  
+- 行为：延长内存租约；`worker_id` 必须与 Activate 持有者一致  
+- **不写 EventLog**  
+
 查询：
 
 - `GetInstance`：投影快照  
@@ -340,7 +375,8 @@ Recover(ctx, eventLog, deploymentStore)
 - 缺字段时：先在 `protocol/proto` 增加，再 `buf generate`，再改 processing
 - 演进约定：
   - 元素行为扩展 → `Intent` / `Type` / **payload 字段**
-  - 非元素事实（如纯 Deployment 元数据）→ 另议；不默认塞进 Element
+  - 非元素事实（如纯 Deployment 元数据、Job 租约）→ 另议；不默认塞进 Element
+- Worker 线协议在 `protocol/proto/job/v1`（`JobService`）；进程客户端在 `engine/v1`（`EngineService`）。均由 `gateway` 适配，**不**进入 processing。进程入口：`gateway/cmd/sparrow`。
 
 ---
 
@@ -364,6 +400,7 @@ Recover(ctx, eventLog, deploymentStore)
 | 日志 | Memory / File Append/Read；File 重启后可读 |
 | 端到端 | `testdata/m1_simple.bpmn`：Deploy → CreateInstance → Complete → PROCESS COMPLETED |
 | 回归 | 不支持元素部署失败；非法 Complete → REJECTION；XOR default / 条件选路 |
+| Job | Activate 领取 / Fail 释放重领 / Heartbeat 续租 / Recover 后仍可 Activate |
 | 恢复 | `Open` 后仍在 UserTask waiting，Complete 可完成实例 |
 
 ---
@@ -380,7 +417,12 @@ Recover(ctx, eventLog, deploymentStore)
 | 6 | 文件型 EventLog 与重启回放 | 已完成 |
 | 7 | XOR 条件表达式（M1 子集） | 已完成 |
 | 8 | ServiceTask + job_type | 已完成 |
-| 9 | Timer / Message / 更多元素 | 未开始 |
+| 9 | Job Activate（拉模型 + 内存租约） | 已完成 |
+| 10 | Job Fail / Heartbeat | 已完成 |
+| 11 | Job gRPC（`protocol/job.v1` + `gateway`） | 已完成 |
+| 12 | Engine gRPC + `cmd/sparrow` | 已完成 |
+| 13 | COMMAND 幂等 / 半截链 Recover | 已完成 |
+| 14 | Timer / Message / 更多元素 | 未开始 |
 
 ---
 
@@ -389,7 +431,8 @@ Recover(ctx, eventLog, deploymentStore)
 | 路径 | 职责 |
 |------|------|
 | `engine.go` | 薄门面：锁、COMMAND/REJECTION、emitter |
-| `open.go` | `Recover(log, store)`；`Open` 为文件便捷封装 |
+| `jobs.go` | `Activate` / `Fail` / `Heartbeat`：Job 快照、长轮询、内存租约 |
+| `open.go` / `recover.go` | `Recover` 回放 EVENT；未完成 COMMAND 接着跑 |
 | `executor.go` | Enter/Complete、出边、流程完成判定 |
 | `handlers/*.go` | 每元素一类文件；语义只在此扩展 |
 | `expr/` | `${...}` → expr-lang 求值 |

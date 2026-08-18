@@ -163,7 +163,9 @@ type ActivityPayload struct {
 	Variables []*Variable `protobuf:"bytes,1,rep,name=variables,proto3" json:"variables,omitempty"`
 	// Worker subscription key for SERVICE_TASK (and similar job-backed activities).
 	// Set on ACTIVATED when a job is created; empty for user tasks.
-	JobType       string `protobuf:"bytes,2,opt,name=job_type,json=jobType,proto3" json:"job_type,omitempty"`
+	JobType string `protobuf:"bytes,2,opt,name=job_type,json=jobType,proto3" json:"job_type,omitempty"`
+	// Worker-reported reason on SERVICE_TASK FAILED. Empty for other intents.
+	ErrorMessage  string `protobuf:"bytes,3,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -208,6 +210,13 @@ func (x *ActivityPayload) GetVariables() []*Variable {
 func (x *ActivityPayload) GetJobType() string {
 	if x != nil {
 		return x.JobType
+	}
+	return ""
+}
+
+func (x *ActivityPayload) GetErrorMessage() string {
+	if x != nil {
+		return x.ErrorMessage
 	}
 	return ""
 }
@@ -357,10 +366,11 @@ const file_event_v1_payloads_proto_rawDesc = "" +
 	"json_value\x18\x02 \x01(\tR\tjsonValue\"B\n" +
 	"\x0eProcessPayload\x120\n" +
 	"\tvariables\x18\x01 \x03(\v2\x12.event.v1.VariableR\tvariables\"\x0e\n" +
-	"\fEventPayload\"^\n" +
+	"\fEventPayload\"\x83\x01\n" +
 	"\x0fActivityPayload\x120\n" +
 	"\tvariables\x18\x01 \x03(\v2\x12.event.v1.VariableR\tvariables\x12\x19\n" +
-	"\bjob_type\x18\x02 \x01(\tR\ajobType\"E\n" +
+	"\bjob_type\x18\x02 \x01(\tR\ajobType\x12#\n" +
+	"\rerror_message\x18\x03 \x01(\tR\ferrorMessage\"E\n" +
 	"\x0eGatewayPayload\x123\n" +
 	"\x16taken_sequence_flow_id\x18\x01 \x01(\tR\x13takenSequenceFlowId\"O\n" +
 	"\x13SequenceFlowPayload\x12\x1b\n" +

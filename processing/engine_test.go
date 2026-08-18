@@ -333,6 +333,9 @@ func TestServiceTaskWaitAndComplete(t *testing.T) {
 	if waitingElement != "ServiceTask_1" {
 		t.Fatalf("expected wait at ServiceTask_1, tokens=%#v", inst.Tokens)
 	}
+	if inst.Tokens[waitingToken].JobType != "work.v1" {
+		t.Fatalf("token job_type=%q", inst.Tokens[waitingToken].JobType)
+	}
 
 	events, err := eng.ListEvents(ctx, instanceID)
 	if err != nil {

@@ -23,6 +23,8 @@ message ActivityPayload {
   // Worker subscription key for SERVICE_TASK (and similar job-backed activities).
   // Set on ACTIVATED when a job is created; empty for user tasks.
   string job_type = 2;
+  // Worker-reported reason on SERVICE_TASK FAILED. Empty for other intents.
+  string error_message = 3;
 }
 
 message GatewayPayload {

@@ -111,7 +111,8 @@ func (e *Engine) replay(ctx context.Context) error {
 		e.mu.Unlock()
 		if ev.GetRecordType() == eventv1.Event_RECORD_TYPE_EVENT {
 			inst.ApplyEvent(ev)
+			e.markSeen(ev.GetSourceRecordId(), ev.GetElement())
 		}
 	}
-	return nil
+	return e.redrive(ctx)
 }

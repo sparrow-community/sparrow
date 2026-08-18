@@ -1,0 +1,101 @@
+syntax = "proto3";
+
+package job.v1;
+
+// Job is a worker-facing snapshot of a waiting job-backed activity (ServiceTask).
+// It is not an EventLog record.
+message Job {
+  // Worker subscription key (from ActivityPayload.job_type).
+  string job_type = 1;
+  // Process instance id (UUIDv7).
+  string process_instance_id = 2;
+  // Deployment id (UUIDv7).
+  string deployment_id = 3;
+  // BPMN element id from the process definition.
+  string element_id = 4;
+  // Execution token id (UUIDv7).
+  string token_id = 5;
+  // Instance variables at claim time: name -> JSON text.
+  map<string, string> variables = 6;
+  // Worker id supplied on ActivateJobs.
+  string worker_id = 7;
+  // Exclusive lease deadline as Unix time in milliseconds.
+  int64 lock_deadline_unix_ms = 8;
+}
+
+// ActivateJobsRequest claims waiting jobs of one type (long-poll).
+message ActivateJobsRequest {
+  // Worker subscription key to claim.
+  string job_type = 1;
+  // Maximum jobs to return. 0 means the engine default (1).
+  int32 max_jobs = 2;
+  // Long-poll budget in milliseconds. 0 returns immediately (possibly empty).
+  int64 wait_ms = 3;
+  // Caller identity stored on the lease; required for Heartbeat.
+  string worker_id = 4;
+  // Exclusive lease length in milliseconds. 0 means the engine default.
+  int64 lock_duration_ms = 5;
+}
+
+// ActivateJobsResponse is the set of claimed jobs (may be empty).
+message ActivateJobsResponse {
+  // Jobs leased to this worker until lock_deadline_unix_ms.
+  repeated Job jobs = 1;
+}
+
+// CompleteJobRequest finishes a waiting activity and continues the process.
+message CompleteJobRequest {
+  // Process instance id (UUIDv7).
+  string process_instance_id = 1;
+  // BPMN element id from the process definition.
+  string element_id = 2;
+  // Execution token id (UUIDv7).
+  string token_id = 3;
+  // Variable deltas: name -> JSON text. Empty map means no change.
+  map<string, string> variables = 4;
+}
+
+// CompleteJobResponse is empty on success.
+message CompleteJobResponse {}
+
+// FailJobRequest records job failure, keeps the token waiting, and drops the lease.
+message FailJobRequest {
+  // Process instance id (UUIDv7).
+  string process_instance_id = 1;
+  // BPMN element id from the process definition.
+  string element_id = 2;
+  // Execution token id (UUIDv7).
+  string token_id = 3;
+  // Worker-reported reason; stored on the FAILED event payload.
+  string error_message = 4;
+}
+
+// FailJobResponse is empty on success.
+message FailJobResponse {}
+
+// HeartbeatRequest extends an in-memory job lease. It does not write the EventLog.
+message HeartbeatRequest {
+  // Process instance id (UUIDv7).
+  string process_instance_id = 1;
+  // Execution token id (UUIDv7).
+  string token_id = 2;
+  // Must match the ActivateJobs worker_id that holds the lease.
+  string worker_id = 3;
+  // New lease length in milliseconds. 0 means the engine default.
+  int64 lock_duration_ms = 4;
+}
+
+// HeartbeatResponse is empty on success.
+message HeartbeatResponse {}
+
+// JobService is the pull-worker command surface. It is not the event ledger.
+service JobService {
+  // ActivateJobs long-polls for waiting jobs of job_type and leases them.
+  rpc ActivateJobs(ActivateJobsRequest) returns (ActivateJobsResponse);
+  // CompleteJob maps to Engine.Complete (any waiting activity, including UserTask).
+  rpc CompleteJob(CompleteJobRequest) returns (CompleteJobResponse);
+  // FailJob maps to Engine.Fail (job-backed activities only).
+  rpc FailJob(FailJobRequest) returns (FailJobResponse);
+  // Heartbeat maps to Engine.Heartbeat.
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+}

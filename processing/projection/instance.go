@@ -25,6 +25,9 @@ type Token struct {
 	ID        string
 	ElementID string
 	Status    TokenStatus
+	// JobType is the worker subscription key copied from SERVICE_TASK ACTIVATED.
+	// Empty for user tasks and non-waiting tokens.
+	JobType string
 }
 
 type Instance struct {
@@ -128,10 +131,22 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 		} else {
 			tok.Status = TokenActive
 		}
+		tok.JobType = ""
+		if p := el.GetActivityPayload(); p != nil {
+			tok.JobType = p.GetJobType()
+		}
 	case eventv1.Element_INTENT_COMPLETED, eventv1.Element_INTENT_TERMINATED:
 		tok.Status = TokenActive
+		tok.JobType = ""
+	case eventv1.Element_INTENT_FAILED:
+		// Job failure does not complete the activity; worker may retry.
+		tok.Status = TokenWaiting
+		if p := el.GetActivityPayload(); p != nil && p.GetJobType() != "" {
+			tok.JobType = p.GetJobType()
+		}
 	case eventv1.Element_INTENT_SEQUENCE_FLOW_TAKEN:
 		tok.Status = TokenActive
+		tok.JobType = ""
 		if sp := el.GetSequenceFlowPayload(); sp != nil && sp.GetTargetId() != "" {
 			tok.ElementID = sp.GetTargetId()
 		}

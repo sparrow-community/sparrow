@@ -1,0 +1,113 @@
+syntax = "proto3";
+
+package engine.v1;
+
+import "event/v1/event.proto";
+
+// Token is a projection snapshot of one execution token.
+message Token {
+  // Execution token id (UUIDv7).
+  string id = 1;
+  // BPMN element id the token currently sits on.
+  string element_id = 2;
+  // active or waiting.
+  string status = 3;
+  // Worker subscription key when waiting on a job-backed activity; empty otherwise.
+  string job_type = 4;
+}
+
+// Instance is a read-only projection snapshot. It is not an EventLog record.
+message Instance {
+  // Process instance id (UUIDv7).
+  string id = 1;
+  // Deployment id (UUIDv7).
+  string deployment_id = 2;
+  // Version of the deployed process definition.
+  int32 process_version = 3;
+  // active, completed, or terminated.
+  string status = 4;
+  // Instance variables: name -> JSON text.
+  map<string, string> variables = 5;
+  // Current tokens.
+  repeated Token tokens = 6;
+}
+
+// DeployRequest uploads BPMN XML and compiles the M1 executable subset.
+message DeployRequest {
+  // Raw BPMN 2.0 XML bytes.
+  bytes bpmn_xml = 1;
+}
+
+// DeployResponse returns the new deployment id.
+message DeployResponse {
+  // Deployment id (UUIDv7).
+  string deployment_id = 1;
+}
+
+// CreateInstanceRequest starts a process instance from a deployment.
+message CreateInstanceRequest {
+  // Deployment id returned by Deploy.
+  string deployment_id = 1;
+  // Initial variables: name -> JSON text.
+  map<string, string> variables = 2;
+}
+
+// CreateInstanceResponse returns the new process instance id.
+message CreateInstanceResponse {
+  // Process instance id (UUIDv7).
+  string process_instance_id = 1;
+}
+
+// CompleteRequest finishes a waiting activity (UserTask, ServiceTask, …).
+message CompleteRequest {
+  // Process instance id (UUIDv7).
+  string process_instance_id = 1;
+  // BPMN element id from the process definition.
+  string element_id = 2;
+  // Execution token id (UUIDv7).
+  string token_id = 3;
+  // Variable deltas: name -> JSON text. Empty map means no change.
+  map<string, string> variables = 4;
+}
+
+// CompleteResponse is empty on success.
+message CompleteResponse {}
+
+// GetInstanceRequest loads a projection snapshot.
+message GetInstanceRequest {
+  // Process instance id (UUIDv7).
+  string process_instance_id = 1;
+}
+
+// GetInstanceResponse carries the snapshot.
+message GetInstanceResponse {
+  // Current instance projection.
+  Instance instance = 1;
+}
+
+// ListEventsRequest reads the audit timeline for one instance.
+message ListEventsRequest {
+  // Process instance id (UUIDv7).
+  string process_instance_id = 1;
+}
+
+// ListEventsResponse is the ledger records for the instance, in append order.
+message ListEventsResponse {
+  // COMMAND, EVENT, and REJECTION records from the event log.
+  repeated event.v1.Event events = 1;
+}
+
+// EngineService is the process-client command surface (deploy, start, complete, query).
+// Worker pull APIs live on job.v1.JobService. Neither service is the event ledger.
+service EngineService {
+  // Deploy compiles BPMN XML and returns a deployment id.
+  rpc Deploy(DeployRequest) returns (DeployResponse);
+  // CreateInstance starts an instance and runs until the first wait or completion.
+  rpc CreateInstance(CreateInstanceRequest) returns (CreateInstanceResponse);
+  // Complete maps to Engine.Complete for any waiting element.
+  rpc Complete(CompleteRequest) returns (CompleteResponse);
+  // GetInstance returns a projection snapshot.
+  rpc GetInstance(GetInstanceRequest) returns (GetInstanceResponse);
+  // ListEvents returns the instance audit timeline.
+  rpc ListEvents(ListEventsRequest) returns (ListEventsResponse);
+}
