@@ -3,6 +3,7 @@ package processing
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/sparrow-community/sparrow/processing/deploy"
 	"github.com/sparrow-community/sparrow/processing/handlers"
@@ -16,6 +17,7 @@ type Emitter func(el *eventv1.Element) error
 // Executor drives token movement using ElementHandler semantics over bpmn definitions.
 type Executor struct {
 	Handlers *handlers.Registry
+	Now      func() time.Time
 }
 
 func NewExecutor(reg *handlers.Registry) *Executor {
@@ -23,6 +25,13 @@ func NewExecutor(reg *handlers.Registry) *Executor {
 		reg = handlers.DefaultRegistry()
 	}
 	return &Executor{Handlers: reg}
+}
+
+func (x *Executor) now() time.Time {
+	if x != nil && x.Now != nil {
+		return x.Now()
+	}
+	return time.Now()
 }
 
 func (x *Executor) Enter(
@@ -48,6 +57,7 @@ func (x *Executor) Enter(
 			ElementID:  elementID,
 			Type:       typ,
 			TokenID:    tokenID,
+			Now:        x.now(),
 		})
 		if err != nil {
 			return err

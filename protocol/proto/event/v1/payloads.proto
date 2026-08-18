@@ -14,7 +14,12 @@ message ProcessPayload {
 }
 
 // Shared payload for BPMN event flow nodes (start/end/intermediate/boundary/…).
-message EventPayload {}
+message EventPayload {
+  // Due time for a timer catch (unix milliseconds). Set on ACTIVATED.
+  int64 due_unix_ms = 1;
+  // Original ISO-8601 duration text from the definition (audit). Empty if unused.
+  string duration = 2;
+}
 
 // Shared payload for BPMN activities (tasks, subProcess, callActivity, …).
 message ActivityPayload {

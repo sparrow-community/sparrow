@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/sparrow-community/sparrow/processing/deploy"
 	"github.com/sparrow-community/sparrow/processing/projection"
@@ -24,6 +25,7 @@ type EnterInput struct {
 	ElementID  string
 	Type       eventv1.Element_Type
 	TokenID    string
+	Now        time.Time
 }
 
 // CompleteInput is the context for an external completion command.
@@ -64,6 +66,7 @@ func DefaultRegistry() *Registry {
 		UserTaskHandler{},
 		ServiceTaskHandler{},
 		ExclusiveGatewayHandler{},
+		IntermediateCatchEventHandler{},
 		SequenceFlowHandler{},
 	)
 }

@@ -28,6 +28,9 @@ type Token struct {
 	// JobType is the worker subscription key copied from SERVICE_TASK ACTIVATED.
 	// Empty for user tasks and non-waiting tokens.
 	JobType string
+	// DueUnixMs is the timer catch due time copied from INTERMEDIATE_CATCH_EVENT ACTIVATED.
+	// Zero when the token is not waiting on a timer.
+	DueUnixMs int64
 }
 
 type Instance struct {
@@ -126,18 +129,23 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 	// Tokens are updated only from EVENT records (not by the executor).
 	switch el.GetIntent() {
 	case eventv1.Element_INTENT_ACTIVATED:
-		if el.GetType() == eventv1.Element_TYPE_USER_TASK || el.GetType() == eventv1.Element_TYPE_SERVICE_TASK {
+		if waitingActivation(el.GetType()) {
 			tok.Status = TokenWaiting
 		} else {
 			tok.Status = TokenActive
 		}
 		tok.JobType = ""
+		tok.DueUnixMs = 0
 		if p := el.GetActivityPayload(); p != nil {
 			tok.JobType = p.GetJobType()
+		}
+		if p := el.GetEventPayload(); p != nil {
+			tok.DueUnixMs = p.GetDueUnixMs()
 		}
 	case eventv1.Element_INTENT_COMPLETED, eventv1.Element_INTENT_TERMINATED:
 		tok.Status = TokenActive
 		tok.JobType = ""
+		tok.DueUnixMs = 0
 	case eventv1.Element_INTENT_FAILED:
 		// Job failure does not complete the activity; worker may retry.
 		tok.Status = TokenWaiting
@@ -147,9 +155,19 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 	case eventv1.Element_INTENT_SEQUENCE_FLOW_TAKEN:
 		tok.Status = TokenActive
 		tok.JobType = ""
+		tok.DueUnixMs = 0
 		if sp := el.GetSequenceFlowPayload(); sp != nil && sp.GetTargetId() != "" {
 			tok.ElementID = sp.GetTargetId()
 		}
+	}
+}
+
+func waitingActivation(t eventv1.Element_Type) bool {
+	switch t {
+	case eventv1.Element_TYPE_USER_TASK, eventv1.Element_TYPE_SERVICE_TASK, eventv1.Element_TYPE_INTERMEDIATE_CATCH_EVENT:
+		return true
+	default:
+		return false
 	}
 }
 

@@ -57,6 +57,7 @@ Current `Event` shape (high level):
 - Nested `Element`: `Intent`, `Type`, `id`, `token_id` (token id is UUIDv7 string)
 - `Element.Type` = one value per independent BPMN element (`PROCESS` + `FlowElements` concrete types); no generic TASK/GATEWAY + kind
 - Payloads are data-only groups: process / event / activity / gateway / sequence-flow / data
+- `EventPayload` may carry `due_unix_ms` + `duration` for timer catch ACTIVATED
 
 ### Regenerate
 
@@ -74,7 +75,7 @@ cd protocol/proto && ./build.sh
 
 - Runtime module: see `processing/README.md` and `processing/DESIGN.md`.
 - M1 engine available: Deploy / CreateInstance / Complete with in-memory or file event log.
-- Waiting activities (UserTask, ServiceTask) complete via one `Complete` API; type comes from the deployment. ServiceTask job type is `ActivityPayload.job_type`.
+- Waiting activities (UserTask, ServiceTask, intermediate timer catch) complete via one `Complete` API; type comes from the deployment. ServiceTask job type is `ActivityPayload.job_type`. Timer due is `EventPayload.due_unix_ms`; `FireDue` completes expired catches. `cmd/sparrow` ticks `FireDue`.
 - Workers pull ServiceTask jobs with `Activate` (in-memory lease; not an EventLog record). `Fail` keeps the token waiting and releases the lease; `Heartbeat` extends it. Complete still finishes the waiting token.
 - External clients use `gateway` (`engine.v1` + `job.v1` gRPC). Process entry is `gateway/cmd/sparrow` (`Open` + Serve). Do not put transport in `processing`.
 - Durable open: `processing.Recover(ctx, eventLog, deploymentStore)` rebuilds projections and finishes any COMMAND whose EVENT chain was interrupted. `Open(ctx, dataDir)` is the file-backed convenience.

@@ -21,6 +21,7 @@ type Deployment struct {
 	flows        map[string]element.SequenceFlow
 	xor          map[string]element.ExclusiveGateway
 	serviceTasks map[string]element.ServiceTask
+	timerCatch   map[string]timerCatch
 }
 
 // Compile parses BPMN XML and keeps the first executable process (M1 subset).
@@ -65,6 +66,7 @@ func (d *Deployment) buildIndex() {
 	d.flows = make(map[string]element.SequenceFlow, len(p.SequenceFlows))
 	d.xor = make(map[string]element.ExclusiveGateway, len(p.ExclusiveGatewaies))
 	d.serviceTasks = make(map[string]element.ServiceTask, len(p.ServiceTasks))
+	d.timerCatch = make(map[string]timerCatch, len(p.IntermediateCatchEvents))
 
 	indexNode := func(id string, typ eventv1.Element_Type, outs []string) {
 		d.types[id] = typ
@@ -89,6 +91,13 @@ func (d *Deployment) buildIndex() {
 		indexNode(g.ID, eventv1.Element_TYPE_EXCLUSIVE_GATEWAY, g.Outgoing)
 		d.xor[g.ID] = g
 	}
+	for _, e := range p.IntermediateCatchEvents {
+		indexNode(e.ID, eventv1.Element_TYPE_INTERMEDIATE_CATCH_EVENT, e.Outgoing)
+		spec, err := timerCatchSpec(e)
+		if err == nil {
+			d.timerCatch[e.ID] = spec
+		}
+	}
 	for _, f := range p.SequenceFlows {
 		d.types[f.ID] = eventv1.Element_TYPE_SEQUENCE_FLOW
 		d.flows[f.ID] = f
@@ -104,9 +113,14 @@ func validateM1(proc *element.Process) error {
 	unsupported += len(proc.SendTasks) + len(proc.ReceiveTasks) + len(proc.BusinessRuleTasks)
 	unsupported += len(proc.ParallelGatewaies) + len(proc.InclusiveGatewaies) + len(proc.EventBasedGatewaies)
 	unsupported += len(proc.SubProcesses) + len(proc.CallActivities) + len(proc.BoundaryEvents)
-	unsupported += len(proc.IntermediateCatchEvents) + len(proc.IntermediateThrowEvents)
+	unsupported += len(proc.IntermediateThrowEvents)
 	if unsupported > 0 {
 		return fmt.Errorf("UNSUPPORTED_ELEMENT: process contains elements outside M1 subset")
+	}
+	for _, e := range proc.IntermediateCatchEvents {
+		if _, err := timerCatchSpec(e); err != nil {
+			return err
+		}
 	}
 	if len(proc.StartEvents) == 0 {
 		return fmt.Errorf("no startEvent in process")
@@ -185,6 +199,11 @@ func flowNodeOutgoing(proc *element.Process, id string) []string {
 		}
 	}
 	for _, e := range proc.ExclusiveGatewaies {
+		if e.ID == id {
+			return append([]string{}, e.Outgoing...)
+		}
+	}
+	for _, e := range proc.IntermediateCatchEvents {
 		if e.ID == id {
 			return append([]string{}, e.Outgoing...)
 		}

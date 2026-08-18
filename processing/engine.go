@@ -32,15 +32,16 @@ type Engine struct {
 
 	seenMu sync.Mutex
 	seen   map[string]struct{}
+
+	nowFn func() time.Time
 }
 
 func NewEngine(l eventlog.EventLog) *Engine {
 	if l == nil {
 		l = eventlog.NewMemory()
 	}
-	return &Engine{
+	e := &Engine{
 		log:         l,
-		executor:    NewExecutor(handlers.DefaultRegistry()),
 		deployments: make(map[string]*deploy.Deployment),
 		instances:   make(map[string]*projection.Instance),
 		instMu:      make(map[string]*sync.Mutex),
@@ -48,6 +49,9 @@ func NewEngine(l eventlog.EventLog) *Engine {
 		jobWake:     make(chan struct{}, 1),
 		seen:        make(map[string]struct{}),
 	}
+	e.executor = NewExecutor(handlers.DefaultRegistry())
+	e.executor.Now = e.now
+	return e
 }
 
 func (e *Engine) Deploy(_ context.Context, bpmnXML []byte) (string, error) {
@@ -331,4 +335,11 @@ func (e *Engine) reject(ctx context.Context, inst *projection.Instance, elementI
 
 func nowMillis() int64 {
 	return time.Now().UnixMilli()
+}
+
+func (e *Engine) now() time.Time {
+	if e != nil && e.nowFn != nil {
+		return e.nowFn()
+	}
+	return time.Now()
 }

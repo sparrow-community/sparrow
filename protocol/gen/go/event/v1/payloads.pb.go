@@ -121,7 +121,11 @@ func (x *ProcessPayload) GetVariables() []*Variable {
 
 // Shared payload for BPMN event flow nodes (start/end/intermediate/boundary/…).
 type EventPayload struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Due time for a timer catch (unix milliseconds). Set on ACTIVATED.
+	DueUnixMs int64 `protobuf:"varint,1,opt,name=due_unix_ms,json=dueUnixMs,proto3" json:"due_unix_ms,omitempty"`
+	// Original ISO-8601 duration text from the definition (audit). Empty if unused.
+	Duration      string `protobuf:"bytes,2,opt,name=duration,proto3" json:"duration,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -154,6 +158,20 @@ func (x *EventPayload) ProtoReflect() protoreflect.Message {
 // Deprecated: Use EventPayload.ProtoReflect.Descriptor instead.
 func (*EventPayload) Descriptor() ([]byte, []int) {
 	return file_event_v1_payloads_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *EventPayload) GetDueUnixMs() int64 {
+	if x != nil {
+		return x.DueUnixMs
+	}
+	return 0
+}
+
+func (x *EventPayload) GetDuration() string {
+	if x != nil {
+		return x.Duration
+	}
+	return ""
 }
 
 // Shared payload for BPMN activities (tasks, subProcess, callActivity, …).
@@ -365,8 +383,10 @@ const file_event_v1_payloads_proto_rawDesc = "" +
 	"\n" +
 	"json_value\x18\x02 \x01(\tR\tjsonValue\"B\n" +
 	"\x0eProcessPayload\x120\n" +
-	"\tvariables\x18\x01 \x03(\v2\x12.event.v1.VariableR\tvariables\"\x0e\n" +
-	"\fEventPayload\"\x83\x01\n" +
+	"\tvariables\x18\x01 \x03(\v2\x12.event.v1.VariableR\tvariables\"J\n" +
+	"\fEventPayload\x12\x1e\n" +
+	"\vdue_unix_ms\x18\x01 \x01(\x03R\tdueUnixMs\x12\x1a\n" +
+	"\bduration\x18\x02 \x01(\tR\bduration\"\x83\x01\n" +
 	"\x0fActivityPayload\x120\n" +
 	"\tvariables\x18\x01 \x03(\v2\x12.event.v1.VariableR\tvariables\x12\x19\n" +
 	"\bjob_type\x18\x02 \x01(\tR\ajobType\x12#\n" +

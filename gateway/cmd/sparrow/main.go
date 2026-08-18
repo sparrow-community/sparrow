@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/sparrow-community/sparrow/gateway"
 	"github.com/sparrow-community/sparrow/processing"
@@ -34,6 +35,8 @@ func main() {
 		}
 	}()
 
+	go fireDueLoop(ctx, eng)
+
 	lis, err := net.Listen("tcp", *listen)
 	if err != nil {
 		log.Fatalf("listen: %v", err)
@@ -47,5 +50,20 @@ func main() {
 	}()
 	if err := srv.Serve(lis); err != nil {
 		log.Fatalf("serve: %v", err)
+	}
+}
+
+func fireDueLoop(ctx context.Context, eng *processing.Engine) {
+	ticker := time.NewTicker(200 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := eng.FireDue(ctx); err != nil && ctx.Err() == nil {
+				log.Printf("fire due: %v", err)
+			}
+		}
 	}
 }
