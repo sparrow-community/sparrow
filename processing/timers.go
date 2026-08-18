@@ -8,9 +8,10 @@ import (
 )
 
 type dueWait struct {
-	instanceID string
-	elementID  string
-	tokenID    string
+	instanceID  string
+	elementID   string
+	tokenID     string
+	MessageName string
 }
 
 // FireDue completes waiting timer catch tokens whose due time has been reached.

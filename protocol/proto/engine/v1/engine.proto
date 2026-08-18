@@ -88,7 +88,8 @@ message GetInstanceResponse {
 }
 
 // PublishMessageRequest correlates a BPMN message to waiting message catches.
-// Undelivered messages are not buffered: if no waiter matches, the RPC fails.
+// If no waiter matches, the message is buffered in memory until a matching catch
+// activates (lost on Recover; not an EventLog record).
 message PublishMessageRequest {
   // BPMN message name (Definitions/message@name, else message id / messageRef).
   string name = 1;
@@ -102,10 +103,12 @@ message PublishMessageRequest {
   map<string, string> correlation_keys = 4;
 }
 
-// PublishMessageResponse reports how many waiting catches were completed.
+// PublishMessageResponse reports delivery to waiting catches and in-memory buffering.
 message PublishMessageResponse {
-  // Number of waiting tokens completed.
+  // Number of waiting tokens completed immediately.
   int32 delivered = 1;
+  // 1 if the message was buffered because no waiter matched; otherwise 0.
+  int32 buffered = 2;
 }
 
 // ListEventsRequest reads the audit timeline for one instance.

@@ -177,9 +177,12 @@ func TestEngineServicePublishMessage(t *testing.T) {
 		t.Fatalf("status=%s", got.GetInstance().GetStatus())
 	}
 
-	_, err = client.PublishMessage(ctx, &enginev1.PublishMessageRequest{Name: "order.confirmed"})
-	if status.Code(err) != codes.NotFound {
-		t.Fatalf("code=%v err=%v", status.Code(err), err)
+	late, err := client.PublishMessage(ctx, &enginev1.PublishMessageRequest{Name: "order.confirmed"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if late.GetDelivered() != 0 || late.GetBuffered() != 1 {
+		t.Fatalf("late publish delivered=%d buffered=%d", late.GetDelivered(), late.GetBuffered())
 	}
 }
 
@@ -212,12 +215,15 @@ func TestEngineServicePublishMessageCorrelation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = client.PublishMessage(ctx, &enginev1.PublishMessageRequest{
+	miss, err := client.PublishMessage(ctx, &enginev1.PublishMessageRequest{
 		Name:            "order.confirmed",
 		CorrelationKeys: map[string]string{"orderId": `"missing"`},
 	})
-	if status.Code(err) != codes.NotFound {
-		t.Fatalf("unmatched code=%v err=%v", status.Code(err), err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if miss.GetDelivered() != 0 || miss.GetBuffered() != 1 {
+		t.Fatalf("unmatched delivered=%d buffered=%d", miss.GetDelivered(), miss.GetBuffered())
 	}
 
 	pub, err := client.PublishMessage(ctx, &enginev1.PublishMessageRequest{

@@ -10,7 +10,9 @@ import (
 )
 
 // PublishMessageRequest correlates a BPMN message to waiting message catches.
-// Messages that arrive before a waiter exists are not buffered.
+// If no waiter matches, the message is kept in an in-memory buffer until a
+// matching catch activates. The buffer is not an EventLog record and is empty
+// after Recover.
 type PublishMessageRequest struct {
 	Name              string
 	ProcessInstanceID string // empty: all matching waiters
@@ -20,8 +22,17 @@ type PublishMessageRequest struct {
 	Variables       map[string]any
 }
 
+type bufferedMessage struct {
+	id         string
+	name       string
+	instanceID string
+	keys       []*eventv1.Variable
+	vars       map[string]any
+}
+
 // PublishMessage completes waiting message-catch tokens whose MessageName matches.
 // Each match is finished through Complete (same waiting story as UserTask / timer).
+// With no matching waiter, the message is buffered and delivered when a catch waits.
 func (e *Engine) PublishMessage(ctx context.Context, req PublishMessageRequest) (int, error) {
 	name := strings.TrimSpace(req.Name)
 	if name == "" {
@@ -42,10 +53,10 @@ func (e *Engine) PublishMessage(ctx context.Context, req PublishMessageRequest) 
 	}
 	waiters := e.collectMessageWaiters(name, instanceID, keys)
 	if len(waiters) == 0 {
-		if instanceID != "" {
-			return 0, fmt.Errorf("NOT_FOUND: no waiting message catch %q on instance %q", name, instanceID)
+		if err := e.enqueueBuffered(name, instanceID, keys, req.Variables); err != nil {
+			return 0, err
 		}
-		return 0, fmt.Errorf("NOT_FOUND: no waiting message catch %q", name)
+		return 0, nil
 	}
 	delivered := 0
 	var first error
@@ -68,7 +79,10 @@ func (e *Engine) PublishMessage(ctx context.Context, req PublishMessageRequest) 
 		return 0, first
 	}
 	if delivered == 0 {
-		return 0, fmt.Errorf("NOT_FOUND: no waiting message catch %q", name)
+		if err := e.enqueueBuffered(name, instanceID, keys, req.Variables); err != nil {
+			return 0, err
+		}
+		return 0, nil
 	}
 	return delivered, first
 }
@@ -106,7 +120,7 @@ func (e *Engine) collectMessageWaiters(name, instanceID string, keys []*eventv1.
 				continue
 			}
 			if tok.MessageName != "" && tok.MessageName == name {
-				waiters = append(waiters, dueWait{instanceID: iid, elementID: tok.ElementID, tokenID: tok.ID})
+				waiters = append(waiters, dueWait{instanceID: iid, elementID: tok.ElementID, tokenID: tok.ID, MessageName: tok.MessageName})
 			}
 		}
 		lock.Unlock()
@@ -121,4 +135,96 @@ func correlationKeysMatch(vars map[string]string, keys []*eventv1.Variable) bool
 		}
 	}
 	return true
+}
+
+func (e *Engine) enqueueBuffered(name, instanceID string, keys []*eventv1.Variable, vars map[string]any) error {
+	id, err := NextID()
+	if err != nil {
+		return err
+	}
+	e.msgMu.Lock()
+	e.msgBuf = append(e.msgBuf, bufferedMessage{
+		id:         id,
+		name:       name,
+		instanceID: instanceID,
+		keys:       keys,
+		vars:       cloneAnyMap(vars),
+	})
+	e.msgMu.Unlock()
+	return nil
+}
+
+func (e *Engine) takeBuffered(name, instanceID string, vars map[string]string) (bufferedMessage, bool) {
+	e.msgMu.Lock()
+	defer e.msgMu.Unlock()
+	for i, m := range e.msgBuf {
+		if m.name != name {
+			continue
+		}
+		if m.instanceID != "" && m.instanceID != instanceID {
+			continue
+		}
+		if !correlationKeysMatch(vars, m.keys) {
+			continue
+		}
+		e.msgBuf = append(e.msgBuf[:i], e.msgBuf[i+1:]...)
+		return m, true
+	}
+	return bufferedMessage{}, false
+}
+
+func (e *Engine) prependBuffered(m bufferedMessage) {
+	e.msgMu.Lock()
+	e.msgBuf = append([]bufferedMessage{m}, e.msgBuf...)
+	e.msgMu.Unlock()
+}
+
+func (e *Engine) tryDeliverBuffered(ctx context.Context, instanceID string) error {
+	for {
+		w, vars, ok := e.messageWaiterOn(instanceID)
+		if !ok {
+			return nil
+		}
+		msg, ok := e.takeBuffered(w.MessageName, instanceID, vars)
+		if !ok {
+			return nil
+		}
+		if err := e.Complete(ctx, instanceID, w.elementID, w.tokenID, msg.vars); err != nil {
+			e.prependBuffered(msg)
+			if strings.HasPrefix(err.Error(), "INVALID_STATE:") {
+				return nil
+			}
+			return err
+		}
+	}
+}
+
+func (e *Engine) messageWaiterOn(instanceID string) (dueWait, map[string]string, bool) {
+	e.mu.Lock()
+	inst := e.instances[instanceID]
+	lock := e.instMu[instanceID]
+	e.mu.Unlock()
+	if inst == nil || lock == nil {
+		return dueWait{}, nil, false
+	}
+	lock.Lock()
+	defer lock.Unlock()
+	for _, tok := range inst.Tokens {
+		if tok == nil || tok.Status != projection.TokenWaiting || tok.MessageName == "" {
+			continue
+		}
+		return dueWait{instanceID: instanceID, elementID: tok.ElementID, tokenID: tok.ID, MessageName: tok.MessageName}, cloneStringMap(inst.Variables), true
+	}
+	return dueWait{}, nil, false
+}
+
+func cloneAnyMap(m map[string]any) map[string]any {
+	if len(m) == 0 {
+		return nil
+	}
+	out := make(map[string]any, len(m))
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
 }

@@ -591,7 +591,8 @@ func (x *GetInstanceResponse) GetInstance() *Instance {
 }
 
 // PublishMessageRequest correlates a BPMN message to waiting message catches.
-// Undelivered messages are not buffered: if no waiter matches, the RPC fails.
+// If no waiter matches, the message is buffered in memory until a matching catch
+// activates (lost on Recover; not an EventLog record).
 type PublishMessageRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// BPMN message name (Definitions/message@name, else message id / messageRef).
@@ -666,11 +667,13 @@ func (x *PublishMessageRequest) GetCorrelationKeys() map[string]string {
 	return nil
 }
 
-// PublishMessageResponse reports how many waiting catches were completed.
+// PublishMessageResponse reports delivery to waiting catches and in-memory buffering.
 type PublishMessageResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Number of waiting tokens completed.
-	Delivered     int32 `protobuf:"varint,1,opt,name=delivered,proto3" json:"delivered,omitempty"`
+	// Number of waiting tokens completed immediately.
+	Delivered int32 `protobuf:"varint,1,opt,name=delivered,proto3" json:"delivered,omitempty"`
+	// 1 if the message was buffered because no waiter matched; otherwise 0.
+	Buffered      int32 `protobuf:"varint,2,opt,name=buffered,proto3" json:"buffered,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -708,6 +711,13 @@ func (*PublishMessageResponse) Descriptor() ([]byte, []int) {
 func (x *PublishMessageResponse) GetDelivered() int32 {
 	if x != nil {
 		return x.Delivered
+	}
+	return 0
+}
+
+func (x *PublishMessageResponse) GetBuffered() int32 {
+	if x != nil {
+		return x.Buffered
 	}
 	return 0
 }
@@ -862,9 +872,10 @@ const file_engine_v1_engine_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1aB\n" +
 	"\x14CorrelationKeysEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"6\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"R\n" +
 	"\x16PublishMessageResponse\x12\x1c\n" +
-	"\tdelivered\x18\x01 \x01(\x05R\tdelivered\"C\n" +
+	"\tdelivered\x18\x01 \x01(\x05R\tdelivered\x12\x1a\n" +
+	"\bbuffered\x18\x02 \x01(\x05R\bbuffered\"C\n" +
 	"\x11ListEventsRequest\x12.\n" +
 	"\x13process_instance_id\x18\x01 \x01(\tR\x11processInstanceId\"=\n" +
 	"\x12ListEventsResponse\x12'\n" +

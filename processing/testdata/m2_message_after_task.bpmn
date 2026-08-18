@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             id="Definitions_message_task"
+             targetNamespace="http://sparrow.example/message-task">
+  <message id="message_1" name="order.confirmed"/>
+  <process id="Process_message_task" name="M2 Message After Task" isExecutable="true">
+    <startEvent id="StartEvent_1">
+      <outgoing>Flow_start_to_task</outgoing>
+    </startEvent>
+    <userTask id="UserTask_1" name="Prepare">
+      <incoming>Flow_start_to_task</incoming>
+      <outgoing>Flow_task_to_msg</outgoing>
+    </userTask>
+    <intermediateCatchEvent id="MessageCatch_1" name="Wait">
+      <incoming>Flow_task_to_msg</incoming>
+      <outgoing>Flow_msg_to_end</outgoing>
+      <messageEventDefinition id="MsgDef_1" messageRef="message_1"/>
+    </intermediateCatchEvent>
+    <endEvent id="EndEvent_1">
+      <incoming>Flow_msg_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_task" sourceRef="StartEvent_1" targetRef="UserTask_1"/>
+    <sequenceFlow id="Flow_task_to_msg" sourceRef="UserTask_1" targetRef="MessageCatch_1"/>
+    <sequenceFlow id="Flow_msg_to_end" sourceRef="MessageCatch_1" targetRef="EndEvent_1"/>
+  </process>
+</definitions>

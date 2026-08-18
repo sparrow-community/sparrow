@@ -88,7 +88,11 @@ func (s *EngineServer) PublishMessage(ctx context.Context, req *enginev1.Publish
 	if err != nil {
 		return nil, statusFromEngine(err)
 	}
-	return &enginev1.PublishMessageResponse{Delivered: int32(n)}, nil
+	out := &enginev1.PublishMessageResponse{Delivered: int32(n)}
+	if n == 0 {
+		out.Buffered = 1
+	}
+	return out, nil
 }
 
 func (s *EngineServer) GetInstance(_ context.Context, req *enginev1.GetInstanceRequest) (*enginev1.GetInstanceResponse, error) {

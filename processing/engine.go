@@ -30,6 +30,9 @@ type Engine struct {
 	leases  map[string]jobLease
 	jobWake chan struct{}
 
+	msgMu  sync.Mutex
+	msgBuf []bufferedMessage
+
 	seenMu sync.Mutex
 	seen   map[string]struct{}
 
@@ -134,15 +137,19 @@ func (e *Engine) CreateInstance(ctx context.Context, deploymentID string, vars m
 	e.mu.Unlock()
 
 	lock.Lock()
-	defer lock.Unlock()
-
 	emit := e.emitter(ctx, inst, cmdID)
 	for _, rec := range handlers.ProcessStartRecords(dep.ProcessID(), pv) {
 		if err := emit(rec); err != nil {
+			lock.Unlock()
 			return "", err
 		}
 	}
-	if err := e.executor.Enter(ctx, dep, inst, tokenID, startID, emit); err != nil {
+	err = e.executor.Enter(ctx, dep, inst, tokenID, startID, emit)
+	lock.Unlock()
+	if err != nil {
+		return "", err
+	}
+	if err := e.tryDeliverBuffered(ctx, instanceID); err != nil {
 		return "", err
 	}
 	return instanceID, nil
@@ -162,8 +169,15 @@ func (e *Engine) Complete(ctx context.Context, instanceID, elementID, tokenID st
 	}
 
 	lock.Lock()
-	defer lock.Unlock()
+	err := e.completeLocked(ctx, dep, inst, instanceID, elementID, tokenID, vars)
+	lock.Unlock()
+	if err != nil {
+		return err
+	}
+	return e.tryDeliverBuffered(ctx, instanceID)
+}
 
+func (e *Engine) completeLocked(ctx context.Context, dep *deploy.Deployment, inst *projection.Instance, instanceID, elementID, tokenID string, vars map[string]any) error {
 	typ, typeErr := dep.TypeOf(elementID)
 	if typeErr != nil {
 		typ = eventv1.Element_TYPE_UNSPECIFIED
