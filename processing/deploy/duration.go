@@ -56,3 +56,26 @@ func ParseISO8601Duration(s string) (time.Duration, error) {
 	}
 	return total, nil
 }
+
+// ParseISO8601Date parses a BPMN timeDate subset: RFC3339, or date-only (UTC).
+func ParseISO8601Date(s string) (time.Time, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return time.Time{}, fmt.Errorf("INVALID_CONDITION: empty timeDate")
+	}
+	layouts := []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02T15:04:05",
+		"2006-01-02",
+	}
+	var last error
+	for _, layout := range layouts {
+		t, err := time.Parse(layout, s)
+		if err == nil {
+			return t.UTC(), nil
+		}
+		last = err
+	}
+	return time.Time{}, fmt.Errorf("INVALID_CONDITION: timeDate %q is not ISO-8601 datetime: %w", s, last)
+}

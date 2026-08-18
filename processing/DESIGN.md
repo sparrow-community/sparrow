@@ -4,8 +4,8 @@
 实现应以本文为准；协议字段变更在 `protocol` 中进行，并保持「Event = 元素行为」的定位。
 
 **M1 状态**：Deploy / CreateInstance / Complete、XOR 条件、内存与文件 EventLog、`Open` 重启回放已可用。  
-**M2 起步**：ServiceTask 等待；Job 经 `Activate` / `Fail` / `Heartbeat`；中间捕获 Timer（`timeDuration`）+ `FireDue`；中间捕获 Message + `PublishMessage`；gRPC 在 `gateway`（`engine.v1` + `job.v1`），进程入口 `gateway/cmd/sparrow`（含 `FireDue` 轮询）。  
-尚未实现：Message 缓冲 / correlation key、Timer 的 date/cycle/boundary、更多 BPMN 元素、跨重启的 Job 租约。
+**M2 起步**：ServiceTask 等待；Job 经 `Activate` / `Fail` / `Heartbeat`；中间捕获 Timer（`timeDuration` / `timeDate`）+ `FireDue`；中间捕获 Message + `PublishMessage`；gRPC 在 `gateway`（`engine.v1` + `job.v1`），进程入口 `gateway/cmd/sparrow`（含 `FireDue` 轮询）。  
+尚未实现：Message 缓冲 / correlation key、Timer 的 cycle/boundary、更多 BPMN 元素、跨重启的 Job 租约。
 
 ---
 
@@ -276,31 +276,30 @@ Recover(ctx, eventLog, deploymentStore)
 | `START_EVENT` | `start_event.go` | 瞬时生命周期后沿出口流出 |
 | `USER_TASK` | `user_task.go` | ACTIVATING→ACTIVATED 后 `Wait`；Complete → COMPLETING→COMPLETED |
 | `SERVICE_TASK` | `service_task.go` | 同上等待；ACTIVATED 带 `ActivityPayload.job_type`；经 `Complete` 完成 |
-| `INTERMEDIATE_CATCH_EVENT` | `intermediate_catch_event.go` | Timer：`timeDuration`（`PTnHnMnS`），ACTIVATED 写 `due_unix_ms`，`FireDue` → `Complete`。Message：ACTIVATED 写 `message_name`，`PublishMessage` → `Complete`。均 `Wait`。 |
+| `INTERMEDIATE_CATCH_EVENT` | `intermediate_catch_event.go` | Timer：`timeDuration`（`PTnHnMnS`）或 `timeDate`（ISO-8601），ACTIVATED 写 `due_unix_ms`，`FireDue` → `Complete`。Message：ACTIVATED 写 `message_name`，`PublishMessage` → `Complete`。均 `Wait`。 |
 | `EXCLUSIVE_GATEWAY` | `exclusive_gateway.go` | 非 default 条件按序求值，否则 default；payload 带 `taken_sequence_flow_id` |
 | `SEQUENCE_FLOW` | `sequence_flow.go` | 经 transit 发 `SEQUENCE_FLOW_TAKEN`（不走 OnEnter） |
 | `END_EVENT` | `end_event.go` | 完成后 `TryCompleteProcess` |
 
 部署时 `validateM1` 拒绝尚未实现的元素（Parallel、SubProcess、throw/boundary、更多元素等）。ServiceTask 与中间捕获（Timer + Message catch）已纳入可执行子集。
 
-### Timer catch（timeDuration）时序链（M2）
+### Timer catch（timeDuration / timeDate）时序链（M2）
 
-以 `Start → IntermediateCatchEvent(timer PTnHnMnS) → End` 为例：
+以 `Start → IntermediateCatchEvent(timer) → End` 为例：
 
 1. `Engine.CreateInstance` 写启动 `COMMAND(PROCESS)`，并进入 `StartEvent`
 2. token 进入 `INTERMEDIATE_CATCH_EVENT` 后，`Executor.Enter` 调用
    `IntermediateCatchEventHandler.OnEnter`
-3. `OnEnter` 从 `deploy.Deployment` 读取 `timeDuration`，计算并写出到事件载荷：
-   - `EVENT(INTERMEDIATE_CATCH_EVENT, ACTIVATING)`
-   - `EVENT(INTERMEDIATE_CATCH_EVENT, ACTIVATED, EventPayload{due_unix_ms, duration})`
-   - `Effect.Wait=true`，因此 token 保持 `waiting`（投影里是 `Token.DueUnixMs`）
-4. `gateway/cmd/sparrow` 在后台循环调用 `Engine.FireDue`
-   - `FireDue` 扫描 `waiting && due_unix_ms <= now` 的 token
-   - 对每个到期 token 调用统一入口 `Engine.Complete(...)`
-5. `Engine.Complete` 写入 `COMMAND(COMPLETING...)` + handler 输出
-   `EVENT(COMPLETING...)` + `EVENT(COMPLETED...)`，并 `TakeOutgoing=true` 推进 `SEQUENCE_FLOW_TAKEN`
+3. `OnEnter` 从 `deploy.Deployment` 读取 timer 定义并写出到期时刻：
+   - `timeDuration`（`PTnHnMnS`）：`due_unix_ms = now + duration`
+   - `timeDate`（ISO-8601）：`due_unix_ms` 为该绝对时间
+   - `EVENT(ACTIVATING)` + `EVENT(ACTIVATED, EventPayload{due_unix_ms, duration=原文})`
+   - `Wait=true`；投影 `Token.DueUnixMs`
+   - `timeCycle` 仍拒绝
+4. `gateway/cmd/sparrow` 循环 `Engine.FireDue`：`waiting && due_unix_ms <= now` → `Complete`
+5. `Complete` 后 `TakeOutgoing=true` 推进 `SEQUENCE_FLOW_TAKEN`
 
-重启恢复：`Recover` 通过回放 `ACTIVATED{due_unix_ms}` 恢复投影中的 `Token.DueUnixMs`，但仍需等待下一次 `FireDue`（或手动 Complete）触发推进。
+重启恢复：回放 `ACTIVATED{due_unix_ms}` 还原 due，仍需 `FireDue` 或手动 Complete。
 
 ### Message catch 时序链（M2）
 
@@ -330,7 +329,7 @@ Recover(ctx, eventLog, deploymentStore)
 | 完成 UserTask | USER_TASK | COMPLETING → COMPLETED |
 | 进入 ServiceTask | SERVICE_TASK | ACTIVATING → ACTIVATED（等待；payload.job_type） |
 | 完成 ServiceTask | SERVICE_TASK | COMPLETING → COMPLETED |
-| 进入 Timer catch | INTERMEDIATE_CATCH_EVENT | ACTIVATING → ACTIVATED（等待；payload.due_unix_ms / duration） |
+| 进入 Timer catch | INTERMEDIATE_CATCH_EVENT | ACTIVATING → ACTIVATED（等待；payload.due_unix_ms / 原文 duration 或 timeDate） |
 | 完成 Timer catch | INTERMEDIATE_CATCH_EVENT | COMPLETING → COMPLETED |
 | 进入 Message catch | INTERMEDIATE_CATCH_EVENT | ACTIVATING → ACTIVATED（等待；payload.message_name） |
 | 完成 Message catch | INTERMEDIATE_CATCH_EVENT | COMPLETING → COMPLETED（可选 payload.variables） |
@@ -442,7 +441,7 @@ Recover(ctx, eventLog, deploymentStore)
 
 | 阶段 | 能力 | 落点 |
 |------|------|------|
-| M2 | Message 缓冲 / correlation key；Timer date/cycle/boundary | payload + 新 API 或扩展 catch |
+| M2 | Message 缓冲 / correlation key；Timer cycle/boundary | payload + 新 API 或扩展 catch |
 | M3 | Parallel/Inclusive、SubProcess、多 token | `Tokens` 多条目；gateway fork/join |
 | M4 | Boundary / 补偿 / Incident | 新 Intent + payload |
 
@@ -459,7 +458,7 @@ Recover(ctx, eventLog, deploymentStore)
 | 端到端 | `testdata/m1_simple.bpmn`：Deploy → CreateInstance → Complete → PROCESS COMPLETED |
 | 回归 | 不支持元素部署失败；非法 Complete → REJECTION；XOR default / 条件选路 |
 | Job | Activate 领取 / Fail 释放重领 / Heartbeat 续租 / Recover 后仍可 Activate |
-| Timer | `PT0S` 后 `FireDue` 完成；`PT1H` 未到期仍 waiting；Recover 后 due 仍在 |
+| Timer | `PT0S` / 过去 `timeDate` 后 `FireDue` 完成；`PT1H` / 未来 `timeDate` 未到期仍 waiting；Recover 后 due 仍在 |
 | Message | `PublishMessage` 按 name 完成 catch；未知 name / 无 waiter → NOT_FOUND；Recover 后仍可投递 |
 | 恢复 | `Open` 后仍在 UserTask waiting，Complete 可完成实例 |
 
@@ -482,7 +481,7 @@ Recover(ctx, eventLog, deploymentStore)
 | 11 | Job gRPC（`protocol/job.v1` + `gateway`） | 已完成 |
 | 12 | Engine gRPC + `cmd/sparrow` | 已完成 |
 | 13 | COMMAND 幂等 / 半截链 Recover | 已完成 |
-| 14 | 中间捕获 Timer（duration）+ `FireDue` | 已完成 |
+| 14 | 中间捕获 Timer（duration / date）+ `FireDue` | 已完成 |
 | 15 | Message catch + `PublishMessage` | 已完成 |
 | 16 | Message 缓冲 / correlation；更多元素 | 未开始 |
 

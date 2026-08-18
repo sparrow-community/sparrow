@@ -124,7 +124,7 @@ type EventPayload struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Due time for a timer catch (unix milliseconds). Set on ACTIVATED.
 	DueUnixMs int64 `protobuf:"varint,1,opt,name=due_unix_ms,json=dueUnixMs,proto3" json:"due_unix_ms,omitempty"`
-	// Original ISO-8601 duration text from the definition (audit). Empty if unused.
+	// Original timer expression text (timeDuration or timeDate). Empty if unused.
 	Duration string `protobuf:"bytes,2,opt,name=duration,proto3" json:"duration,omitempty"`
 	// BPMN message name for a message catch. Set on ACTIVATED; empty for timers.
 	MessageName string `protobuf:"bytes,3,opt,name=message_name,json=messageName,proto3" json:"message_name,omitempty"`

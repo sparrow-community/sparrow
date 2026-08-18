@@ -18,6 +18,7 @@ const (
 
 type timerCatch struct {
 	Duration time.Duration
+	Date     time.Time
 	Text     string
 }
 
@@ -33,21 +34,29 @@ func timerCatchSpec(ev element.IntermediateCatchEvent) (timerCatch, error) {
 		return timerCatch{}, fmt.Errorf("UNSUPPORTED_ELEMENT: intermediateCatchEvent %q needs exactly one timerEventDefinition", ev.ID)
 	}
 	def := ev.TimerEventDefinitions[0]
-	if text := expressionText(def.TimeDate); text != "" {
-		return timerCatch{}, fmt.Errorf("UNSUPPORTED_ELEMENT: intermediateCatchEvent %q uses timeDate", ev.ID)
-	}
 	if text := expressionText(def.TimeCycle); text != "" {
 		return timerCatch{}, fmt.Errorf("UNSUPPORTED_ELEMENT: intermediateCatchEvent %q uses timeCycle", ev.ID)
 	}
-	text := expressionText(def.TimeDuration)
-	if text == "" {
-		return timerCatch{}, fmt.Errorf("UNSUPPORTED_ELEMENT: intermediateCatchEvent %q needs timeDuration", ev.ID)
+	dateText := expressionText(def.TimeDate)
+	durText := expressionText(def.TimeDuration)
+	if dateText != "" && durText != "" {
+		return timerCatch{}, fmt.Errorf("UNSUPPORTED_ELEMENT: intermediateCatchEvent %q has both timeDate and timeDuration", ev.ID)
 	}
-	dur, err := ParseISO8601Duration(text)
+	if dateText != "" {
+		at, err := ParseISO8601Date(dateText)
+		if err != nil {
+			return timerCatch{}, err
+		}
+		return timerCatch{Date: at, Text: dateText}, nil
+	}
+	if durText == "" {
+		return timerCatch{}, fmt.Errorf("UNSUPPORTED_ELEMENT: intermediateCatchEvent %q needs timeDuration or timeDate", ev.ID)
+	}
+	dur, err := ParseISO8601Duration(durText)
 	if err != nil {
 		return timerCatch{}, err
 	}
-	return timerCatch{Duration: dur, Text: text}, nil
+	return timerCatch{Duration: dur, Text: durText}, nil
 }
 
 func messageCatchSpec(ev element.IntermediateCatchEvent, messages []element.Message) (messageCatch, error) {
@@ -110,13 +119,32 @@ func expressionText(e element.ExpressionUnMarshal) string {
 	}
 }
 
-// TimerDuration returns the parsed ISO-8601 wait and original text for a timer catch.
+// TimerDuration returns the parsed ISO-8601 wait and original text for a duration timer catch.
 func (d *Deployment) TimerDuration(id string) (time.Duration, string, error) {
 	spec, ok := d.timerCatch[id]
 	if !ok {
 		return 0, "", fmt.Errorf("NOT_FOUND: timer catch %q", id)
 	}
+	if !spec.Date.IsZero() {
+		return 0, "", fmt.Errorf("NOT_FOUND: timer catch %q is timeDate, not timeDuration", id)
+	}
 	return spec.Duration, spec.Text, nil
+}
+
+// TimerDue returns the absolute due time for a timer catch.
+// timeDate uses the parsed instant; timeDuration is now + duration.
+func (d *Deployment) TimerDue(id string, now time.Time) (dueUnixMs int64, text string, err error) {
+	spec, ok := d.timerCatch[id]
+	if !ok {
+		return 0, "", fmt.Errorf("NOT_FOUND: timer catch %q", id)
+	}
+	if now.IsZero() {
+		now = time.Now()
+	}
+	if !spec.Date.IsZero() {
+		return spec.Date.UnixMilli(), spec.Text, nil
+	}
+	return now.Add(spec.Duration).UnixMilli(), spec.Text, nil
 }
 
 // MessageName returns the BPMN message name a catch is waiting for.

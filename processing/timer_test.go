@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/sparrow-community/sparrow/processing"
 	eventlog "github.com/sparrow-community/sparrow/processing/log"
@@ -102,6 +103,85 @@ func TestTimerCatchNotYetDue(t *testing.T) {
 	}
 }
 
+func TestTimerCatchTimeDatePastFireDue(t *testing.T) {
+	xml := readTestdata(t, "m2_timer_catch_date.bpmn")
+	eng := processing.NewEngine(eventlog.NewMemory())
+	ctx := context.Background()
+	dep, err := eng.Deploy(ctx, xml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instanceID, err := eng.CreateInstance(ctx, dep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inst, ok := eng.GetInstance(instanceID)
+	if !ok {
+		t.Fatal("missing instance")
+	}
+	elementID, tokenID := waitingAt(inst)
+	if elementID != "TimerCatch_1" {
+		t.Fatalf("tokens=%#v", inst.Tokens)
+	}
+	wantDue := time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC).UnixMilli()
+	if inst.Tokens[tokenID].DueUnixMs != wantDue {
+		t.Fatalf("due=%d want %d", inst.Tokens[tokenID].DueUnixMs, wantDue)
+	}
+	events, err := eng.ListEvents(ctx, instanceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sawDate bool
+	for _, ev := range events {
+		if ev.GetRecordType() != eventv1.Event_RECORD_TYPE_EVENT {
+			continue
+		}
+		el := ev.GetElement()
+		if el != nil && el.GetType() == eventv1.Element_TYPE_INTERMEDIATE_CATCH_EVENT &&
+			el.GetIntent() == eventv1.Element_INTENT_ACTIVATED {
+			p := el.GetEventPayload()
+			if p == nil || p.GetDuration() != "2000-01-01T00:00:00Z" || p.GetDueUnixMs() != wantDue {
+				t.Fatalf("payload=%v", p)
+			}
+			sawDate = true
+		}
+	}
+	if !sawDate {
+		t.Fatal("missing ACTIVATED with timeDate text")
+	}
+	if err := eng.FireDue(ctx); err != nil {
+		t.Fatalf("FireDue: %v", err)
+	}
+	inst, _ = eng.GetInstance(instanceID)
+	if inst.Status != projection.StatusCompleted {
+		t.Fatalf("status=%s want completed", inst.Status)
+	}
+}
+
+func TestTimerCatchTimeDateFuture(t *testing.T) {
+	xml := readTestdata(t, "m2_timer_catch_date_future.bpmn")
+	eng := processing.NewEngine(eventlog.NewMemory())
+	ctx := context.Background()
+	dep, err := eng.Deploy(ctx, xml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instanceID, err := eng.CreateInstance(ctx, dep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := eng.FireDue(ctx); err != nil {
+		t.Fatalf("FireDue: %v", err)
+	}
+	inst, _ := eng.GetInstance(instanceID)
+	if inst.Status != projection.StatusActive {
+		t.Fatalf("status=%s want still active", inst.Status)
+	}
+	if waitingElement(inst) != "TimerCatch_1" {
+		t.Fatalf("tokens=%#v", inst.Tokens)
+	}
+}
+
 func TestTimerCatchRecoverThenFireDue(t *testing.T) {
 	xml := readTestdata(t, "m2_timer_catch.bpmn")
 	dir := t.TempDir()
@@ -169,7 +249,7 @@ func TestDeployRejectsNonTimerCatch(t *testing.T) {
       <incoming>Flow_1</incoming>
       <outgoing>Flow_2</outgoing>
       <timerEventDefinition id="TimerDef_1">
-        <timeDate xsi:type="tFormalExpression">2020-01-01T00:00:00Z</timeDate>
+        <timeCycle xsi:type="tFormalExpression">R/PT1H</timeCycle>
       </timerEventDefinition>
     </intermediateCatchEvent>
     <endEvent id="EndEvent_1">

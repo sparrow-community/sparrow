@@ -27,12 +27,12 @@ func (IntermediateCatchEventHandler) OnEnter(in EnterInput) (*Effect, error) {
 	var payload *eventv1.EventPayload
 	switch kind {
 	case deploy.CatchKindTimer:
-		dur, text, err := in.Deployment.TimerDuration(in.ElementID)
+		dueUnixMs, text, err := in.Deployment.TimerDue(in.ElementID, now)
 		if err != nil {
 			return nil, err
 		}
 		payload = &eventv1.EventPayload{
-			DueUnixMs: now.Add(dur).UnixMilli(),
+			DueUnixMs: dueUnixMs,
 			Duration:  text,
 		}
 	case deploy.CatchKindMessage:

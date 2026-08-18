@@ -41,3 +41,36 @@ func TestParseISO8601Duration(t *testing.T) {
 		}
 	}
 }
+
+func TestParseISO8601Date(t *testing.T) {
+	cases := []struct {
+		in      string
+		want    time.Time
+		wantErr bool
+	}{
+		{in: "2000-01-01T00:00:00Z", want: time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)},
+		{in: "2000-01-01T00:00:00.500Z", want: time.Date(2000, 1, 1, 0, 0, 0, 500000000, time.UTC)},
+		{in: "2000-01-01T08:00:00+08:00", want: time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)},
+		{in: "2000-01-01T00:00:00", want: time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)},
+		{in: "2000-01-01", want: time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)},
+		{in: "", wantErr: true},
+		{in: "PT1H", wantErr: true},
+		{in: "not-a-date", wantErr: true},
+	}
+	for _, tc := range cases {
+		got, err := ParseISO8601Date(tc.in)
+		if tc.wantErr {
+			if err == nil {
+				t.Errorf("ParseISO8601Date(%q) err=nil want error", tc.in)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("ParseISO8601Date(%q) err=%v", tc.in, err)
+			continue
+		}
+		if !got.Equal(tc.want) {
+			t.Errorf("ParseISO8601Date(%q)=%v want %v", tc.in, got, tc.want)
+		}
+	}
+}
