@@ -158,6 +158,7 @@ func TestTimerCatchRecoverThenFireDue(t *testing.T) {
 func TestDeployRejectsNonTimerCatch(t *testing.T) {
 	xml := []byte(`<?xml version="1.0" encoding="UTF-8"?>
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
              id="Definitions_msg"
              targetNamespace="http://sparrow.example/msg">
   <process id="Process_msg" isExecutable="true">
@@ -167,7 +168,9 @@ func TestDeployRejectsNonTimerCatch(t *testing.T) {
     <intermediateCatchEvent id="Catch_1">
       <incoming>Flow_1</incoming>
       <outgoing>Flow_2</outgoing>
-      <messageEventDefinition id="MsgDef_1"/>
+      <timerEventDefinition id="TimerDef_1">
+        <timeDate xsi:type="tFormalExpression">2020-01-01T00:00:00Z</timeDate>
+      </timerEventDefinition>
     </intermediateCatchEvent>
     <endEvent id="EndEvent_1">
       <incoming>Flow_2</incoming>

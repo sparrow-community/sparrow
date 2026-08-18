@@ -22,6 +22,8 @@ type Deployment struct {
 	xor          map[string]element.ExclusiveGateway
 	serviceTasks map[string]element.ServiceTask
 	timerCatch   map[string]timerCatch
+	messageCatch map[string]string // element id -> BPMN message name
+	catchKinds   map[string]CatchKind
 }
 
 // Compile parses BPMN XML and keeps the first executable process (M1 subset).
@@ -55,11 +57,11 @@ func Compile(bpmnXML []byte) (*Deployment, error) {
 	}
 
 	d := &Deployment{Version: 1, Process: *proc}
-	d.buildIndex()
+	d.buildIndex(model.Definitions.Messages)
 	return d, nil
 }
 
-func (d *Deployment) buildIndex() {
+func (d *Deployment) buildIndex(messages []element.Message) {
 	p := &d.Process
 	d.types = map[string]eventv1.Element_Type{p.ID: eventv1.Element_TYPE_PROCESS}
 	d.outgoing = make(map[string][]string)
@@ -67,6 +69,8 @@ func (d *Deployment) buildIndex() {
 	d.xor = make(map[string]element.ExclusiveGateway, len(p.ExclusiveGatewaies))
 	d.serviceTasks = make(map[string]element.ServiceTask, len(p.ServiceTasks))
 	d.timerCatch = make(map[string]timerCatch, len(p.IntermediateCatchEvents))
+	d.messageCatch = make(map[string]string, len(p.IntermediateCatchEvents))
+	d.catchKinds = make(map[string]CatchKind, len(p.IntermediateCatchEvents))
 
 	indexNode := func(id string, typ eventv1.Element_Type, outs []string) {
 		d.types[id] = typ
@@ -93,9 +97,15 @@ func (d *Deployment) buildIndex() {
 	}
 	for _, e := range p.IntermediateCatchEvents {
 		indexNode(e.ID, eventv1.Element_TYPE_INTERMEDIATE_CATCH_EVENT, e.Outgoing)
-		spec, err := timerCatchSpec(e)
-		if err == nil {
+		if spec, err := timerCatchSpec(e); err == nil {
 			d.timerCatch[e.ID] = spec
+			d.catchKinds[e.ID] = CatchKindTimer
+			continue
+		}
+		if spec, err := messageCatchSpec(e, messages); err == nil {
+			d.messageCatch[e.ID] = spec.Name
+			d.catchKinds[e.ID] = CatchKindMessage
+			continue
 		}
 	}
 	for _, f := range p.SequenceFlows {
@@ -118,9 +128,13 @@ func validateM1(proc *element.Process) error {
 		return fmt.Errorf("UNSUPPORTED_ELEMENT: process contains elements outside M1 subset")
 	}
 	for _, e := range proc.IntermediateCatchEvents {
-		if _, err := timerCatchSpec(e); err != nil {
-			return err
+		if _, err := timerCatchSpec(e); err == nil {
+			continue
 		}
+		if _, err := messageCatchSpec(e, nil); err == nil {
+			continue
+		}
+		return fmt.Errorf("UNSUPPORTED_ELEMENT: intermediateCatchEvent %q must be either timer catch or message catch", e.ID)
 	}
 	if len(proc.StartEvents) == 0 {
 		return fmt.Errorf("no startEvent in process")

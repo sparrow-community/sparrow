@@ -31,6 +31,9 @@ type Token struct {
 	// DueUnixMs is the timer catch due time copied from INTERMEDIATE_CATCH_EVENT ACTIVATED.
 	// Zero when the token is not waiting on a timer.
 	DueUnixMs int64
+	// MessageName is the BPMN message name copied from a message catch ACTIVATED.
+	// Empty when the token is not waiting on a message.
+	MessageName string
 }
 
 type Instance struct {
@@ -111,6 +114,10 @@ func mergeVariables(inst *Instance, el *eventv1.Element) {
 		for _, v := range p.ActivityPayload.GetVariables() {
 			inst.Variables[v.GetName()] = v.GetJsonValue()
 		}
+	case *eventv1.Element_EventPayload:
+		for _, v := range p.EventPayload.GetVariables() {
+			inst.Variables[v.GetName()] = v.GetJsonValue()
+		}
 	}
 }
 
@@ -136,16 +143,19 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 		}
 		tok.JobType = ""
 		tok.DueUnixMs = 0
+		tok.MessageName = ""
 		if p := el.GetActivityPayload(); p != nil {
 			tok.JobType = p.GetJobType()
 		}
 		if p := el.GetEventPayload(); p != nil {
 			tok.DueUnixMs = p.GetDueUnixMs()
+			tok.MessageName = p.GetMessageName()
 		}
 	case eventv1.Element_INTENT_COMPLETED, eventv1.Element_INTENT_TERMINATED:
 		tok.Status = TokenActive
 		tok.JobType = ""
 		tok.DueUnixMs = 0
+		tok.MessageName = ""
 	case eventv1.Element_INTENT_FAILED:
 		// Job failure does not complete the activity; worker may retry.
 		tok.Status = TokenWaiting
@@ -156,6 +166,7 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 		tok.Status = TokenActive
 		tok.JobType = ""
 		tok.DueUnixMs = 0
+		tok.MessageName = ""
 		if sp := el.GetSequenceFlowPayload(); sp != nil && sp.GetTargetId() != "" {
 			tok.ElementID = sp.GetTargetId()
 		}

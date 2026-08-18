@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"fmt"
 	"time"
 
+	"github.com/sparrow-community/sparrow/processing/deploy"
 	eventv1 "github.com/sparrow-community/sparrow/protocol/gen/go/event/v1"
 )
 
@@ -13,7 +15,7 @@ func (IntermediateCatchEventHandler) Type() eventv1.Element_Type {
 }
 
 func (IntermediateCatchEventHandler) OnEnter(in EnterInput) (*Effect, error) {
-	dur, text, err := in.Deployment.TimerDuration(in.ElementID)
+	kind, err := in.Deployment.CatchKind(in.ElementID)
 	if err != nil {
 		return nil, err
 	}
@@ -21,6 +23,28 @@ func (IntermediateCatchEventHandler) OnEnter(in EnterInput) (*Effect, error) {
 	if now.IsZero() {
 		now = time.Now()
 	}
+
+	var payload *eventv1.EventPayload
+	switch kind {
+	case deploy.CatchKindTimer:
+		dur, text, err := in.Deployment.TimerDuration(in.ElementID)
+		if err != nil {
+			return nil, err
+		}
+		payload = &eventv1.EventPayload{
+			DueUnixMs: now.Add(dur).UnixMilli(),
+			Duration:  text,
+		}
+	case deploy.CatchKindMessage:
+		name, err := in.Deployment.MessageName(in.ElementID)
+		if err != nil {
+			return nil, err
+		}
+		payload = &eventv1.EventPayload{MessageName: name}
+	default:
+		return nil, fmt.Errorf("UNSUPPORTED_ELEMENT: intermediateCatchEvent %q has unsupported kind %q", in.ElementID, string(kind))
+	}
+
 	return &Effect{
 		Records: []*eventv1.Element{
 			{Intent: eventv1.Element_INTENT_ACTIVATING, Type: in.Type, Id: in.ElementID, TokenId: in.TokenID},
@@ -29,12 +53,7 @@ func (IntermediateCatchEventHandler) OnEnter(in EnterInput) (*Effect, error) {
 				Type:    in.Type,
 				Id:      in.ElementID,
 				TokenId: in.TokenID,
-				Payload: &eventv1.Element_EventPayload{
-					EventPayload: &eventv1.EventPayload{
-						DueUnixMs: now.Add(dur).UnixMilli(),
-						Duration:  text,
-					},
-				},
+				Payload: &eventv1.Element_EventPayload{EventPayload: payload},
 			},
 		},
 		Wait: true,
@@ -42,9 +61,20 @@ func (IntermediateCatchEventHandler) OnEnter(in EnterInput) (*Effect, error) {
 }
 
 func (IntermediateCatchEventHandler) OnComplete(in CompleteInput) (*Effect, error) {
+	completing := &eventv1.Element{
+		Intent:  eventv1.Element_INTENT_COMPLETING,
+		Type:    in.Type,
+		Id:      in.ElementID,
+		TokenId: in.TokenID,
+	}
+	if len(in.Variables) > 0 {
+		completing.Payload = &eventv1.Element_EventPayload{
+			EventPayload: &eventv1.EventPayload{Variables: in.Variables},
+		}
+	}
 	return &Effect{
 		Records: []*eventv1.Element{
-			{Intent: eventv1.Element_INTENT_COMPLETING, Type: in.Type, Id: in.ElementID, TokenId: in.TokenID},
+			completing,
 			{Intent: eventv1.Element_INTENT_COMPLETED, Type: in.Type, Id: in.ElementID, TokenId: in.TokenID},
 		},
 		TakeOutgoing: true,

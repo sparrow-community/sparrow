@@ -21,15 +21,16 @@ Sparrow 运行时模块：单节点、事件驱动的 BPMN 执行引擎。
 | Deploy（`deploy`，直接持有 `element.Process`） | 已有 |
 | 元素 Handler（`handlers/`，按类型分文件） | 已有 |
 | Executor 令牌推进 | 已有 |
-| Engine：Deploy / CreateInstance / Complete / Activate / FireDue | 已有 |
+| Engine：Deploy / CreateInstance / Complete / Activate / FireDue / PublishMessage | 已有 |
 | XOR 条件选路（`expr`，default 回退） | 已有 |
 | ServiceTask 等待 + `job_type` | 已有 |
 | Job 拉取（`Activate` / `Fail` / `Heartbeat`，内存租约） | 已有 |
 | 文件 / 内存 EventLog + Store（可替换） | 已有 |
 | `Recover` 回放 / `Open` 文件便捷入口 | 已有 |
 | 中间捕获 Timer（`timeDuration`）+ `FireDue` | 已有 |
+| 中间捕获 Message catch + `PublishMessage` | 已有 |
 
-端到端夹具：`testdata/m1_simple.bpmn`（Start → UserTask → XOR → End）；`testdata/m2_service_task.bpmn`；`testdata/m2_timer_catch.bpmn`（Start → Timer catch `PT0S` → End）。
+端到端夹具：`testdata/m1_simple.bpmn`（Start → UserTask → XOR → End）；`testdata/m2_service_task.bpmn`；`testdata/m2_timer_catch.bpmn`（Start → Timer catch `PT0S` → End）；`testdata/m2_message_catch.bpmn`（Start → Message catch → End）。
 
 详细程序设计见 [DESIGN.md](./DESIGN.md)。
 
@@ -37,7 +38,7 @@ Sparrow 运行时模块：单节点、事件驱动的 BPMN 执行引擎。
 
 ```text
 processing/
-├── engine.go / jobs.go / timers.go / executor.go / open.go   # API、Activate、FireDue、Recover
+├── engine.go / jobs.go / timers.go / messages.go / executor.go / open.go   # API、Activate、FireDue、PublishMessage、Recover
 ├── expr/            # 条件表达式（expr-lang）
 ├── deploy/          # Compile + Store 接口
 ├── handlers/        # 一元素一文件 + Registry

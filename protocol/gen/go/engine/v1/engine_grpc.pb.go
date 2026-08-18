@@ -22,6 +22,7 @@ const (
 	EngineService_Deploy_FullMethodName         = "/engine.v1.EngineService/Deploy"
 	EngineService_CreateInstance_FullMethodName = "/engine.v1.EngineService/CreateInstance"
 	EngineService_Complete_FullMethodName       = "/engine.v1.EngineService/Complete"
+	EngineService_PublishMessage_FullMethodName = "/engine.v1.EngineService/PublishMessage"
 	EngineService_GetInstance_FullMethodName    = "/engine.v1.EngineService/GetInstance"
 	EngineService_ListEvents_FullMethodName     = "/engine.v1.EngineService/ListEvents"
 )
@@ -39,6 +40,8 @@ type EngineServiceClient interface {
 	CreateInstance(ctx context.Context, in *CreateInstanceRequest, opts ...grpc.CallOption) (*CreateInstanceResponse, error)
 	// Complete maps to Engine.Complete for any waiting element.
 	Complete(ctx context.Context, in *CompleteRequest, opts ...grpc.CallOption) (*CompleteResponse, error)
+	// PublishMessage completes waiting message catches whose name matches.
+	PublishMessage(ctx context.Context, in *PublishMessageRequest, opts ...grpc.CallOption) (*PublishMessageResponse, error)
 	// GetInstance returns a projection snapshot.
 	GetInstance(ctx context.Context, in *GetInstanceRequest, opts ...grpc.CallOption) (*GetInstanceResponse, error)
 	// ListEvents returns the instance audit timeline.
@@ -83,6 +86,16 @@ func (c *engineServiceClient) Complete(ctx context.Context, in *CompleteRequest,
 	return out, nil
 }
 
+func (c *engineServiceClient) PublishMessage(ctx context.Context, in *PublishMessageRequest, opts ...grpc.CallOption) (*PublishMessageResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PublishMessageResponse)
+	err := c.cc.Invoke(ctx, EngineService_PublishMessage_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *engineServiceClient) GetInstance(ctx context.Context, in *GetInstanceRequest, opts ...grpc.CallOption) (*GetInstanceResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetInstanceResponse)
@@ -116,6 +129,8 @@ type EngineServiceServer interface {
 	CreateInstance(context.Context, *CreateInstanceRequest) (*CreateInstanceResponse, error)
 	// Complete maps to Engine.Complete for any waiting element.
 	Complete(context.Context, *CompleteRequest) (*CompleteResponse, error)
+	// PublishMessage completes waiting message catches whose name matches.
+	PublishMessage(context.Context, *PublishMessageRequest) (*PublishMessageResponse, error)
 	// GetInstance returns a projection snapshot.
 	GetInstance(context.Context, *GetInstanceRequest) (*GetInstanceResponse, error)
 	// ListEvents returns the instance audit timeline.
@@ -138,6 +153,9 @@ func (UnimplementedEngineServiceServer) CreateInstance(context.Context, *CreateI
 }
 func (UnimplementedEngineServiceServer) Complete(context.Context, *CompleteRequest) (*CompleteResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Complete not implemented")
+}
+func (UnimplementedEngineServiceServer) PublishMessage(context.Context, *PublishMessageRequest) (*PublishMessageResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method PublishMessage not implemented")
 }
 func (UnimplementedEngineServiceServer) GetInstance(context.Context, *GetInstanceRequest) (*GetInstanceResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetInstance not implemented")
@@ -220,6 +238,24 @@ func _EngineService_Complete_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _EngineService_PublishMessage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PublishMessageRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EngineServiceServer).PublishMessage(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EngineService_PublishMessage_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EngineServiceServer).PublishMessage(ctx, req.(*PublishMessageRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _EngineService_GetInstance_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetInstanceRequest)
 	if err := dec(in); err != nil {
@@ -274,6 +310,10 @@ var EngineService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Complete",
 			Handler:    _EngineService_Complete_Handler,
+		},
+		{
+			MethodName: "PublishMessage",
+			Handler:    _EngineService_PublishMessage_Handler,
 		},
 		{
 			MethodName: "GetInstance",

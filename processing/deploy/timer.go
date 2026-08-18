@@ -8,9 +8,21 @@ import (
 	"github.com/sparrow-community/sparrow/bpmn/element"
 )
 
+// CatchKind classifies an intermediateCatchEvent for runtime handlers.
+type CatchKind string
+
+const (
+	CatchKindTimer   CatchKind = "timer"
+	CatchKindMessage CatchKind = "message"
+)
+
 type timerCatch struct {
 	Duration time.Duration
 	Text     string
+}
+
+type messageCatch struct {
+	Name string
 }
 
 func timerCatchSpec(ev element.IntermediateCatchEvent) (timerCatch, error) {
@@ -36,6 +48,44 @@ func timerCatchSpec(ev element.IntermediateCatchEvent) (timerCatch, error) {
 		return timerCatch{}, err
 	}
 	return timerCatch{Duration: dur, Text: text}, nil
+}
+
+func messageCatchSpec(ev element.IntermediateCatchEvent, messages []element.Message) (messageCatch, error) {
+	if len(ev.TimerEventDefinitions) > 0 {
+		return messageCatch{}, fmt.Errorf("UNSUPPORTED_ELEMENT: intermediateCatchEvent %q is not a message catch (has timerEventDefinition)", ev.ID)
+	}
+	if len(ev.MessageEventDefinitions) != 1 {
+		return messageCatch{}, fmt.Errorf("UNSUPPORTED_ELEMENT: intermediateCatchEvent %q needs exactly one messageEventDefinition", ev.ID)
+	}
+	other := otherCatchDefinitions(ev) - len(ev.MessageEventDefinitions)
+	if other > 0 {
+		return messageCatch{}, fmt.Errorf("UNSUPPORTED_ELEMENT: intermediateCatchEvent %q is not a message catch", ev.ID)
+	}
+	name := resolveMessageName(ev.MessageEventDefinitions[0].MessageRef, messages)
+	if name == "" {
+		name = strings.TrimSpace(ev.Name)
+	}
+	if name == "" {
+		name = ev.ID
+	}
+	return messageCatch{Name: name}, nil
+}
+
+func resolveMessageName(ref string, messages []element.Message) string {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return ""
+	}
+	for _, m := range messages {
+		if m.ID != ref {
+			continue
+		}
+		if n := strings.TrimSpace(m.Name); n != "" {
+			return n
+		}
+		return m.ID
+	}
+	return ref
 }
 
 func otherCatchDefinitions(ev element.IntermediateCatchEvent) int {
@@ -67,4 +117,21 @@ func (d *Deployment) TimerDuration(id string) (time.Duration, string, error) {
 		return 0, "", fmt.Errorf("NOT_FOUND: timer catch %q", id)
 	}
 	return spec.Duration, spec.Text, nil
+}
+
+// MessageName returns the BPMN message name a catch is waiting for.
+func (d *Deployment) MessageName(id string) (string, error) {
+	name, ok := d.messageCatch[id]
+	if !ok || name == "" {
+		return "", fmt.Errorf("NOT_FOUND: message catch %q", id)
+	}
+	return name, nil
+}
+
+func (d *Deployment) CatchKind(id string) (CatchKind, error) {
+	kind, ok := d.catchKinds[id]
+	if !ok {
+		return "", fmt.Errorf("NOT_FOUND: intermediate catch %q", id)
+	}
+	return kind, nil
 }

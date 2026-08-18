@@ -14,6 +14,8 @@ message Token {
   string status = 3;
   // Worker subscription key when waiting on a job-backed activity; empty otherwise.
   string job_type = 4;
+  // BPMN message name when waiting on a message catch; empty otherwise.
+  string message_name = 5;
 }
 
 // Instance is a read-only projection snapshot. It is not an EventLog record.
@@ -58,7 +60,7 @@ message CreateInstanceResponse {
   string process_instance_id = 1;
 }
 
-// CompleteRequest finishes a waiting activity (UserTask, ServiceTask, …).
+// CompleteRequest finishes a waiting activity (UserTask, ServiceTask, timer/message catch, …).
 message CompleteRequest {
   // Process instance id (UUIDv7).
   string process_instance_id = 1;
@@ -85,6 +87,23 @@ message GetInstanceResponse {
   Instance instance = 1;
 }
 
+// PublishMessageRequest correlates a BPMN message to waiting message catches.
+// Undelivered messages are not buffered: if no waiter matches, the RPC fails.
+message PublishMessageRequest {
+  // BPMN message name (Definitions/message@name, else message id / messageRef).
+  string name = 1;
+  // Optional process instance id. Empty means all matching waiters.
+  string process_instance_id = 2;
+  // Variable deltas applied via Complete: name -> JSON text.
+  map<string, string> variables = 3;
+}
+
+// PublishMessageResponse reports how many waiting catches were completed.
+message PublishMessageResponse {
+  // Number of waiting tokens completed.
+  int32 delivered = 1;
+}
+
 // ListEventsRequest reads the audit timeline for one instance.
 message ListEventsRequest {
   // Process instance id (UUIDv7).
@@ -106,6 +125,8 @@ service EngineService {
   rpc CreateInstance(CreateInstanceRequest) returns (CreateInstanceResponse);
   // Complete maps to Engine.Complete for any waiting element.
   rpc Complete(CompleteRequest) returns (CompleteResponse);
+  // PublishMessage completes waiting message catches whose name matches.
+  rpc PublishMessage(PublishMessageRequest) returns (PublishMessageResponse);
   // GetInstance returns a projection snapshot.
   rpc GetInstance(GetInstanceRequest) returns (GetInstanceResponse);
   // ListEvents returns the instance audit timeline.

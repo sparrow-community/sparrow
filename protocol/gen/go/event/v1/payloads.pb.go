@@ -125,7 +125,11 @@ type EventPayload struct {
 	// Due time for a timer catch (unix milliseconds). Set on ACTIVATED.
 	DueUnixMs int64 `protobuf:"varint,1,opt,name=due_unix_ms,json=dueUnixMs,proto3" json:"due_unix_ms,omitempty"`
 	// Original ISO-8601 duration text from the definition (audit). Empty if unused.
-	Duration      string `protobuf:"bytes,2,opt,name=duration,proto3" json:"duration,omitempty"`
+	Duration string `protobuf:"bytes,2,opt,name=duration,proto3" json:"duration,omitempty"`
+	// BPMN message name for a message catch. Set on ACTIVATED; empty for timers.
+	MessageName string `protobuf:"bytes,3,opt,name=message_name,json=messageName,proto3" json:"message_name,omitempty"`
+	// Variable deltas typically set on COMPLETING (e.g. PublishMessage payload).
+	Variables     []*Variable `protobuf:"bytes,4,rep,name=variables,proto3" json:"variables,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -172,6 +176,20 @@ func (x *EventPayload) GetDuration() string {
 		return x.Duration
 	}
 	return ""
+}
+
+func (x *EventPayload) GetMessageName() string {
+	if x != nil {
+		return x.MessageName
+	}
+	return ""
+}
+
+func (x *EventPayload) GetVariables() []*Variable {
+	if x != nil {
+		return x.Variables
+	}
+	return nil
 }
 
 // Shared payload for BPMN activities (tasks, subProcess, callActivity, …).
@@ -383,10 +401,12 @@ const file_event_v1_payloads_proto_rawDesc = "" +
 	"\n" +
 	"json_value\x18\x02 \x01(\tR\tjsonValue\"B\n" +
 	"\x0eProcessPayload\x120\n" +
-	"\tvariables\x18\x01 \x03(\v2\x12.event.v1.VariableR\tvariables\"J\n" +
+	"\tvariables\x18\x01 \x03(\v2\x12.event.v1.VariableR\tvariables\"\x9f\x01\n" +
 	"\fEventPayload\x12\x1e\n" +
 	"\vdue_unix_ms\x18\x01 \x01(\x03R\tdueUnixMs\x12\x1a\n" +
-	"\bduration\x18\x02 \x01(\tR\bduration\"\x83\x01\n" +
+	"\bduration\x18\x02 \x01(\tR\bduration\x12!\n" +
+	"\fmessage_name\x18\x03 \x01(\tR\vmessageName\x120\n" +
+	"\tvariables\x18\x04 \x03(\v2\x12.event.v1.VariableR\tvariables\"\x83\x01\n" +
 	"\x0fActivityPayload\x120\n" +
 	"\tvariables\x18\x01 \x03(\v2\x12.event.v1.VariableR\tvariables\x12\x19\n" +
 	"\bjob_type\x18\x02 \x01(\tR\ajobType\x12#\n" +
@@ -423,12 +443,13 @@ var file_event_v1_payloads_proto_goTypes = []any{
 }
 var file_event_v1_payloads_proto_depIdxs = []int32{
 	0, // 0: event.v1.ProcessPayload.variables:type_name -> event.v1.Variable
-	0, // 1: event.v1.ActivityPayload.variables:type_name -> event.v1.Variable
-	2, // [2:2] is the sub-list for method output_type
-	2, // [2:2] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	0, // 1: event.v1.EventPayload.variables:type_name -> event.v1.Variable
+	0, // 2: event.v1.ActivityPayload.variables:type_name -> event.v1.Variable
+	3, // [3:3] is the sub-list for method output_type
+	3, // [3:3] is the sub-list for method input_type
+	3, // [3:3] is the sub-list for extension type_name
+	3, // [3:3] is the sub-list for extension extendee
+	0, // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_event_v1_payloads_proto_init() }

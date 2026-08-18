@@ -127,6 +127,62 @@ func TestEngineServiceNotFoundAndHealth(t *testing.T) {
 	}
 }
 
+func TestEngineServicePublishMessage(t *testing.T) {
+	_, conn, stop := startGRPC(t)
+	defer stop()
+	ctx := context.Background()
+	client := enginev1.NewEngineServiceClient(conn)
+
+	xml, err := os.ReadFile(filepath.Join("..", "processing", "testdata", "m2_message_catch.bpmn"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dep, err := client.Deploy(ctx, &enginev1.DeployRequest{BpmnXml: xml})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := client.CreateInstance(ctx, &enginev1.CreateInstanceRequest{DeploymentId: dep.GetDeploymentId()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := client.GetInstance(ctx, &enginev1.GetInstanceRequest{ProcessInstanceId: created.GetProcessInstanceId()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sawName bool
+	for _, tok := range got.GetInstance().GetTokens() {
+		if tok.GetStatus() == string(projection.TokenWaiting) && tok.GetMessageName() == "order.confirmed" {
+			sawName = true
+		}
+	}
+	if !sawName {
+		t.Fatalf("tokens=%v", got.GetInstance().GetTokens())
+	}
+
+	pub, err := client.PublishMessage(ctx, &enginev1.PublishMessageRequest{
+		Name:      "order.confirmed",
+		Variables: map[string]string{"payload": `"ok"`},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pub.GetDelivered() != 1 {
+		t.Fatalf("delivered=%d", pub.GetDelivered())
+	}
+	got, err = client.GetInstance(ctx, &enginev1.GetInstanceRequest{ProcessInstanceId: created.GetProcessInstanceId()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.GetInstance().GetStatus() != string(projection.StatusCompleted) {
+		t.Fatalf("status=%s", got.GetInstance().GetStatus())
+	}
+
+	_, err = client.PublishMessage(ctx, &enginev1.PublishMessageRequest{Name: "order.confirmed"})
+	if status.Code(err) != codes.NotFound {
+		t.Fatalf("code=%v err=%v", status.Code(err), err)
+	}
+}
+
 func startGRPC(t *testing.T) (*processing.Engine, *grpc.ClientConn, func()) {
 	t.Helper()
 	eng := processing.NewEngine(eventlog.NewMemory())

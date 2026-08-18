@@ -67,6 +67,25 @@ func (s *EngineServer) Complete(ctx context.Context, req *enginev1.CompleteReque
 	return &enginev1.CompleteResponse{}, nil
 }
 
+func (s *EngineServer) PublishMessage(ctx context.Context, req *enginev1.PublishMessageRequest) (*enginev1.PublishMessageResponse, error) {
+	if s.engine == nil {
+		return nil, status.Error(codes.FailedPrecondition, "engine is required")
+	}
+	vars, err := variablesFromJSONMap(req.GetVariables())
+	if err != nil {
+		return nil, statusFromEngine(err)
+	}
+	n, err := s.engine.PublishMessage(ctx, processing.PublishMessageRequest{
+		Name:              req.GetName(),
+		ProcessInstanceID: req.GetProcessInstanceId(),
+		Variables:         vars,
+	})
+	if err != nil {
+		return nil, statusFromEngine(err)
+	}
+	return &enginev1.PublishMessageResponse{Delivered: int32(n)}, nil
+}
+
 func (s *EngineServer) GetInstance(_ context.Context, req *enginev1.GetInstanceRequest) (*enginev1.GetInstanceResponse, error) {
 	if s.engine == nil {
 		return nil, status.Error(codes.FailedPrecondition, "engine is required")
@@ -112,10 +131,11 @@ func instanceToProto(inst *projection.Instance) *enginev1.Instance {
 			continue
 		}
 		out.Tokens = append(out.Tokens, &enginev1.Token{
-			Id:        tok.ID,
-			ElementId: tok.ElementID,
-			Status:    string(tok.Status),
-			JobType:   tok.JobType,
+			Id:          tok.ID,
+			ElementId:   tok.ElementID,
+			Status:      string(tok.Status),
+			JobType:     tok.JobType,
+			MessageName: tok.MessageName,
 		})
 	}
 	return out
