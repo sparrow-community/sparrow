@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             id="Definitions_parallel_message_boundary"
+             targetNamespace="http://sparrow.example/parallel-message-boundary">
+  <message id="Message_cancel" name="order.cancelled"/>
+  <process id="Process_parallel_message_boundary" name="M3 Parallel Message Boundary" isExecutable="true">
+    <startEvent id="StartEvent_1">
+      <outgoing>Flow_start_to_fork</outgoing>
+    </startEvent>
+    <parallelGateway id="ParallelGateway_fork">
+      <incoming>Flow_start_to_fork</incoming>
+      <outgoing>Flow_fork_to_task_a</outgoing>
+      <outgoing>Flow_fork_to_task_b</outgoing>
+    </parallelGateway>
+    <userTask id="UserTask_a" name="A">
+      <incoming>Flow_fork_to_task_a</incoming>
+      <outgoing>Flow_a_to_end</outgoing>
+    </userTask>
+    <boundaryEvent id="MessageBoundary_a" attachedToRef="UserTask_a" cancelActivity="true">
+      <outgoing>Flow_boundary_to_msg</outgoing>
+      <messageEventDefinition id="MessageDef_a" messageRef="Message_cancel"/>
+    </boundaryEvent>
+    <userTask id="UserTask_b" name="B">
+      <incoming>Flow_fork_to_task_b</incoming>
+      <outgoing>Flow_b_to_end</outgoing>
+    </userTask>
+    <endEvent id="EndEvent_a">
+      <incoming>Flow_a_to_end</incoming>
+    </endEvent>
+    <endEvent id="EndEvent_msg">
+      <incoming>Flow_boundary_to_msg</incoming>
+    </endEvent>
+    <endEvent id="EndEvent_b">
+      <incoming>Flow_b_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_fork" sourceRef="StartEvent_1" targetRef="ParallelGateway_fork"/>
+    <sequenceFlow id="Flow_fork_to_task_a" sourceRef="ParallelGateway_fork" targetRef="UserTask_a"/>
+    <sequenceFlow id="Flow_fork_to_task_b" sourceRef="ParallelGateway_fork" targetRef="UserTask_b"/>
+    <sequenceFlow id="Flow_a_to_end" sourceRef="UserTask_a" targetRef="EndEvent_a"/>
+    <sequenceFlow id="Flow_boundary_to_msg" sourceRef="MessageBoundary_a" targetRef="EndEvent_msg"/>
+    <sequenceFlow id="Flow_b_to_end" sourceRef="UserTask_b" targetRef="EndEvent_b"/>
+  </process>
+</definitions>

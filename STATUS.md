@@ -15,15 +15,15 @@
 | 阶段 | 状态 |
 |------|------|
 | **M1** | 完成：Start → UserTask → XOR → End；文件日志 + `Recover` |
-| **M2** | 完成：ServiceTask + Job；Timer/Message catch；打断型 Timer/Message boundary |
-| **M3** | 起步：Parallel gateway fork/join（多 token） |
+| **M2** | 完成：ServiceTask + Job；Timer/Message catch；Timer/Message boundary（打断型 + 非打断型） |
+| **M3** | 起步：Parallel gateway fork/join（多 token）+ boundary 组合回归 |
 
 **`main` 最新提交**（更新时改这里）：
 
 ```text
+6e0d45e Support non-interrupting timer and message boundaries
+cf47acf Add STATUS.md for cross-session project continuity.
 3eab8ef Document parallel gateway in processing design.
-54386c0 Add parallel gateway fork/join with multi-token execution.
-c343a5c Add interrupting message boundaries on waiting activities.
 ```
 
 ## 已实现（运行时）
@@ -33,14 +33,13 @@ c343a5c Add interrupting message boundaries on waiting activities.
 - **等待与完成**：UserTask、ServiceTask、中间 Timer catch、中间 Message catch — 统一 `Complete`
 - **Timer**：`timeDuration` / `timeDate` / `timeCycle`（仅首次到期）；`Engine.FireDue`；`cmd/sparrow` 轮询
 - **Message**：`PublishMessage`（name + 可选 correlation_keys + 内存缓冲，Recover 后缓冲丢失）
-- **Boundary**（仅打断型，`cancelActivity=true`）：Timer / Message 挂 UserTask 或 ServiceTask；每活动最多一个
+- **Boundary**：Timer / Message 可挂 UserTask 或 ServiceTask；支持打断型与非打断型；每活动最多一个
 - **Job**：`Activate` / `Fail` / `Heartbeat`（内存租约，非账本）
 - **传输**：`gateway` — `engine.v1` + `job.v1` gRPC
 
 ## 明确不做（当前阶段）
 
 - 流程定义**版本管理与迁移**（每次 `Deploy` 新 `deployment_id`）
-- **非打断** boundary（需第二枚 token；Parallel 已具备基础）
 - 同一活动上 **Timer + Message 两个 boundary**
 - Inclusive / EventBased gateway、SubProcess、Throw、补偿、Incident
 - 集群 / 多活；跨重启的 **Job 租约** 与 **消息缓冲** 持久化
@@ -48,8 +47,8 @@ c343a5c Add interrupting message boundaries on waiting activities.
 
 ## 下一步候选（按优先级）
 
-1. **非打断 boundary** — 活动继续 + boundary 并行出边（多 token）
-2. **Parallel 与 boundary / FireDue / PublishMessage 的回归** — 多 token 下扫描与 Complete 目标
+1. **非打断 boundary 的 timeCycle 重复触发** — 活动等待期间 re-arm 与多次出边
+2. **Recover 与 boundary / Parallel 的组合回归** — 多 token + 重启后扫描与 Complete 目标
 3. SubProcess / Inclusive gateway — 范围更大，后置
 
 ## 新会话开场模板

@@ -28,12 +28,12 @@ Sparrow 运行时模块：单节点、事件驱动的 BPMN 执行引擎。
 | 文件 / 内存 EventLog + Store（可替换） | 已有 |
 | `Recover` 回放 / `Open` 文件便捷入口 | 已有 |
 | 中间捕获 Timer（`timeDuration` / `timeDate` / `timeCycle`）+ `FireDue` | 已有 |
-| 打断型 Timer boundary（UserTask/ServiceTask） | 已有 |
-| 打断型 Message boundary（UserTask/ServiceTask） | 已有 |
+| 打断型 / 非打断型 Timer boundary（UserTask/ServiceTask） | 已有 |
+| 打断型 / 非打断型 Message boundary（UserTask/ServiceTask） | 已有 |
 | Parallel gateway fork/join（多 token） | 已有 |
 | 中间捕获 Message catch + `PublishMessage`（correlation keys + 内存缓冲） | 已有 |
 
-端到端夹具：`testdata/m1_simple.bpmn`（Start → UserTask → XOR → End）；`testdata/m2_service_task.bpmn`；`testdata/m2_timer_catch.bpmn`（Start → Timer catch `PT0S` → End）；`testdata/m2_timer_catch_date.bpmn`（`timeDate` 已过期）；`testdata/m2_timer_catch_cycle.bpmn`（`R/PT0S`）；`testdata/m2_timer_boundary.bpmn`（UserTask + interrupting `PT0S` boundary）；`testdata/m2_message_catch.bpmn`（Start → Message catch → End）；`testdata/m2_message_after_task.bpmn`（UserTask 后再 Message catch）；`testdata/m2_message_boundary.bpmn`（UserTask + interrupting message boundary）；`testdata/m3_parallel_fork_join.bpmn`（Parallel fork → 两路 UserTask → join → End）。
+端到端夹具：`testdata/m1_simple.bpmn`（Start → UserTask → XOR → End）；`testdata/m2_service_task.bpmn`；`testdata/m2_timer_catch.bpmn`（Start → Timer catch `PT0S` → End）；`testdata/m2_timer_catch_date.bpmn`（`timeDate` 已过期）；`testdata/m2_timer_catch_cycle.bpmn`（`R/PT0S`）；`testdata/m2_timer_boundary.bpmn`（UserTask + interrupting `PT0S` boundary）；`testdata/m2_timer_boundary_non_interrupt.bpmn`（UserTask + non-interrupting `PT0S` boundary）；`testdata/m2_message_catch.bpmn`（Start → Message catch → End）；`testdata/m2_message_after_task.bpmn`（UserTask 后再 Message catch）；`testdata/m2_message_boundary.bpmn`（UserTask + interrupting message boundary）；`testdata/m2_message_boundary_non_interrupt.bpmn`（UserTask + non-interrupting message boundary）；`testdata/m3_parallel_fork_join.bpmn`（Parallel fork → 两路 UserTask → join → End）；`testdata/m3_parallel_timer_boundary.bpmn` 与 `testdata/m3_parallel_message_boundary.bpmn`（Parallel fork + boundary 分支回归）。
 
 详细程序设计见 [DESIGN.md](./DESIGN.md)。
 

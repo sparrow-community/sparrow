@@ -6,7 +6,7 @@
 **M1 状态**：Deploy / CreateInstance / Complete、XOR 条件、内存与文件 EventLog、`Open` 重启回放已可用。  
 **M2 起步**：ServiceTask 等待；Job 经 `Activate` / `Fail` / `Heartbeat`；中间捕获 Timer（`timeDuration` / `timeDate` / `timeCycle`）+ `FireDue`；打断型 Timer / Message boundary（挂 UserTask/ServiceTask）；中间捕获 Message + `PublishMessage`（correlation keys + 内存缓冲）；gRPC 在 `gateway`（`engine.v1` + `job.v1`），进程入口 `gateway/cmd/sparrow`（含 `FireDue` 轮询）。  
 **M3 起步**：Parallel gateway fork/join（多 token；join 同步后 peer token 从投影移除）。  
-尚未实现：非打断 boundary、Inclusive/EventBased gateway、SubProcess、同一活动多个 boundary、更多元素、跨重启的 Job 租约 / 消息缓冲。
+尚未实现：非打断 timer boundary 的 `timeCycle` 重复触发、Inclusive/EventBased gateway、SubProcess、同一活动多个 boundary、更多元素、跨重启的 Job 租约 / 消息缓冲。
 
 ---
 
@@ -278,13 +278,13 @@ Recover(ctx, eventLog, deploymentStore)
 | `USER_TASK` | `user_task.go` | ACTIVATING→ACTIVATED 后 `Wait`；Complete → COMPLETING→COMPLETED |
 | `SERVICE_TASK` | `service_task.go` | 同上等待；ACTIVATED 带 `ActivityPayload.job_type`；经 `Complete` 完成 |
 | `INTERMEDIATE_CATCH_EVENT` | `intermediate_catch_event.go` | Timer：`timeDuration` / `timeDate` / `timeCycle`（只算第一次到期），ACTIVATED 写 `due_unix_ms`，`FireDue` → `Complete`。Message：ACTIVATED 写 `message_name`，`PublishMessage` → `Complete`。均 `Wait`。 |
-| `BOUNDARY_EVENT` | `boundary_event.go` | 打断型 Timer 或 Message：活动 ACTIVATED 写 `ActivityPayload.boundary_id`（Timer 另写 due；Message 另写 `message_name`）。`FireDue` / `PublishMessage` → `Complete(boundary)`：活动 TERMINATED，沿 boundary 出边。非打断、同一活动两个 boundary 拒绝。 |
+| `BOUNDARY_EVENT` | `boundary_event.go` | Timer 或 Message：活动 ACTIVATED 写 `ActivityPayload.boundary_id`（Timer 另写 due；Message 另写 `message_name`）。`FireDue` / `PublishMessage` → `Complete(boundary)`：打断型会 TERMINATE 活动并沿 boundary 出边；非打断型保持活动 waiting，并 mint 新 token 沿 boundary 出边。同一活动两个 boundary 仍拒绝。 |
 | `EXCLUSIVE_GATEWAY` | `exclusive_gateway.go` | 非 default 条件按序求值，否则 default；payload 带 `taken_sequence_flow_id` |
 | `PARALLEL_GATEWAY` | `parallel_gateway.go` | 多出口 fork（mint 新 token）；多入口 join（全部到达后一条 token 继续，peer TERMINATED 移出投影） |
 | `SEQUENCE_FLOW` | `sequence_flow.go` | 经 transit 发 `SEQUENCE_FLOW_TAKEN`（不走 OnEnter） |
 | `END_EVENT` | `end_event.go` | 完成后 `TryCompleteProcess` |
 
-部署时 `validateM1` 拒绝尚未实现的元素（Inclusive/EventBased gateway、SubProcess、throw、非打断 boundary、同一活动多个 boundary、更多元素等）。ServiceTask、中间捕获（Timer + Message catch）、打断型 Timer / Message boundary 与 Parallel gateway 已纳入可执行子集。
+部署时 `validateM1` 拒绝尚未实现的元素（Inclusive/EventBased gateway、SubProcess、throw、同一活动多个 boundary、更多元素等）。ServiceTask、中间捕获（Timer + Message catch）、打断型 / 非打断型 Timer / Message boundary 与 Parallel gateway 已纳入可执行子集。
 
 ### Timer catch（timeDuration / timeDate）时序链（M2）
 
@@ -304,17 +304,16 @@ Recover(ctx, eventLog, deploymentStore)
 
 重启恢复：回放 `ACTIVATED{due_unix_ms}` 还原 due，仍需 `FireDue` 或手动 Complete。
 
-### Timer / Message boundary（打断型，M2）
+### Timer / Message boundary（M2）
 
-以 `Start → UserTask`（附 interrupting timer 或 message boundary）→ `End_ok` / `End_timeout|msg` 为例：
+以 `Start → UserTask`（附 timer 或 message boundary）→ `End_ok` / `End_timeout|msg` 为例：
 
 1. token 进入 UserTask（或 ServiceTask）后 `Wait`；ACTIVATED 的 `ActivityPayload` 带 `boundary_id`，以及 Timer 的 `due_unix_ms`/`duration` 或 Message 的 `message_name`
 2. 活动先 Complete：取消 boundary（`TERMINATED`），沿活动出边（`End_ok`）
-3. Timer 先到期 / Message 先到达：`Complete(boundary_id)`（token 仍在活动上）
-   - 活动 `TERMINATING` → `TERMINATED`
-   - boundary `COMPLETING` → `COMPLETED`
-   - 沿 boundary 出边
-4. 每个活动最多一个打断型 boundary（Timer XOR Message）；**不做**非打断（需要第二枚 token）
+3. Timer 先到期 / Message 先到达：`Complete(boundary_id)`（命中的是挂接活动上的 waiting token）
+   - **打断型**：活动 `TERMINATING` → `TERMINATED`；boundary `COMPLETING` → `COMPLETED`；同一 token 沿 boundary 出边
+   - **非打断型**：活动保持 waiting，但清掉已触发的一次 boundary 等待；executor mint 新 token，写 boundary 生命周期后沿 boundary 出边
+4. 每个活动最多一个 boundary（Timer XOR Message）；非打断型 `timeCycle` 当前仍只触发一次，尚未 re-arm
 
 ### Message catch 时序链（M2）
 
@@ -342,9 +341,9 @@ Recover(ctx, eventLog, deploymentStore)
 | 创建实例 | PROCESS | ACTIVATING → ACTIVATED |
 | 进入 Start | START_EVENT | ACTIVATING → ACTIVATED → COMPLETING → COMPLETED |
 | 走过流 | SEQUENCE_FLOW | SEQUENCE_FLOW_TAKEN |
-| 进入 UserTask | USER_TASK | ACTIVATING → ACTIVATED（等待；可带 interrupting timer due 或 message_name） |
+| 进入 UserTask | USER_TASK | ACTIVATING → ACTIVATED（等待；可带 boundary due 或 message_name） |
 | 完成 UserTask | USER_TASK | COMPLETING → COMPLETED（若有 boundary 则 boundary TERMINATED） |
-| 进入 ServiceTask | SERVICE_TASK | ACTIVATING → ACTIVATED（等待；payload.job_type；可带 interrupting timer due 或 message_name） |
+| 进入 ServiceTask | SERVICE_TASK | ACTIVATING → ACTIVATED（等待；payload.job_type；可带 boundary due 或 message_name） |
 | 完成 ServiceTask | SERVICE_TASK | COMPLETING → COMPLETED |
 | Timer / Message boundary 打断 | BOUNDARY_EVENT + 挂接活动 | 活动 TERMINATING → TERMINATED；boundary COMPLETING → COMPLETED |
 | 进入 Timer catch | INTERMEDIATE_CATCH_EVENT | ACTIVATING → ACTIVATED（等待；payload.due_unix_ms / 原文 duration 或 timeDate） |
@@ -508,7 +507,8 @@ Recover(ctx, eventLog, deploymentStore)
 | 18 | 打断型 Timer boundary（UserTask/ServiceTask） | 已完成 |
 | 19 | 打断型 Message boundary（UserTask/ServiceTask） | 已完成 |
 | 20 | Parallel gateway fork/join（多 token） | 已完成 |
-| 21 | 非打断 boundary；Inclusive；SubProcess；更多元素 | 未开始 |
+| 21 | 非打断 boundary | 已完成（`timeCycle` 重复触发未做） |
+| 22 | Inclusive；SubProcess；更多元素 | 未开始 |
 
 ---
 
