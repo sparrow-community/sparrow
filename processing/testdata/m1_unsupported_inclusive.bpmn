@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             id="Definitions_unsupported"
+             targetNamespace="http://sparrow.example/unsupported">
+  <process id="Process_unsupported" isExecutable="true">
+    <startEvent id="StartEvent_1">
+      <outgoing>Flow_1</outgoing>
+    </startEvent>
+    <inclusiveGateway id="Gateway_1">
+      <incoming>Flow_1</incoming>
+      <outgoing>Flow_2</outgoing>
+    </inclusiveGateway>
+    <endEvent id="EndEvent_1">
+      <incoming>Flow_2</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_1" sourceRef="StartEvent_1" targetRef="Gateway_1"/>
+    <sequenceFlow id="Flow_2" sourceRef="Gateway_1" targetRef="EndEvent_1"/>
+  </process>
+</definitions>

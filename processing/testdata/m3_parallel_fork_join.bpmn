@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             id="Definitions_parallel"
+             targetNamespace="http://sparrow.example/parallel">
+  <process id="Process_parallel" name="M3 Parallel Fork Join" isExecutable="true">
+    <startEvent id="StartEvent_1">
+      <outgoing>Flow_start_to_fork</outgoing>
+    </startEvent>
+    <parallelGateway id="Gateway_fork">
+      <incoming>Flow_start_to_fork</incoming>
+      <outgoing>Flow_fork_to_a</outgoing>
+      <outgoing>Flow_fork_to_b</outgoing>
+    </parallelGateway>
+    <userTask id="UserTask_a" name="Branch A">
+      <incoming>Flow_fork_to_a</incoming>
+      <outgoing>Flow_a_to_join</outgoing>
+    </userTask>
+    <userTask id="UserTask_b" name="Branch B">
+      <incoming>Flow_fork_to_b</incoming>
+      <outgoing>Flow_b_to_join</outgoing>
+    </userTask>
+    <parallelGateway id="Gateway_join">
+      <incoming>Flow_a_to_join</incoming>
+      <incoming>Flow_b_to_join</incoming>
+      <outgoing>Flow_join_to_end</outgoing>
+    </parallelGateway>
+    <endEvent id="EndEvent_1">
+      <incoming>Flow_join_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_fork" sourceRef="StartEvent_1" targetRef="Gateway_fork"/>
+    <sequenceFlow id="Flow_fork_to_a" sourceRef="Gateway_fork" targetRef="UserTask_a"/>
+    <sequenceFlow id="Flow_fork_to_b" sourceRef="Gateway_fork" targetRef="UserTask_b"/>
+    <sequenceFlow id="Flow_a_to_join" sourceRef="UserTask_a" targetRef="Gateway_join"/>
+    <sequenceFlow id="Flow_b_to_join" sourceRef="UserTask_b" targetRef="Gateway_join"/>
+    <sequenceFlow id="Flow_join_to_end" sourceRef="Gateway_join" targetRef="EndEvent_1"/>
+  </process>
+</definitions>

@@ -164,6 +164,11 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 			}
 		}
 	case eventv1.Element_INTENT_COMPLETED, eventv1.Element_INTENT_TERMINATED:
+		if el.GetIntent() == eventv1.Element_INTENT_TERMINATED &&
+			el.GetType() == eventv1.Element_TYPE_PARALLEL_GATEWAY {
+			delete(inst.Tokens, tokenID)
+			return
+		}
 		tok.Status = TokenActive
 		tok.JobType = ""
 		tok.DueUnixMs = 0
@@ -189,7 +194,7 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 
 func waitingActivation(t eventv1.Element_Type) bool {
 	switch t {
-	case eventv1.Element_TYPE_USER_TASK, eventv1.Element_TYPE_SERVICE_TASK, eventv1.Element_TYPE_INTERMEDIATE_CATCH_EVENT:
+	case eventv1.Element_TYPE_USER_TASK, eventv1.Element_TYPE_SERVICE_TASK, eventv1.Element_TYPE_INTERMEDIATE_CATCH_EVENT, eventv1.Element_TYPE_PARALLEL_GATEWAY:
 		return true
 	default:
 		return false

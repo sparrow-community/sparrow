@@ -16,6 +16,11 @@ type Effect struct {
 	OutgoingFlowID     string
 	TakeOutgoing       bool
 	TryCompleteProcess bool
+	// Fork lists outgoing sequence flow ids for a parallel split. The entering
+	// token takes Fork[0]; additional tokens are minted for Fork[1:].
+	Fork []string
+	// TerminateJoinPeers ends other waiting tokens still at this parallel join.
+	TerminateJoinPeers string
 }
 
 // EnterInput is the context when a token arrives at an element.
@@ -66,6 +71,7 @@ func DefaultRegistry() *Registry {
 		UserTaskHandler{},
 		ServiceTaskHandler{},
 		ExclusiveGatewayHandler{},
+		ParallelGatewayHandler{},
 		IntermediateCatchEventHandler{},
 		BoundaryEventHandler{},
 		SequenceFlowHandler{},

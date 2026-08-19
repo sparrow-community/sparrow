@@ -141,14 +141,14 @@ func TestCompleteInvalidState(t *testing.T) {
 }
 
 func TestDeployRejectsUnsupportedElement(t *testing.T) {
-	xml, err := os.ReadFile(filepath.Join("testdata", "m1_unsupported_parallel.bpmn"))
+	xml, err := os.ReadFile(filepath.Join("testdata", "m1_unsupported_inclusive.bpmn"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	eng := processing.NewEngine(eventlog.NewMemory())
 	_, err = eng.Deploy(context.Background(), xml)
 	if err == nil {
-		t.Fatal("expected deploy to reject ParallelGateway")
+		t.Fatal("expected deploy to reject InclusiveGateway")
 	}
 }
 

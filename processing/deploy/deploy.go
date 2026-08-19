@@ -83,7 +83,7 @@ func validateM1(proc *element.Process) error {
 	unsupported := 0
 	unsupported += len(proc.Tasks) + len(proc.ManualTasks)
 	unsupported += len(proc.SendTasks) + len(proc.ReceiveTasks) + len(proc.BusinessRuleTasks)
-	unsupported += len(proc.ParallelGatewaies) + len(proc.InclusiveGatewaies) + len(proc.EventBasedGatewaies)
+	unsupported += len(proc.InclusiveGatewaies) + len(proc.EventBasedGatewaies)
 	unsupported += len(proc.SubProcesses) + len(proc.CallActivities)
 	unsupported += len(proc.IntermediateThrowEvents)
 	if unsupported > 0 {
@@ -187,6 +187,11 @@ func (d *Deployment) TypeOf(id string) (eventv1.Element_Type, error) {
 			return eventv1.Element_TYPE_EXCLUSIVE_GATEWAY, nil
 		}
 	}
+	for _, e := range p.ParallelGatewaies {
+		if e.ID == id {
+			return eventv1.Element_TYPE_PARALLEL_GATEWAY, nil
+		}
+	}
 	for _, e := range p.IntermediateCatchEvents {
 		if e.ID == id {
 			return eventv1.Element_TYPE_INTERMEDIATE_CATCH_EVENT, nil
@@ -223,6 +228,68 @@ func (d *Deployment) Outgoing(elementID string) []string {
 	return Outgoing(&d.Process, elementID)
 }
 
+// Incoming returns sequence flow ids entering the element.
+func Incoming(proc *element.Process, elementID string) []string {
+	if ins := flowNodeIncoming(proc, elementID); len(ins) > 0 {
+		return ins
+	}
+	var ids []string
+	for _, f := range proc.SequenceFlows {
+		if f.TargetRef == elementID {
+			ids = append(ids, f.ID)
+		}
+	}
+	return ids
+}
+
+func (d *Deployment) Incoming(elementID string) []string {
+	return Incoming(&d.Process, elementID)
+}
+
+func flowNodeIncoming(proc *element.Process, id string) []string {
+	for _, e := range proc.StartEvents {
+		if e.ID == id {
+			return append([]string{}, e.Incoming...)
+		}
+	}
+	for _, e := range proc.EndEvents {
+		if e.ID == id {
+			return append([]string{}, e.Incoming...)
+		}
+	}
+	for _, e := range proc.UserTasks {
+		if e.ID == id {
+			return append([]string{}, e.Incoming...)
+		}
+	}
+	for _, e := range proc.ServiceTasks {
+		if e.ID == id {
+			return append([]string{}, e.Incoming...)
+		}
+	}
+	for _, e := range proc.ExclusiveGatewaies {
+		if e.ID == id {
+			return append([]string{}, e.Incoming...)
+		}
+	}
+	for _, e := range proc.ParallelGatewaies {
+		if e.ID == id {
+			return append([]string{}, e.Incoming...)
+		}
+	}
+	for _, e := range proc.IntermediateCatchEvents {
+		if e.ID == id {
+			return append([]string{}, e.Incoming...)
+		}
+	}
+	for _, e := range proc.BoundaryEvents {
+		if e.ID == id {
+			return append([]string{}, e.Incoming...)
+		}
+	}
+	return nil
+}
+
 func flowNodeOutgoing(proc *element.Process, id string) []string {
 	for _, e := range proc.StartEvents {
 		if e.ID == id {
@@ -245,6 +312,11 @@ func flowNodeOutgoing(proc *element.Process, id string) []string {
 		}
 	}
 	for _, e := range proc.ExclusiveGatewaies {
+		if e.ID == id {
+			return append([]string{}, e.Outgoing...)
+		}
+	}
+	for _, e := range proc.ParallelGatewaies {
 		if e.ID == id {
 			return append([]string{}, e.Outgoing...)
 		}

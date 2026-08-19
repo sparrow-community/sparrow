@@ -5,7 +5,8 @@
 
 **M1 状态**：Deploy / CreateInstance / Complete、XOR 条件、内存与文件 EventLog、`Open` 重启回放已可用。  
 **M2 起步**：ServiceTask 等待；Job 经 `Activate` / `Fail` / `Heartbeat`；中间捕获 Timer（`timeDuration` / `timeDate` / `timeCycle`）+ `FireDue`；打断型 Timer / Message boundary（挂 UserTask/ServiceTask）；中间捕获 Message + `PublishMessage`（correlation keys + 内存缓冲）；gRPC 在 `gateway`（`engine.v1` + `job.v1`），进程入口 `gateway/cmd/sparrow`（含 `FireDue` 轮询）。  
-尚未实现：非打断 boundary、同一活动上多个 boundary、更多 BPMN 元素、跨重启的 Job 租约 / 消息缓冲。
+**M3 起步**：Parallel gateway fork/join（多 token；join 同步后 peer token 从投影移除）。  
+尚未实现：非打断 boundary、Inclusive/EventBased gateway、SubProcess、同一活动多个 boundary、更多元素、跨重启的 Job 租约 / 消息缓冲。
 
 ---
 

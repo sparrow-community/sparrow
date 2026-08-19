@@ -35,7 +35,7 @@ func (x *Executor) now() time.Time {
 }
 
 func (x *Executor) Enter(
-	_ context.Context,
+	ctx context.Context,
 	dep *deploy.Deployment,
 	inst *projection.Instance,
 	tokenID, elementID string,
@@ -67,6 +67,26 @@ func (x *Executor) Enter(
 				return err
 			}
 		}
+		if len(effect.Fork) > 0 {
+			for i, flowID := range effect.Fork {
+				tid := tokenID
+				if i > 0 {
+					var err error
+					tid, err = NextID()
+					if err != nil {
+						return err
+					}
+				}
+				next, err := x.takeOutgoing(dep, tid, elementID, flowID, emit)
+				if err != nil {
+					return err
+				}
+				if err := x.Enter(ctx, dep, inst, tid, next, emit); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
 		if effect.Wait {
 			return nil
 		}
@@ -75,6 +95,11 @@ func (x *Executor) Enter(
 		}
 		if !effect.TakeOutgoing {
 			return nil
+		}
+		if effect.TerminateJoinPeers != "" {
+			if err := x.terminateJoinPeers(inst, tokenID, effect.TerminateJoinPeers, emit); err != nil {
+				return err
+			}
 		}
 
 		next, err := x.takeOutgoing(dep, tokenID, elementID, effect.OutgoingFlowID, emit)
@@ -126,6 +151,32 @@ func (x *Executor) Complete(
 		return err
 	}
 	return x.Enter(ctx, dep, inst, tokenID, next, emit)
+}
+
+func (x *Executor) terminateJoinPeers(inst *projection.Instance, survivorTokenID, joinElementID string, emit Emitter) error {
+	typ := eventv1.Element_TYPE_PARALLEL_GATEWAY
+	for tid, tok := range inst.Tokens {
+		if tid == survivorTokenID || tok == nil {
+			continue
+		}
+		if tok.ElementID != joinElementID || tok.Status != projection.TokenWaiting {
+			continue
+		}
+		for _, intent := range []eventv1.Element_Intent{
+			eventv1.Element_INTENT_TERMINATING,
+			eventv1.Element_INTENT_TERMINATED,
+		} {
+			if err := emit(&eventv1.Element{
+				Intent:  intent,
+				Type:    typ,
+				Id:      joinElementID,
+				TokenId: tid,
+			}); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (x *Executor) takeOutgoing(
