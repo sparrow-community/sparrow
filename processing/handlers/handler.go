@@ -24,6 +24,9 @@ type Effect struct {
 	// SpawnOutgoing mints a new token to follow the boundary outgoing flow while the
 	// activity token keeps waiting (non-interrupting boundary).
 	SpawnOutgoing *SpawnOutgoingEffect
+	// EnterChild tells the executor to enter the given element on the same token
+	// (used by SubProcess to enter the internal start event after ACTIVATED).
+	EnterChild string
 }
 
 // SpawnOutgoingEffect describes a boundary path taken on a newly minted token.
@@ -86,6 +89,7 @@ func DefaultRegistry() *Registry {
 		IntermediateCatchEventHandler{},
 		BoundaryEventHandler{},
 		SequenceFlowHandler{},
+		SubProcessHandler{},
 	)
 }
 

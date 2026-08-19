@@ -67,6 +67,10 @@ func (x *Executor) Enter(
 				return err
 			}
 		}
+		if effect.EnterChild != "" {
+			elementID = effect.EnterChild
+			continue
+		}
 		if len(effect.Fork) > 0 {
 			for i, flowID := range effect.Fork {
 				tid := tokenID
@@ -91,7 +95,7 @@ func (x *Executor) Enter(
 			return nil
 		}
 		if effect.TryCompleteProcess {
-			return x.tryCompleteProcess(dep, inst, emit)
+			return x.tryCompleteScope(ctx, dep, inst, tokenID, elementID, emit)
 		}
 		if !effect.TakeOutgoing {
 			return nil
@@ -161,7 +165,7 @@ func (x *Executor) Complete(
 		if err := x.Enter(ctx, dep, inst, spawnID, next, emit); err != nil {
 			return err
 		}
-		return x.tryCompleteProcess(dep, inst, emit)
+		return x.tryCompleteProcessScope(dep, inst, emit)
 	}
 	if effect.Wait || !effect.TakeOutgoing {
 		return nil
@@ -223,9 +227,70 @@ func (x *Executor) takeOutgoing(
 	return flow.TargetRef, nil
 }
 
-func (x *Executor) tryCompleteProcess(dep *deploy.Deployment, inst *projection.Instance, emit Emitter) error {
+// tryCompleteScope checks if the scope containing elementID can be completed.
+// If elementID is inside a SubProcess, tries to complete that SubProcess.
+// If at process level, tries to complete the Process.
+func (x *Executor) tryCompleteScope(ctx context.Context, dep *deploy.Deployment, inst *projection.Instance, tokenID, elementID string, emit Emitter) error {
+	scopeID, _ := dep.ScopeOf(elementID)
+	if scopeID == "" || scopeID == dep.ProcessID() {
+		return x.tryCompleteProcessScope(dep, inst, emit)
+	}
+	// SubProcess scope: check all tokens in this scope are at EndEvents
 	for _, tok := range inst.Tokens {
 		if tok.Status == projection.TokenWaiting {
+			tokScope, _ := dep.ScopeOf(tok.ElementID)
+			if tokScope == scopeID {
+				return nil
+			}
+			continue
+		}
+		tokScope, _ := dep.ScopeOf(tok.ElementID)
+		if tokScope == scopeID {
+			typ, err := dep.TypeOf(tok.ElementID)
+			if err != nil || typ != eventv1.Element_TYPE_END_EVENT {
+				return nil
+			}
+		}
+	}
+	// All tokens in this scope are at EndEvents; complete the SubProcess
+	h, err := x.Handlers.Get(eventv1.Element_TYPE_SUB_PROCESS)
+	if err != nil {
+		return err
+	}
+	effect, err := h.OnComplete(handlers.CompleteInput{
+		Deployment: dep,
+		Instance:   inst,
+		ElementID:  scopeID,
+		Type:       eventv1.Element_TYPE_SUB_PROCESS,
+		TokenID:    tokenID,
+	})
+	if err != nil {
+		return err
+	}
+	for _, rec := range effect.Records {
+		if err := emit(rec); err != nil {
+			return err
+		}
+	}
+	if effect.TakeOutgoing {
+		next, err := x.takeOutgoing(dep, tokenID, scopeID, effect.OutgoingFlowID, emit)
+		if err != nil {
+			return err
+		}
+		return x.Enter(ctx, dep, inst, tokenID, next, emit)
+	}
+	return nil
+}
+
+// tryCompleteProcessScope checks if all tokens are at process-level EndEvents.
+func (x *Executor) tryCompleteProcessScope(dep *deploy.Deployment, inst *projection.Instance, emit Emitter) error {
+	processID := dep.ProcessID()
+	for _, tok := range inst.Tokens {
+		if tok.Status == projection.TokenWaiting {
+			return nil
+		}
+		tokScope, _ := dep.ScopeOf(tok.ElementID)
+		if tokScope != processID {
 			return nil
 		}
 		typ, err := dep.TypeOf(tok.ElementID)

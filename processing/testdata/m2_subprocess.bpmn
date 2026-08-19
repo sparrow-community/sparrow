@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             id="Definitions_subprocess"
+             targetNamespace="http://sparrow.example/subprocess">
+  <process id="Process_subprocess" name="M2 SubProcess" isExecutable="true">
+    <startEvent id="StartEvent_1">
+      <outgoing>Flow_start_to_sub</outgoing>
+    </startEvent>
+    <subProcess id="SubProcess_1" name="Inner Work">
+      <incoming>Flow_start_to_sub</incoming>
+      <outgoing>Flow_sub_to_end</outgoing>
+      <startEvent id="Sub_StartEvent_1">
+        <outgoing>Flow_sub_start_to_task</outgoing>
+      </startEvent>
+      <userTask id="Sub_UserTask_1" name="Inner Task">
+        <incoming>Flow_sub_start_to_task</incoming>
+        <outgoing>Flow_sub_task_to_end</outgoing>
+      </userTask>
+      <endEvent id="Sub_EndEvent_1">
+        <incoming>Flow_sub_task_to_end</incoming>
+      </endEvent>
+      <sequenceFlow id="Flow_sub_start_to_task" sourceRef="Sub_StartEvent_1" targetRef="Sub_UserTask_1"/>
+      <sequenceFlow id="Flow_sub_task_to_end" sourceRef="Sub_UserTask_1" targetRef="Sub_EndEvent_1"/>
+    </subProcess>
+    <endEvent id="EndEvent_1">
+      <incoming>Flow_sub_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_sub" sourceRef="StartEvent_1" targetRef="SubProcess_1"/>
+    <sequenceFlow id="Flow_sub_to_end" sourceRef="SubProcess_1" targetRef="EndEvent_1"/>
+  </process>
+</definitions>

@@ -32,6 +32,7 @@ cf47acf Add STATUS.md for cross-session project continuity.
 
 - **核心**：`Deploy` / `CreateInstance` / `Complete`；`Recover` / `Open`；实例内串行锁
 - **网关**：Exclusive（条件 + default）；Parallel（fork mint token / join 同步）
+- **SubProcess**：嵌套子流程（递归支持多层），共享变量，scope completion
 - **等待与完成**：UserTask、ServiceTask、中间 Timer catch、中间 Message catch — 统一 `Complete`
 - **Timer**：`timeDuration` / `timeDate` / `timeCycle`（仅首次到期）；`Engine.FireDue`；`cmd/sparrow` 轮询
 - **Message**：`PublishMessage`（name + 可选 correlation_keys + 内存缓冲，Recover 后缓冲丢失）
@@ -43,15 +44,15 @@ cf47acf Add STATUS.md for cross-session project continuity.
 
 - 流程定义**版本管理与迁移**（每次 `Deploy` 新 `deployment_id`）
 - 同一活动上 **三个及以上 boundary**
-- Inclusive / EventBased gateway、SubProcess、Throw、补偿、Incident
+- Inclusive / EventBased gateway、Throw、补偿、Incident
 - 集群 / 多活；跨重启的 **Job 租约** 与 **消息缓冲** 持久化
 - 复制 Camunda 产品广度（建模器、Cockpit 等）
 
 ## 下一步候选（按优先级）
 
-1. **SubProcess / Inclusive gateway** — 范围更大，后置
-2. 跨重启的 Job 租约 / 消息缓冲持久化
-3. EventBased gateway / Signal / Compensation
+1. **SubProcess 内部 Parallel gateway** — 多 token 在 subprocess 内 fork/join
+2. **SubProcess 上挂 boundary** — 打断时终止所有内部 token
+3. 跨重启的 Job 租约 / 消息缓冲持久化
 
 ## 新会话开场模板
 

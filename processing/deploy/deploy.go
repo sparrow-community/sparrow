@@ -18,6 +18,21 @@ type Deployment struct {
 
 	timerCatch   map[string]timerCatch // catch or interrupting timer boundary id
 	messageCatch map[string]string     // intermediate catch or interrupting message boundary id -> name
+	elements     map[string]*elemEntry // flat index of all elements (recursive into subprocesses)
+	seqFlows     map[string]*seqFlowEntry
+}
+
+type elemEntry struct {
+	Type     eventv1.Element_Type
+	ScopeID  string   // parent scope (process ID or subprocess ID)
+	Outgoing []string // outgoing sequence flow IDs
+	Incoming []string // incoming sequence flow IDs
+}
+
+type seqFlowEntry struct {
+	ScopeID  string
+	SourceID string
+	TargetID string
 }
 
 // Compile parses BPMN XML and keeps the first executable process (M1 subset).
@@ -59,23 +74,59 @@ func (d *Deployment) compile(messages []element.Message) {
 	p := &d.Process
 	d.timerCatch = make(map[string]timerCatch, len(p.IntermediateCatchEvents)+len(p.BoundaryEvents))
 	d.messageCatch = make(map[string]string, len(p.IntermediateCatchEvents)+len(p.BoundaryEvents))
-	for _, e := range p.IntermediateCatchEvents {
+	d.elements = make(map[string]*elemEntry)
+	d.seqFlows = make(map[string]*seqFlowEntry)
+
+	d.indexScope(&p.FlowElements, p.ID, messages)
+	d.elements[p.ID] = &elemEntry{Type: eventv1.Element_TYPE_PROCESS, ScopeID: ""}
+}
+
+func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messages []element.Message) {
+	reg := func(id string, typ eventv1.Element_Type, outgoing, incoming []string) {
+		d.elements[id] = &elemEntry{Type: typ, ScopeID: scopeID, Outgoing: outgoing, Incoming: incoming}
+	}
+	for _, e := range fe.StartEvents {
+		reg(e.ID, eventv1.Element_TYPE_START_EVENT, e.Outgoing, e.Incoming)
+	}
+	for _, e := range fe.EndEvents {
+		reg(e.ID, eventv1.Element_TYPE_END_EVENT, e.Outgoing, e.Incoming)
+	}
+	for _, e := range fe.UserTasks {
+		reg(e.ID, eventv1.Element_TYPE_USER_TASK, e.Outgoing, e.Incoming)
+	}
+	for _, e := range fe.ServiceTasks {
+		reg(e.ID, eventv1.Element_TYPE_SERVICE_TASK, e.Outgoing, e.Incoming)
+	}
+	for _, e := range fe.ExclusiveGatewaies {
+		reg(e.ID, eventv1.Element_TYPE_EXCLUSIVE_GATEWAY, e.Outgoing, e.Incoming)
+	}
+	for _, e := range fe.ParallelGatewaies {
+		reg(e.ID, eventv1.Element_TYPE_PARALLEL_GATEWAY, e.Outgoing, e.Incoming)
+	}
+	for _, e := range fe.IntermediateCatchEvents {
+		reg(e.ID, eventv1.Element_TYPE_INTERMEDIATE_CATCH_EVENT, e.Outgoing, e.Incoming)
 		if spec, err := timerCatchSpec(e); err == nil {
 			d.timerCatch[e.ID] = spec
-			continue
-		}
-		if spec, err := messageCatchSpec(e, messages); err == nil {
+		} else if spec, err := messageCatchSpec(e, messages); err == nil {
 			d.messageCatch[e.ID] = spec.Name
 		}
 	}
-	for _, e := range p.BoundaryEvents {
+	for _, e := range fe.BoundaryEvents {
+		reg(e.ID, eventv1.Element_TYPE_BOUNDARY_EVENT, e.Outgoing, e.Incoming)
 		if spec, err := timerBoundarySpec(e); err == nil {
 			d.timerCatch[e.ID] = spec.Catch
-			continue
-		}
-		if spec, err := messageBoundarySpec(e, messages); err == nil {
+		} else if spec, err := messageBoundarySpec(e, messages); err == nil {
 			d.messageCatch[e.ID] = spec.Name
 		}
+	}
+	for _, e := range fe.SequenceFlows {
+		d.seqFlows[e.ID] = &seqFlowEntry{ScopeID: scopeID, SourceID: e.SourceRef, TargetID: e.TargetRef}
+		d.elements[e.ID] = &elemEntry{Type: eventv1.Element_TYPE_SEQUENCE_FLOW, ScopeID: scopeID}
+	}
+	for i := range fe.SubProcesses {
+		sp := &fe.SubProcesses[i]
+		reg(sp.ID, eventv1.Element_TYPE_SUB_PROCESS, sp.Outgoing, sp.Incoming)
+		d.indexScope(&sp.FlowElements, sp.ID, messages)
 	}
 }
 
@@ -84,10 +135,13 @@ func validateM1(proc *element.Process) error {
 	unsupported += len(proc.Tasks) + len(proc.ManualTasks)
 	unsupported += len(proc.SendTasks) + len(proc.ReceiveTasks) + len(proc.BusinessRuleTasks)
 	unsupported += len(proc.InclusiveGatewaies) + len(proc.EventBasedGatewaies)
-	unsupported += len(proc.SubProcesses) + len(proc.CallActivities)
+	unsupported += len(proc.CallActivities)
 	unsupported += len(proc.IntermediateThrowEvents)
 	if unsupported > 0 {
 		return fmt.Errorf("UNSUPPORTED_ELEMENT: process contains elements outside M1 subset")
+	}
+	if err := validateSubProcesses(&proc.FlowElements); err != nil {
+		return err
 	}
 	for _, e := range proc.IntermediateCatchEvents {
 		if len(e.TimerEventDefinitions) > 0 {
@@ -165,57 +219,43 @@ func (d *Deployment) StartEventID() (string, error) {
 	return StartEventID(&d.Process)
 }
 
+// SubProcessStartEventID returns the start event of the given subprocess.
+func (d *Deployment) SubProcessStartEventID(subProcessID string) (string, error) {
+	sp := d.findSubProcess(&d.Process.FlowElements, subProcessID)
+	if sp == nil {
+		return "", fmt.Errorf("NOT_FOUND: subProcess %q", subProcessID)
+	}
+	if len(sp.StartEvents) == 0 {
+		return "", fmt.Errorf("no startEvent in subProcess %q", subProcessID)
+	}
+	return sp.StartEvents[0].ID, nil
+}
+
+func (d *Deployment) findSubProcess(fe *element.FlowElements, id string) *element.SubProcess {
+	for i := range fe.SubProcesses {
+		if fe.SubProcesses[i].ID == id {
+			return &fe.SubProcesses[i]
+		}
+		if sp := d.findSubProcess(&fe.SubProcesses[i].FlowElements, id); sp != nil {
+			return sp
+		}
+	}
+	return nil
+}
+
 func (d *Deployment) TypeOf(id string) (eventv1.Element_Type, error) {
-	p := &d.Process
-	if p.ID == id {
-		return eventv1.Element_TYPE_PROCESS, nil
-	}
-	for _, e := range p.StartEvents {
-		if e.ID == id {
-			return eventv1.Element_TYPE_START_EVENT, nil
-		}
-	}
-	for _, e := range p.EndEvents {
-		if e.ID == id {
-			return eventv1.Element_TYPE_END_EVENT, nil
-		}
-	}
-	for _, e := range p.UserTasks {
-		if e.ID == id {
-			return eventv1.Element_TYPE_USER_TASK, nil
-		}
-	}
-	for _, e := range p.ServiceTasks {
-		if e.ID == id {
-			return eventv1.Element_TYPE_SERVICE_TASK, nil
-		}
-	}
-	for _, e := range p.ExclusiveGatewaies {
-		if e.ID == id {
-			return eventv1.Element_TYPE_EXCLUSIVE_GATEWAY, nil
-		}
-	}
-	for _, e := range p.ParallelGatewaies {
-		if e.ID == id {
-			return eventv1.Element_TYPE_PARALLEL_GATEWAY, nil
-		}
-	}
-	for _, e := range p.IntermediateCatchEvents {
-		if e.ID == id {
-			return eventv1.Element_TYPE_INTERMEDIATE_CATCH_EVENT, nil
-		}
-	}
-	for _, e := range p.BoundaryEvents {
-		if e.ID == id {
-			return eventv1.Element_TYPE_BOUNDARY_EVENT, nil
-		}
-	}
-	for _, e := range p.SequenceFlows {
-		if e.ID == id {
-			return eventv1.Element_TYPE_SEQUENCE_FLOW, nil
-		}
+	if e, ok := d.elements[id]; ok {
+		return e.Type, nil
 	}
 	return eventv1.Element_TYPE_UNSPECIFIED, fmt.Errorf("NOT_FOUND: element %q", id)
+}
+
+// ScopeOf returns the parent scope ID (process or subprocess) of an element.
+func (d *Deployment) ScopeOf(id string) (string, bool) {
+	if e, ok := d.elements[id]; ok {
+		return e.ScopeID, true
+	}
+	return "", false
 }
 
 // Outgoing returns sequence flow ids leaving the element.
@@ -233,7 +273,16 @@ func Outgoing(proc *element.Process, elementID string) []string {
 }
 
 func (d *Deployment) Outgoing(elementID string) []string {
-	return Outgoing(&d.Process, elementID)
+	if e, ok := d.elements[elementID]; ok && len(e.Outgoing) > 0 {
+		return append([]string{}, e.Outgoing...)
+	}
+	var ids []string
+	for id, sf := range d.seqFlows {
+		if sf.SourceID == elementID {
+			ids = append(ids, id)
+		}
+	}
+	return ids
 }
 
 // Incoming returns sequence flow ids entering the element.
@@ -251,7 +300,16 @@ func Incoming(proc *element.Process, elementID string) []string {
 }
 
 func (d *Deployment) Incoming(elementID string) []string {
-	return Incoming(&d.Process, elementID)
+	if e, ok := d.elements[elementID]; ok && len(e.Incoming) > 0 {
+		return append([]string{}, e.Incoming...)
+	}
+	var ids []string
+	for id, sf := range d.seqFlows {
+		if sf.TargetID == elementID {
+			ids = append(ids, id)
+		}
+	}
+	return ids
 }
 
 func flowNodeIncoming(proc *element.Process, id string) []string {
@@ -343,8 +401,21 @@ func flowNodeOutgoing(proc *element.Process, id string) []string {
 }
 
 func (d *Deployment) SequenceFlow(id string) (element.SequenceFlow, error) {
-	for _, f := range d.Process.SequenceFlows {
+	return d.findSequenceFlow(id)
+}
+
+func (d *Deployment) findSequenceFlow(id string) (element.SequenceFlow, error) {
+	return findSequenceFlowIn(&d.Process.FlowElements, id)
+}
+
+func findSequenceFlowIn(fe *element.FlowElements, id string) (element.SequenceFlow, error) {
+	for _, f := range fe.SequenceFlows {
 		if f.ID == id {
+			return f, nil
+		}
+	}
+	for i := range fe.SubProcesses {
+		if f, err := findSequenceFlowIn(&fe.SubProcesses[i].FlowElements, id); err == nil {
 			return f, nil
 		}
 	}
@@ -352,8 +423,17 @@ func (d *Deployment) SequenceFlow(id string) (element.SequenceFlow, error) {
 }
 
 func (d *Deployment) ServiceTask(id string) (element.ServiceTask, error) {
-	for _, st := range d.Process.ServiceTasks {
+	return findServiceTaskIn(&d.Process.FlowElements, id)
+}
+
+func findServiceTaskIn(fe *element.FlowElements, id string) (element.ServiceTask, error) {
+	for _, st := range fe.ServiceTasks {
 		if st.ID == id {
+			return st, nil
+		}
+	}
+	for i := range fe.SubProcesses {
+		if st, err := findServiceTaskIn(&fe.SubProcesses[i].FlowElements, id); err == nil {
 			return st, nil
 		}
 	}
@@ -372,13 +452,7 @@ func ConditionText(f element.SequenceFlow) string {
 
 // ChooseExclusiveOutgoing picks the first matching non-default condition, else default.
 func (d *Deployment) ChooseExclusiveOutgoing(gatewayID string, vars map[string]string) (string, error) {
-	var g *element.ExclusiveGateway
-	for i := range d.Process.ExclusiveGatewaies {
-		if d.Process.ExclusiveGatewaies[i].ID == gatewayID {
-			g = &d.Process.ExclusiveGatewaies[i]
-			break
-		}
-	}
+	g := findExclusiveGatewayIn(&d.Process.FlowElements, gatewayID)
 	if g == nil {
 		return "", fmt.Errorf("NOT_FOUND: exclusive gateway %q", gatewayID)
 	}
@@ -410,6 +484,20 @@ func (d *Deployment) ChooseExclusiveOutgoing(gatewayID string, vars map[string]s
 	return "", fmt.Errorf("NO_OUTGOING_FLOW")
 }
 
+func findExclusiveGatewayIn(fe *element.FlowElements, id string) *element.ExclusiveGateway {
+	for i := range fe.ExclusiveGatewaies {
+		if fe.ExclusiveGatewaies[i].ID == id {
+			return &fe.ExclusiveGatewaies[i]
+		}
+	}
+	for i := range fe.SubProcesses {
+		if g := findExclusiveGatewayIn(&fe.SubProcesses[i].FlowElements, id); g != nil {
+			return g
+		}
+	}
+	return nil
+}
+
 func validateBoundaryHost(proc *element.Process, activityID string) error {
 	for _, e := range proc.UserTasks {
 		if e.ID == activityID {
@@ -422,4 +510,16 @@ func validateBoundaryHost(proc *element.Process, activityID string) error {
 		}
 	}
 	return fmt.Errorf("UNSUPPORTED_ELEMENT: interrupting boundary must attach to a userTask or serviceTask (%q)", activityID)
+}
+
+func validateSubProcesses(fe *element.FlowElements) error {
+	for _, sp := range fe.SubProcesses {
+		if len(sp.StartEvents) == 0 {
+			return fmt.Errorf("UNSUPPORTED_ELEMENT: subProcess %q must have a startEvent", sp.ID)
+		}
+		if err := validateSubProcesses(&sp.FlowElements); err != nil {
+			return err
+		}
+	}
+	return nil
 }
