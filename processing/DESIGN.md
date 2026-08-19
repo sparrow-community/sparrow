@@ -280,10 +280,11 @@ Recover(ctx, eventLog, deploymentStore)
 | `INTERMEDIATE_CATCH_EVENT` | `intermediate_catch_event.go` | Timer：`timeDuration` / `timeDate` / `timeCycle`（只算第一次到期），ACTIVATED 写 `due_unix_ms`，`FireDue` → `Complete`。Message：ACTIVATED 写 `message_name`，`PublishMessage` → `Complete`。均 `Wait`。 |
 | `BOUNDARY_EVENT` | `boundary_event.go` | 打断型 Timer 或 Message：活动 ACTIVATED 写 `ActivityPayload.boundary_id`（Timer 另写 due；Message 另写 `message_name`）。`FireDue` / `PublishMessage` → `Complete(boundary)`：活动 TERMINATED，沿 boundary 出边。非打断、同一活动两个 boundary 拒绝。 |
 | `EXCLUSIVE_GATEWAY` | `exclusive_gateway.go` | 非 default 条件按序求值，否则 default；payload 带 `taken_sequence_flow_id` |
+| `PARALLEL_GATEWAY` | `parallel_gateway.go` | 多出口 fork（mint 新 token）；多入口 join（全部到达后一条 token 继续，peer TERMINATED 移出投影） |
 | `SEQUENCE_FLOW` | `sequence_flow.go` | 经 transit 发 `SEQUENCE_FLOW_TAKEN`（不走 OnEnter） |
 | `END_EVENT` | `end_event.go` | 完成后 `TryCompleteProcess` |
 
-部署时 `validateM1` 拒绝尚未实现的元素（Parallel、SubProcess、throw、非打断 boundary、同一活动多个 boundary、更多元素等）。ServiceTask、中间捕获（Timer + Message catch）与打断型 Timer / Message boundary 已纳入可执行子集。
+部署时 `validateM1` 拒绝尚未实现的元素（Inclusive/EventBased gateway、SubProcess、throw、非打断 boundary、同一活动多个 boundary、更多元素等）。ServiceTask、中间捕获（Timer + Message catch）、打断型 Timer / Message boundary 与 Parallel gateway 已纳入可执行子集。
 
 ### Timer catch（timeDuration / timeDate）时序链（M2）
 
@@ -506,7 +507,8 @@ Recover(ctx, eventLog, deploymentStore)
 | 17 | Message 内存缓冲（迟到消息；非账本） | 已完成 |
 | 18 | 打断型 Timer boundary（UserTask/ServiceTask） | 已完成 |
 | 19 | 打断型 Message boundary（UserTask/ServiceTask） | 已完成 |
-| 20 | 非打断 boundary；同一活动多个 boundary；更多元素 | 未开始 |
+| 20 | Parallel gateway fork/join（多 token） | 已完成 |
+| 21 | 非打断 boundary；Inclusive；SubProcess；更多元素 | 未开始 |
 
 ---
 
