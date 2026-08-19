@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             id="Definitions_subprocess_parallel"
+             targetNamespace="http://sparrow.example/subprocess-parallel">
+  <process id="Process_sp_parallel" name="SubProcess with Internal Parallel" isExecutable="true">
+    <startEvent id="StartEvent_1">
+      <outgoing>Flow_start_to_sub</outgoing>
+    </startEvent>
+    <subProcess id="SubProcess_1" name="Parallel Work">
+      <incoming>Flow_start_to_sub</incoming>
+      <outgoing>Flow_sub_to_end</outgoing>
+      <startEvent id="Sub_Start">
+        <outgoing>Flow_sub_start_to_fork</outgoing>
+      </startEvent>
+      <parallelGateway id="Fork_1">
+        <incoming>Flow_sub_start_to_fork</incoming>
+        <outgoing>Flow_fork_to_a</outgoing>
+        <outgoing>Flow_fork_to_b</outgoing>
+      </parallelGateway>
+      <userTask id="TaskA" name="Task A">
+        <incoming>Flow_fork_to_a</incoming>
+        <outgoing>Flow_a_to_join</outgoing>
+      </userTask>
+      <userTask id="TaskB" name="Task B">
+        <incoming>Flow_fork_to_b</incoming>
+        <outgoing>Flow_b_to_join</outgoing>
+      </userTask>
+      <parallelGateway id="Join_1">
+        <incoming>Flow_a_to_join</incoming>
+        <incoming>Flow_b_to_join</incoming>
+        <outgoing>Flow_join_to_sub_end</outgoing>
+      </parallelGateway>
+      <endEvent id="Sub_End">
+        <incoming>Flow_join_to_sub_end</incoming>
+      </endEvent>
+      <sequenceFlow id="Flow_sub_start_to_fork" sourceRef="Sub_Start" targetRef="Fork_1"/>
+      <sequenceFlow id="Flow_fork_to_a" sourceRef="Fork_1" targetRef="TaskA"/>
+      <sequenceFlow id="Flow_fork_to_b" sourceRef="Fork_1" targetRef="TaskB"/>
+      <sequenceFlow id="Flow_a_to_join" sourceRef="TaskA" targetRef="Join_1"/>
+      <sequenceFlow id="Flow_b_to_join" sourceRef="TaskB" targetRef="Join_1"/>
+      <sequenceFlow id="Flow_join_to_sub_end" sourceRef="Join_1" targetRef="Sub_End"/>
+    </subProcess>
+    <endEvent id="EndEvent_1">
+      <incoming>Flow_sub_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_sub" sourceRef="StartEvent_1" targetRef="SubProcess_1"/>
+    <sequenceFlow id="Flow_sub_to_end" sourceRef="SubProcess_1" targetRef="EndEvent_1"/>
+  </process>
+</definitions>

@@ -53,6 +53,45 @@ func TestSubProcessEnterAndComplete(t *testing.T) {
 	}
 }
 
+func TestSubProcessInternalParallel(t *testing.T) {
+	xml := readTestdata(t, "m2_subprocess_parallel.bpmn")
+	eng := processing.NewEngine(eventlog.NewMemory())
+	ctx := context.Background()
+	dep, err := eng.Deploy(ctx, xml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instanceID, err := eng.CreateInstance(ctx, dep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inst, _ := eng.GetInstance(instanceID)
+	// Should have 2 waiting tokens (TaskA and TaskB)
+	var waitingTokens []struct{ elem, token string }
+	for tid, tok := range inst.Tokens {
+		if tok.Status == projection.TokenWaiting {
+			waitingTokens = append(waitingTokens, struct{ elem, token string }{tok.ElementID, tid})
+		}
+	}
+	if len(waitingTokens) != 2 {
+		t.Fatalf("expected 2 waiting tokens, got %d: %+v", len(waitingTokens), waitingTokens)
+	}
+
+	// Complete both
+	for _, w := range waitingTokens {
+		if err := eng.Complete(ctx, instanceID, w.elem, w.token, nil); err != nil {
+			t.Fatalf("Complete %s: %v", w.elem, err)
+		}
+	}
+	inst, _ = eng.GetInstance(instanceID)
+	if inst.Status != projection.StatusCompleted {
+		for tid, tok := range inst.Tokens {
+			t.Logf("TOKEN: id=%s elem=%s status=%s", tid, tok.ElementID, tok.Status)
+		}
+		t.Fatalf("status=%s want completed", inst.Status)
+	}
+}
+
 func TestSubProcessRecoverThenComplete(t *testing.T) {
 	xml := readTestdata(t, "m2_subprocess.bpmn")
 	dir := t.TempDir()
