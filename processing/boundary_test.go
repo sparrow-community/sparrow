@@ -738,3 +738,106 @@ func TestDualBoundaryActivityCompletes(t *testing.T) {
 		t.Fatal("expected message boundary TERMINATED on complete")
 	}
 }
+
+func TestDualBoundaryRecoverThenTimerFires(t *testing.T) {
+	xml := readTestdata(t, "m2_dual_boundary.bpmn")
+	dir := t.TempDir()
+	ctx := context.Background()
+
+	eng1, err := processing.Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dep, err := eng1.Deploy(ctx, xml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instanceID, err := eng1.CreateInstance(ctx, dep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := eng1.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	eng2, err := processing.Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer eng2.Close()
+
+	inst, ok := eng2.GetInstance(instanceID)
+	if !ok {
+		t.Fatal("instance missing after recover")
+	}
+	_, tokenID := waitingAt(inst)
+	tok := inst.Tokens[tokenID]
+	if tok.BoundaryID != "TimerBoundary_1" {
+		t.Fatalf("timer boundary not restored: BoundaryID=%q", tok.BoundaryID)
+	}
+	if tok.MessageBoundaryID != "MessageBoundary_1" {
+		t.Fatalf("message boundary not restored: MessageBoundaryID=%q", tok.MessageBoundaryID)
+	}
+	if tok.MessageName != "escalate" {
+		t.Fatalf("message name not restored: MessageName=%q", tok.MessageName)
+	}
+	if tok.DueUnixMs == 0 {
+		t.Fatal("DueUnixMs not restored")
+	}
+
+	if err := eng2.FireDue(ctx); err != nil {
+		t.Fatal(err)
+	}
+	inst, _ = eng2.GetInstance(instanceID)
+	if inst.Status != projection.StatusCompleted {
+		t.Fatalf("status=%s want completed", inst.Status)
+	}
+}
+
+func TestDualBoundaryRecoverThenMessageFires(t *testing.T) {
+	xml := readTestdata(t, "m2_dual_boundary.bpmn")
+	dir := t.TempDir()
+	ctx := context.Background()
+
+	eng1, err := processing.Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dep, err := eng1.Deploy(ctx, xml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instanceID, err := eng1.CreateInstance(ctx, dep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = instanceID
+	if err := eng1.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	eng2, err := processing.Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer eng2.Close()
+
+	n, err := eng2.PublishMessage(ctx, processing.PublishMessageRequest{Name: "escalate"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("delivered=%d want 1", n)
+	}
+	inst, _ := eng2.GetInstance(instanceID)
+	if inst.Status != projection.StatusCompleted {
+		t.Fatalf("status=%s want completed", inst.Status)
+	}
+	events, _ := eng2.ListEvents(ctx, instanceID)
+	if !sawElementIntent(events, eventv1.Element_TYPE_BOUNDARY_EVENT, "MessageBoundary_1", eventv1.Element_INTENT_COMPLETED) {
+		t.Fatal("expected message boundary COMPLETED")
+	}
+	if !sawElementIntent(events, eventv1.Element_TYPE_BOUNDARY_EVENT, "TimerBoundary_1", eventv1.Element_INTENT_TERMINATED) {
+		t.Fatal("expected timer boundary TERMINATED")
+	}
+}

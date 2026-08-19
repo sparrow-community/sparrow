@@ -49,9 +49,9 @@ cf47acf Add STATUS.md for cross-session project continuity.
 
 ## 下一步候选（按优先级）
 
-1. **Recover 与 dual boundary 组合回归** — 确保重启后 Timer+Message 都还原
-2. **SubProcess / Inclusive gateway** — 范围更大，后置
-3. 跨重启的 Job 租约 / 消息缓冲持久化
+1. **SubProcess / Inclusive gateway** — 范围更大，后置
+2. 跨重启的 Job 租约 / 消息缓冲持久化
+3. EventBased gateway / Signal / Compensation
 
 ## 新会话开场模板
 
