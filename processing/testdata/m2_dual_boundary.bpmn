@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             id="Definitions_dual_boundary"
+             targetNamespace="http://sparrow.example/dual-boundary">
+  <process id="Process_dual_boundary" name="M2 Dual Boundary Timer+Message" isExecutable="true">
+    <startEvent id="StartEvent_1">
+      <outgoing>Flow_start_to_task</outgoing>
+    </startEvent>
+    <userTask id="UserTask_1" name="Work">
+      <incoming>Flow_start_to_task</incoming>
+      <outgoing>Flow_task_to_ok</outgoing>
+    </userTask>
+    <boundaryEvent id="TimerBoundary_1" attachedToRef="UserTask_1" cancelActivity="true">
+      <outgoing>Flow_timer_to_timeout</outgoing>
+      <timerEventDefinition id="TimerDef_1">
+        <timeDuration xsi:type="tFormalExpression">PT0S</timeDuration>
+      </timerEventDefinition>
+    </boundaryEvent>
+    <boundaryEvent id="MessageBoundary_1" attachedToRef="UserTask_1" cancelActivity="true">
+      <outgoing>Flow_msg_to_escalation</outgoing>
+      <messageEventDefinition id="MsgDef_1" messageRef="Message_1"/>
+    </boundaryEvent>
+    <endEvent id="EndEvent_ok">
+      <incoming>Flow_task_to_ok</incoming>
+    </endEvent>
+    <endEvent id="EndEvent_timeout">
+      <incoming>Flow_timer_to_timeout</incoming>
+    </endEvent>
+    <endEvent id="EndEvent_escalation">
+      <incoming>Flow_msg_to_escalation</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_task" sourceRef="StartEvent_1" targetRef="UserTask_1"/>
+    <sequenceFlow id="Flow_task_to_ok" sourceRef="UserTask_1" targetRef="EndEvent_ok"/>
+    <sequenceFlow id="Flow_timer_to_timeout" sourceRef="TimerBoundary_1" targetRef="EndEvent_timeout"/>
+    <sequenceFlow id="Flow_msg_to_escalation" sourceRef="MessageBoundary_1" targetRef="EndEvent_escalation"/>
+  </process>
+  <message id="Message_1" name="escalate"/>
+</definitions>

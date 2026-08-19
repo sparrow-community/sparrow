@@ -209,10 +209,14 @@ type ActivityPayload struct {
 	Duration string `protobuf:"bytes,5,opt,name=duration,proto3" json:"duration,omitempty"`
 	// BPMN id of the interrupting timer or message boundary. Empty if unused.
 	BoundaryId string `protobuf:"bytes,6,opt,name=boundary_id,json=boundaryId,proto3" json:"boundary_id,omitempty"`
-	// BPMN message name when an interrupting message boundary is armed. Empty if unused.
-	MessageName   string `protobuf:"bytes,7,opt,name=message_name,json=messageName,proto3" json:"message_name,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// BPMN message name when a message boundary is armed. Empty if unused.
+	MessageName string `protobuf:"bytes,7,opt,name=message_name,json=messageName,proto3" json:"message_name,omitempty"`
+	// BPMN id of the message boundary when both timer and message boundaries are armed.
+	// When only one boundary exists, boundary_id carries it. When both exist,
+	// boundary_id carries the timer and message_boundary_id carries the message.
+	MessageBoundaryId string `protobuf:"bytes,8,opt,name=message_boundary_id,json=messageBoundaryId,proto3" json:"message_boundary_id,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *ActivityPayload) Reset() {
@@ -290,6 +294,13 @@ func (x *ActivityPayload) GetBoundaryId() string {
 func (x *ActivityPayload) GetMessageName() string {
 	if x != nil {
 		return x.MessageName
+	}
+	return ""
+}
+
+func (x *ActivityPayload) GetMessageBoundaryId() string {
+	if x != nil {
+		return x.MessageBoundaryId
 	}
 	return ""
 }
@@ -443,7 +454,7 @@ const file_event_v1_payloads_proto_rawDesc = "" +
 	"\vdue_unix_ms\x18\x01 \x01(\x03R\tdueUnixMs\x12\x1a\n" +
 	"\bduration\x18\x02 \x01(\tR\bduration\x12!\n" +
 	"\fmessage_name\x18\x03 \x01(\tR\vmessageName\x120\n" +
-	"\tvariables\x18\x04 \x03(\v2\x12.event.v1.VariableR\tvariables\"\x83\x02\n" +
+	"\tvariables\x18\x04 \x03(\v2\x12.event.v1.VariableR\tvariables\"\xb3\x02\n" +
 	"\x0fActivityPayload\x120\n" +
 	"\tvariables\x18\x01 \x03(\v2\x12.event.v1.VariableR\tvariables\x12\x19\n" +
 	"\bjob_type\x18\x02 \x01(\tR\ajobType\x12#\n" +
@@ -452,7 +463,8 @@ const file_event_v1_payloads_proto_rawDesc = "" +
 	"\bduration\x18\x05 \x01(\tR\bduration\x12\x1f\n" +
 	"\vboundary_id\x18\x06 \x01(\tR\n" +
 	"boundaryId\x12!\n" +
-	"\fmessage_name\x18\a \x01(\tR\vmessageName\"E\n" +
+	"\fmessage_name\x18\a \x01(\tR\vmessageName\x12.\n" +
+	"\x13message_boundary_id\x18\b \x01(\tR\x11messageBoundaryId\"E\n" +
 	"\x0eGatewayPayload\x123\n" +
 	"\x16taken_sequence_flow_id\x18\x01 \x01(\tR\x13takenSequenceFlowId\"O\n" +
 	"\x13SequenceFlowPayload\x12\x1b\n" +

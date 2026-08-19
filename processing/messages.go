@@ -120,7 +120,7 @@ func (e *Engine) collectMessageWaiters(name, instanceID string, keys []*eventv1.
 				continue
 			}
 			if tok.MessageName != "" && tok.MessageName == name {
-				waiters = append(waiters, dueWait{instanceID: iid, elementID: waiterElementID(tok), tokenID: tok.ID, MessageName: tok.MessageName})
+				waiters = append(waiters, dueWait{instanceID: iid, elementID: messageWaiterElementID(tok), tokenID: tok.ID, MessageName: tok.MessageName})
 			}
 		}
 		lock.Unlock()
@@ -213,7 +213,7 @@ func (e *Engine) messageWaiterOn(instanceID string) (dueWait, map[string]string,
 		if tok == nil || tok.Status != projection.TokenWaiting || tok.MessageName == "" {
 			continue
 		}
-		return dueWait{instanceID: instanceID, elementID: waiterElementID(tok), tokenID: tok.ID, MessageName: tok.MessageName}, cloneStringMap(inst.Variables), true
+		return dueWait{instanceID: instanceID, elementID: messageWaiterElementID(tok), tokenID: tok.ID, MessageName: tok.MessageName}, cloneStringMap(inst.Variables), true
 	}
 	return dueWait{}, nil, false
 }

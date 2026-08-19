@@ -618,3 +618,123 @@ func countElementIntent(events []*eventv1.Event, typ eventv1.Element_Type, id st
 	}
 	return n
 }
+
+// --- Dual boundary (timer + message on same activity) ---
+
+func TestDualBoundaryDeploy(t *testing.T) {
+	xml := readTestdata(t, "m2_dual_boundary.bpmn")
+	eng := processing.NewEngine(eventlog.NewMemory())
+	_, err := eng.Deploy(context.Background(), xml)
+	if err != nil {
+		t.Fatal("should accept dual boundary:", err)
+	}
+}
+
+func TestDualBoundaryTimerFires(t *testing.T) {
+	xml := readTestdata(t, "m2_dual_boundary.bpmn")
+	eng := processing.NewEngine(eventlog.NewMemory())
+	ctx := context.Background()
+	dep, err := eng.Deploy(ctx, xml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instanceID, err := eng.CreateInstance(ctx, dep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inst, _ := eng.GetInstance(instanceID)
+	_, tokenID := waitingAt(inst)
+	tok := inst.Tokens[tokenID]
+	if tok.BoundaryID != "TimerBoundary_1" {
+		t.Fatalf("expected timer boundary armed, got BoundaryID=%q", tok.BoundaryID)
+	}
+	if tok.MessageName != "escalate" {
+		t.Fatalf("expected message boundary armed, got MessageName=%q", tok.MessageName)
+	}
+	if tok.MessageBoundaryID != "MessageBoundary_1" {
+		t.Fatalf("expected MessageBoundaryID=%q, got %q", "MessageBoundary_1", tok.MessageBoundaryID)
+	}
+
+	if err := eng.FireDue(ctx); err != nil {
+		t.Fatal(err)
+	}
+	inst, _ = eng.GetInstance(instanceID)
+	if inst.Status != projection.StatusCompleted {
+		t.Fatalf("status=%s want completed", inst.Status)
+	}
+	events, _ := eng.ListEvents(ctx, instanceID)
+	if !sawElementIntent(events, eventv1.Element_TYPE_USER_TASK, "UserTask_1", eventv1.Element_INTENT_TERMINATED) {
+		t.Fatal("expected UserTask TERMINATED")
+	}
+	if !sawElementIntent(events, eventv1.Element_TYPE_BOUNDARY_EVENT, "TimerBoundary_1", eventv1.Element_INTENT_COMPLETED) {
+		t.Fatal("expected timer boundary COMPLETED")
+	}
+	if !sawElementIntent(events, eventv1.Element_TYPE_BOUNDARY_EVENT, "MessageBoundary_1", eventv1.Element_INTENT_TERMINATED) {
+		t.Fatal("expected message boundary TERMINATED")
+	}
+}
+
+func TestDualBoundaryMessageFires(t *testing.T) {
+	xml := readTestdata(t, "m2_dual_boundary.bpmn")
+	eng := processing.NewEngine(eventlog.NewMemory())
+	ctx := context.Background()
+	dep, err := eng.Deploy(ctx, xml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instanceID, err := eng.CreateInstance(ctx, dep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n, err := eng.PublishMessage(ctx, processing.PublishMessageRequest{Name: "escalate"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("delivered=%d want 1", n)
+	}
+	inst, _ := eng.GetInstance(instanceID)
+	if inst.Status != projection.StatusCompleted {
+		t.Fatalf("status=%s want completed", inst.Status)
+	}
+	events, _ := eng.ListEvents(ctx, instanceID)
+	if !sawElementIntent(events, eventv1.Element_TYPE_USER_TASK, "UserTask_1", eventv1.Element_INTENT_TERMINATED) {
+		t.Fatal("expected UserTask TERMINATED")
+	}
+	if !sawElementIntent(events, eventv1.Element_TYPE_BOUNDARY_EVENT, "MessageBoundary_1", eventv1.Element_INTENT_COMPLETED) {
+		t.Fatal("expected message boundary COMPLETED")
+	}
+	if !sawElementIntent(events, eventv1.Element_TYPE_BOUNDARY_EVENT, "TimerBoundary_1", eventv1.Element_INTENT_TERMINATED) {
+		t.Fatal("expected timer boundary TERMINATED")
+	}
+}
+
+func TestDualBoundaryActivityCompletes(t *testing.T) {
+	xml := readTestdata(t, "m2_dual_boundary.bpmn")
+	eng := processing.NewEngine(eventlog.NewMemory())
+	ctx := context.Background()
+	dep, err := eng.Deploy(ctx, xml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instanceID, err := eng.CreateInstance(ctx, dep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inst, _ := eng.GetInstance(instanceID)
+	elemID, tokenID := waitingAt(inst)
+	if err := eng.Complete(ctx, instanceID, elemID, tokenID, nil); err != nil {
+		t.Fatal(err)
+	}
+	inst, _ = eng.GetInstance(instanceID)
+	if inst.Status != projection.StatusCompleted {
+		t.Fatalf("status=%s want completed", inst.Status)
+	}
+	events, _ := eng.ListEvents(ctx, instanceID)
+	if !sawElementIntent(events, eventv1.Element_TYPE_BOUNDARY_EVENT, "TimerBoundary_1", eventv1.Element_INTENT_TERMINATED) {
+		t.Fatal("expected timer boundary TERMINATED on complete")
+	}
+	if !sawElementIntent(events, eventv1.Element_TYPE_BOUNDARY_EVENT, "MessageBoundary_1", eventv1.Element_INTENT_TERMINATED) {
+		t.Fatal("expected message boundary TERMINATED on complete")
+	}
+}

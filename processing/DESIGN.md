@@ -313,7 +313,7 @@ Recover(ctx, eventLog, deploymentStore)
 3. Timer 先到期 / Message 先到达：`Complete(boundary_id)`（命中的是挂接活动上的 waiting token）
    - **打断型**：活动 `TERMINATING` → `TERMINATED`；boundary `COMPLETING` → `COMPLETED`；同一 token 沿 boundary 出边
    - **非打断型**：活动保持 waiting，但清掉已触发的一次 boundary 等待；executor mint 新 token，写 boundary 生命周期后沿 boundary 出边
-4. 每个活动最多一个 boundary（Timer XOR Message）；非打断型 timer `timeCycle` 会在活动仍等待时按剩余周期重新武装
+4. 同一活动可同时挂 Timer + Message boundary（各最多一个）；非打断型 timer `timeCycle` 会在活动仍等待时按剩余周期重新武装
 
 ### Message catch 时序链（M2）
 

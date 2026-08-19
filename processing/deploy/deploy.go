@@ -100,9 +100,14 @@ func validateM1(proc *element.Process) error {
 			return fmt.Errorf("UNSUPPORTED_ELEMENT: intermediateCatchEvent %q must be either timer catch or message catch", e.ID)
 		}
 	}
-	seenAttach := make(map[string]string, len(proc.BoundaryEvents))
+	type seenKey struct {
+		activity string
+		kind     string // "timer" or "message"
+	}
+	seenAttach := make(map[seenKey]string, len(proc.BoundaryEvents))
 	for _, e := range proc.BoundaryEvents {
 		attached := ""
+		kind := ""
 		switch {
 		case len(e.TimerEventDefinitions) > 0:
 			spec, err := timerBoundarySpec(e)
@@ -110,22 +115,25 @@ func validateM1(proc *element.Process) error {
 				return err
 			}
 			attached = spec.AttachedTo
+			kind = "timer"
 		case len(e.MessageEventDefinitions) > 0:
 			spec, err := messageBoundarySpec(e, nil)
 			if err != nil {
 				return err
 			}
 			attached = spec.AttachedTo
+			kind = "message"
 		default:
 			return fmt.Errorf("UNSUPPORTED_ELEMENT: boundaryEvent %q must be a timer or message boundary", e.ID)
 		}
-		if prev, ok := seenAttach[attached]; ok {
-			return fmt.Errorf("UNSUPPORTED_ELEMENT: activity %q already has boundary %q", attached, prev)
+		key := seenKey{attached, kind}
+		if prev, ok := seenAttach[key]; ok {
+			return fmt.Errorf("UNSUPPORTED_ELEMENT: activity %q already has %s boundary %q", attached, kind, prev)
 		}
 		if err := validateBoundaryHost(proc, attached); err != nil {
 			return err
 		}
-		seenAttach[attached] = e.ID
+		seenAttach[key] = e.ID
 	}
 	if len(proc.StartEvents) == 0 {
 		return fmt.Errorf("no startEvent in process")

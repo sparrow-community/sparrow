@@ -73,3 +73,13 @@ func waiterElementID(tok *projection.Token) string {
 	}
 	return tok.ElementID
 }
+
+func messageWaiterElementID(tok *projection.Token) string {
+	if tok.MessageBoundaryID != "" {
+		return tok.MessageBoundaryID
+	}
+	if tok.BoundaryID != "" {
+		return tok.BoundaryID
+	}
+	return tok.ElementID
+}

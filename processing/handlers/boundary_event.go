@@ -27,7 +27,6 @@ func attachBoundary(dep *deploy.Deployment, activityID string, now time.Time, p 
 		p.DueUnixMs = due
 		p.Duration = text
 		p.BoundaryId = bid
-		return p, nil
 	}
 	if bid, ok := dep.MessageBoundary(activityID); ok {
 		name, err := dep.MessageName(bid)
@@ -38,8 +37,11 @@ func attachBoundary(dep *deploy.Deployment, activityID string, now time.Time, p 
 			p = &eventv1.ActivityPayload{}
 		}
 		p.MessageName = name
-		p.BoundaryId = bid
-		return p, nil
+		if p.BoundaryId == "" {
+			p.BoundaryId = bid
+		} else {
+			p.MessageBoundaryId = bid
+		}
 	}
 	return p, nil
 }
@@ -48,14 +50,20 @@ func cancelAttachedBoundary(dep *deploy.Deployment, activityID, tokenID string) 
 	if dep == nil {
 		return nil
 	}
-	bid, ok := dep.AttachedBoundary(activityID)
-	if !ok {
-		return nil
+	var records []*eventv1.Element
+	if bid, ok := dep.TimerBoundary(activityID); ok {
+		records = append(records,
+			&eventv1.Element{Intent: eventv1.Element_INTENT_TERMINATING, Type: eventv1.Element_TYPE_BOUNDARY_EVENT, Id: bid, TokenId: tokenID},
+			&eventv1.Element{Intent: eventv1.Element_INTENT_TERMINATED, Type: eventv1.Element_TYPE_BOUNDARY_EVENT, Id: bid, TokenId: tokenID},
+		)
 	}
-	return []*eventv1.Element{
-		{Intent: eventv1.Element_INTENT_TERMINATING, Type: eventv1.Element_TYPE_BOUNDARY_EVENT, Id: bid, TokenId: tokenID},
-		{Intent: eventv1.Element_INTENT_TERMINATED, Type: eventv1.Element_TYPE_BOUNDARY_EVENT, Id: bid, TokenId: tokenID},
+	if bid, ok := dep.MessageBoundary(activityID); ok {
+		records = append(records,
+			&eventv1.Element{Intent: eventv1.Element_INTENT_TERMINATING, Type: eventv1.Element_TYPE_BOUNDARY_EVENT, Id: bid, TokenId: tokenID},
+			&eventv1.Element{Intent: eventv1.Element_INTENT_TERMINATED, Type: eventv1.Element_TYPE_BOUNDARY_EVENT, Id: bid, TokenId: tokenID},
+		)
 	}
+	return records
 }
 
 func disarmAttachedBoundary(boundaryID, activityTokenID string) []*eventv1.Element {
@@ -122,13 +130,29 @@ func (BoundaryEventHandler) OnComplete(in CompleteInput) (*Effect, error) {
 	if err != nil {
 		return nil, err
 	}
+	records := []*eventv1.Element{
+		{Intent: eventv1.Element_INTENT_TERMINATING, Type: typ, Id: attached, TokenId: in.TokenID},
+		{Intent: eventv1.Element_INTENT_TERMINATED, Type: typ, Id: attached, TokenId: in.TokenID},
+	}
+	// Terminate sibling boundary (the other boundary on the same activity).
+	if bid, ok := in.Deployment.TimerBoundary(attached); ok && bid != in.ElementID {
+		records = append(records,
+			&eventv1.Element{Intent: eventv1.Element_INTENT_TERMINATING, Type: eventv1.Element_TYPE_BOUNDARY_EVENT, Id: bid, TokenId: in.TokenID},
+			&eventv1.Element{Intent: eventv1.Element_INTENT_TERMINATED, Type: eventv1.Element_TYPE_BOUNDARY_EVENT, Id: bid, TokenId: in.TokenID},
+		)
+	}
+	if bid, ok := in.Deployment.MessageBoundary(attached); ok && bid != in.ElementID {
+		records = append(records,
+			&eventv1.Element{Intent: eventv1.Element_INTENT_TERMINATING, Type: eventv1.Element_TYPE_BOUNDARY_EVENT, Id: bid, TokenId: in.TokenID},
+			&eventv1.Element{Intent: eventv1.Element_INTENT_TERMINATED, Type: eventv1.Element_TYPE_BOUNDARY_EVENT, Id: bid, TokenId: in.TokenID},
+		)
+	}
+	records = append(records,
+		&eventv1.Element{Intent: eventv1.Element_INTENT_COMPLETING, Type: in.Type, Id: in.ElementID, TokenId: in.TokenID},
+		&eventv1.Element{Intent: eventv1.Element_INTENT_COMPLETED, Type: in.Type, Id: in.ElementID, TokenId: in.TokenID},
+	)
 	return &Effect{
-		Records: []*eventv1.Element{
-			{Intent: eventv1.Element_INTENT_TERMINATING, Type: typ, Id: attached, TokenId: in.TokenID},
-			{Intent: eventv1.Element_INTENT_TERMINATED, Type: typ, Id: attached, TokenId: in.TokenID},
-			{Intent: eventv1.Element_INTENT_COMPLETING, Type: in.Type, Id: in.ElementID, TokenId: in.TokenID},
-			{Intent: eventv1.Element_INTENT_COMPLETED, Type: in.Type, Id: in.ElementID, TokenId: in.TokenID},
-		},
+		Records:      records,
 		TakeOutgoing: true,
 	}, nil
 }

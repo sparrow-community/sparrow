@@ -41,8 +41,12 @@ message ActivityPayload {
   string duration = 5;
   // BPMN id of the interrupting timer or message boundary. Empty if unused.
   string boundary_id = 6;
-  // BPMN message name when an interrupting message boundary is armed. Empty if unused.
+  // BPMN message name when a message boundary is armed. Empty if unused.
   string message_name = 7;
+  // BPMN id of the message boundary when both timer and message boundaries are armed.
+  // When only one boundary exists, boundary_id carries it. When both exist,
+  // boundary_id carries the timer and message_boundary_id carries the message.
+  string message_boundary_id = 8;
 }
 
 message GatewayPayload {

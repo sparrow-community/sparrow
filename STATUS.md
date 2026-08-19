@@ -21,6 +21,8 @@
 **`main` 最新提交**（更新时改这里）：
 
 ```text
+1a93436 Add timeCycle re-arm for non-interrupting timer boundaries
+xxxxxxx Support dual boundary (timer+message) on same activity
 6e0d45e Support non-interrupting timer and message boundaries
 cf47acf Add STATUS.md for cross-session project continuity.
 3eab8ef Document parallel gateway in processing design.
@@ -33,21 +35,21 @@ cf47acf Add STATUS.md for cross-session project continuity.
 - **等待与完成**：UserTask、ServiceTask、中间 Timer catch、中间 Message catch — 统一 `Complete`
 - **Timer**：`timeDuration` / `timeDate` / `timeCycle`（仅首次到期）；`Engine.FireDue`；`cmd/sparrow` 轮询
 - **Message**：`PublishMessage`（name + 可选 correlation_keys + 内存缓冲，Recover 后缓冲丢失）
-- **Boundary**：Timer / Message 可挂 UserTask 或 ServiceTask；支持打断型与非打断型；每活动最多一个
+- **Boundary**：Timer / Message 可挂 UserTask 或 ServiceTask；支持打断型与非打断型；同一活动可同时挂 Timer + Message
 - **Job**：`Activate` / `Fail` / `Heartbeat`（内存租约，非账本）
 - **传输**：`gateway` — `engine.v1` + `job.v1` gRPC
 
 ## 明确不做（当前阶段）
 
 - 流程定义**版本管理与迁移**（每次 `Deploy` 新 `deployment_id`）
-- 同一活动上 **Timer + Message 两个 boundary**
+- 同一活动上 **三个及以上 boundary**
 - Inclusive / EventBased gateway、SubProcess、Throw、补偿、Incident
 - 集群 / 多活；跨重启的 **Job 租约** 与 **消息缓冲** 持久化
 - 复制 Camunda 产品广度（建模器、Cockpit 等）
 
 ## 下一步候选（按优先级）
 
-1. **同一活动上的多个 boundary（Timer + Message）** — 需要扩展等待态与命中规则
+1. **Recover 与 dual boundary 组合回归** — 确保重启后 Timer+Message 都还原
 2. **SubProcess / Inclusive gateway** — 范围更大，后置
 3. 跨重启的 Job 租约 / 消息缓冲持久化
 
