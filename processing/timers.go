@@ -59,14 +59,17 @@ func (e *Engine) collectDue(nowUnixMs int64) []dueWait {
 				continue
 			}
 			if tok.DueUnixMs > 0 && tok.DueUnixMs <= nowUnixMs {
-				elementID := tok.ElementID
-				if tok.BoundaryID != "" {
-					elementID = tok.BoundaryID
-				}
-				due = append(due, dueWait{instanceID: iid, elementID: elementID, tokenID: tok.ID})
+				due = append(due, dueWait{instanceID: iid, elementID: waiterElementID(tok), tokenID: tok.ID})
 			}
 		}
 		lock.Unlock()
 	}
 	return due
+}
+
+func waiterElementID(tok *projection.Token) string {
+	if tok.BoundaryID != "" {
+		return tok.BoundaryID
+	}
+	return tok.ElementID
 }

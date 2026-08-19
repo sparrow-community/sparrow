@@ -31,11 +31,12 @@ type Token struct {
 	// DueUnixMs is the timer catch due time copied from INTERMEDIATE_CATCH_EVENT ACTIVATED.
 	// Zero when the token is not waiting on a timer.
 	DueUnixMs int64
-	// MessageName is the BPMN message name copied from a message catch ACTIVATED.
+	// MessageName is the BPMN message name copied from a message catch ACTIVATED
+	// or an interrupting message boundary on a waiting activity.
 	// Empty when the token is not waiting on a message.
 	MessageName string
-	// BoundaryID is the interrupting timer boundary armed on a waiting activity.
-	// Empty when the token is not waiting on an attached timer.
+	// BoundaryID is the interrupting timer or message boundary armed on a waiting activity.
+	// Empty when the token is not waiting on an attached boundary.
 	BoundaryID string
 }
 
@@ -152,12 +153,15 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 			tok.JobType = p.GetJobType()
 			tok.DueUnixMs = p.GetDueUnixMs()
 			tok.BoundaryID = p.GetBoundaryId()
+			tok.MessageName = p.GetMessageName()
 		}
 		if p := el.GetEventPayload(); p != nil {
 			if p.GetDueUnixMs() != 0 {
 				tok.DueUnixMs = p.GetDueUnixMs()
 			}
-			tok.MessageName = p.GetMessageName()
+			if p.GetMessageName() != "" {
+				tok.MessageName = p.GetMessageName()
+			}
 		}
 	case eventv1.Element_INTENT_COMPLETED, eventv1.Element_INTENT_TERMINATED:
 		tok.Status = TokenActive

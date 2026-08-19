@@ -20,7 +20,7 @@ func (ServiceTaskHandler) OnEnter(in EnterInput) (*Effect, error) {
 		}
 	}
 	p := &eventv1.ActivityPayload{JobType: jobType}
-	p, err := attachInterruptingTimer(in.Deployment, in.ElementID, in.Now, p)
+	p, err := attachInterruptingBoundary(in.Deployment, in.ElementID, in.Now, p)
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +55,7 @@ func (ServiceTaskHandler) OnComplete(in CompleteInput) (*Effect, error) {
 		completing,
 		{Intent: eventv1.Element_INTENT_COMPLETED, Type: in.Type, Id: in.ElementID, TokenId: in.TokenID},
 	}
-	records = append(records, cancelAttachedTimer(in.Deployment, in.ElementID, in.TokenID)...)
+	records = append(records, cancelAttachedBoundary(in.Deployment, in.ElementID, in.TokenID)...)
 	return &Effect{
 		Records:      records,
 		TakeOutgoing: true,

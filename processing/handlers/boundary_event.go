@@ -8,35 +8,46 @@ import (
 	eventv1 "github.com/sparrow-community/sparrow/protocol/gen/go/event/v1"
 )
 
-func attachInterruptingTimer(dep *deploy.Deployment, activityID string, now time.Time, p *eventv1.ActivityPayload) (*eventv1.ActivityPayload, error) {
+func attachInterruptingBoundary(dep *deploy.Deployment, activityID string, now time.Time, p *eventv1.ActivityPayload) (*eventv1.ActivityPayload, error) {
 	if dep == nil {
 		return p, nil
 	}
-	bid, ok := dep.TimerBoundary(activityID)
-	if !ok {
+	if bid, ok := dep.TimerBoundary(activityID); ok {
+		if now.IsZero() {
+			now = time.Now()
+		}
+		due, text, err := dep.TimerDue(bid, now)
+		if err != nil {
+			return nil, err
+		}
+		if p == nil {
+			p = &eventv1.ActivityPayload{}
+		}
+		p.DueUnixMs = due
+		p.Duration = text
+		p.BoundaryId = bid
 		return p, nil
 	}
-	if now.IsZero() {
-		now = time.Now()
+	if bid, ok := dep.MessageBoundary(activityID); ok {
+		name, err := dep.MessageName(bid)
+		if err != nil {
+			return nil, err
+		}
+		if p == nil {
+			p = &eventv1.ActivityPayload{}
+		}
+		p.MessageName = name
+		p.BoundaryId = bid
+		return p, nil
 	}
-	due, text, err := dep.TimerDue(bid, now)
-	if err != nil {
-		return nil, err
-	}
-	if p == nil {
-		p = &eventv1.ActivityPayload{}
-	}
-	p.DueUnixMs = due
-	p.Duration = text
-	p.BoundaryId = bid
 	return p, nil
 }
 
-func cancelAttachedTimer(dep *deploy.Deployment, activityID, tokenID string) []*eventv1.Element {
+func cancelAttachedBoundary(dep *deploy.Deployment, activityID, tokenID string) []*eventv1.Element {
 	if dep == nil {
 		return nil
 	}
-	bid, ok := dep.TimerBoundary(activityID)
+	bid, ok := dep.InterruptingBoundary(activityID)
 	if !ok {
 		return nil
 	}

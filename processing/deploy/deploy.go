@@ -17,7 +17,7 @@ type Deployment struct {
 	Process element.Process
 
 	timerCatch   map[string]timerCatch // catch or interrupting timer boundary id
-	messageCatch map[string]string     // intermediate catch id -> BPMN message name
+	messageCatch map[string]string     // intermediate catch or interrupting message boundary id -> name
 }
 
 // Compile parses BPMN XML and keeps the first executable process (M1 subset).
@@ -58,7 +58,7 @@ func Compile(bpmnXML []byte) (*Deployment, error) {
 func (d *Deployment) compile(messages []element.Message) {
 	p := &d.Process
 	d.timerCatch = make(map[string]timerCatch, len(p.IntermediateCatchEvents)+len(p.BoundaryEvents))
-	d.messageCatch = make(map[string]string, len(p.IntermediateCatchEvents))
+	d.messageCatch = make(map[string]string, len(p.IntermediateCatchEvents)+len(p.BoundaryEvents))
 	for _, e := range p.IntermediateCatchEvents {
 		if spec, err := timerCatchSpec(e); err == nil {
 			d.timerCatch[e.ID] = spec
@@ -69,11 +69,13 @@ func (d *Deployment) compile(messages []element.Message) {
 		}
 	}
 	for _, e := range p.BoundaryEvents {
-		spec, err := timerBoundarySpec(e)
-		if err != nil {
+		if spec, err := timerBoundarySpec(e); err == nil {
+			d.timerCatch[e.ID] = spec.Catch
 			continue
 		}
-		d.timerCatch[e.ID] = spec.Catch
+		if spec, err := messageBoundarySpec(e, messages); err == nil {
+			d.messageCatch[e.ID] = spec.Name
+		}
 	}
 }
 
@@ -100,17 +102,30 @@ func validateM1(proc *element.Process) error {
 	}
 	seenAttach := make(map[string]string, len(proc.BoundaryEvents))
 	for _, e := range proc.BoundaryEvents {
-		spec, err := timerBoundarySpec(e)
-		if err != nil {
+		attached := ""
+		switch {
+		case len(e.TimerEventDefinitions) > 0:
+			spec, err := timerBoundarySpec(e)
+			if err != nil {
+				return err
+			}
+			attached = spec.AttachedTo
+		case len(e.MessageEventDefinitions) > 0:
+			spec, err := messageBoundarySpec(e, nil)
+			if err != nil {
+				return err
+			}
+			attached = spec.AttachedTo
+		default:
+			return fmt.Errorf("UNSUPPORTED_ELEMENT: boundaryEvent %q must be an interrupting timer or message boundary", e.ID)
+		}
+		if prev, ok := seenAttach[attached]; ok {
+			return fmt.Errorf("UNSUPPORTED_ELEMENT: activity %q already has interrupting boundary %q", attached, prev)
+		}
+		if err := validateBoundaryHost(proc, attached); err != nil {
 			return err
 		}
-		if prev, ok := seenAttach[spec.AttachedTo]; ok {
-			return fmt.Errorf("UNSUPPORTED_ELEMENT: activity %q already has interrupting timer boundary %q", spec.AttachedTo, prev)
-		}
-		if err := validateBoundaryHost(proc, spec.AttachedTo); err != nil {
-			return err
-		}
-		seenAttach[spec.AttachedTo] = e.ID
+		seenAttach[attached] = e.ID
 	}
 	if len(proc.StartEvents) == 0 {
 		return fmt.Errorf("no startEvent in process")
@@ -326,5 +341,5 @@ func validateBoundaryHost(proc *element.Process, activityID string) error {
 			return nil
 		}
 	}
-	return fmt.Errorf("UNSUPPORTED_ELEMENT: timer boundary must attach to a userTask or serviceTask (%q)", activityID)
+	return fmt.Errorf("UNSUPPORTED_ELEMENT: interrupting boundary must attach to a userTask or serviceTask (%q)", activityID)
 }
