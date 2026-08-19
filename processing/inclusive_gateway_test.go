@@ -126,6 +126,45 @@ func TestInclusiveGatewayDefaultOnly(t *testing.T) {
 	}
 }
 
+func TestInclusiveGatewayJoinDoesNotDeadlockOnUnreachableBranch(t *testing.T) {
+	xml := readTestdata(t, "m2_inclusive_gateway_deadlock_divert.bpmn")
+	eng := processing.NewEngine(eventlog.NewMemory())
+	ctx := context.Background()
+	dep, err := eng.Deploy(ctx, xml)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Take A and B, but force B to divert to a branch that cannot reach Join_1.
+	vars := map[string]any{
+		"take_a":      "true",
+		"take_b":      "true",
+		"take_join_b": "false",
+	}
+	instanceID, err := eng.CreateInstance(ctx, dep, vars)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Complete Task_A; if OR-join deadlocks, Join_1 won't advance to End_done.
+	inst, _ := eng.GetInstance(instanceID)
+	taskAToken := tokenAtElement(inst, "Task_A")
+	if taskAToken == "" {
+		t.Fatalf("expected Task_A to be waiting, got tokens: %+v", inst.Tokens)
+	}
+	if err := eng.Complete(ctx, instanceID, "Task_A", taskAToken, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	inst, _ = eng.GetInstance(instanceID)
+	if tokenAnyAtElement(inst, "End_done") == "" {
+		t.Fatalf("expected Join_1 to reach End_done; Join_1 likely deadlocked")
+	}
+	if tokenAtElement(inst, "Join_1") != "" {
+		t.Fatalf("expected no waiting token at Join_1 after completing Task_A")
+	}
+}
+
 func allWaiting(inst *projection.Instance) []string {
 	var elems []string
 	for _, tok := range inst.Tokens {
@@ -139,6 +178,15 @@ func allWaiting(inst *projection.Instance) []string {
 func tokenAtElement(inst *projection.Instance, elementID string) string {
 	for tid, tok := range inst.Tokens {
 		if tok != nil && tok.ElementID == elementID && tok.Status == projection.TokenWaiting {
+			return tid
+		}
+	}
+	return ""
+}
+
+func tokenAnyAtElement(inst *projection.Instance, elementID string) string {
+	for tid, tok := range inst.Tokens {
+		if tok != nil && tok.ElementID == elementID {
 			return tid
 		}
 	}

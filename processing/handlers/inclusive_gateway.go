@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 
+	"github.com/sparrow-community/sparrow/processing/deploy"
 	"github.com/sparrow-community/sparrow/processing/projection"
 	eventv1 "github.com/sparrow-community/sparrow/protocol/gen/go/event/v1"
 )
@@ -70,7 +71,7 @@ func inclusiveJoinEnter(in EnterInput) (*Effect, error) {
 		{Intent: eventv1.Element_INTENT_ACTIVATED, Type: in.Type, Id: in.ElementID, TokenId: in.TokenID},
 	}
 
-	expected := countExpectedIncoming(in.Instance, in.ElementID, in.TokenID, incoming)
+	expected := countExpectedReachableTokens(in.Deployment, in.Instance, in.ElementID, in.TokenID, incoming)
 
 	if arrived < expected {
 		return &Effect{Records: records, Wait: true}, nil
@@ -86,38 +87,83 @@ func inclusiveJoinEnter(in EnterInput) (*Effect, error) {
 	}, nil
 }
 
-// countExpectedIncoming determines how many tokens the join should wait for.
-// Strategy: total active tokens in the instance (status Active or Waiting)
-// that are NOT already waiting at this join element. Each such token represents
-// one incoming path. But we cap at len(incoming) since that's the max.
-// If the only active tokens are all at this join, we're ready.
-// countExpectedIncoming determines how many tokens the join should wait for.
-// It counts tokens already at the join + the arriving token + any other active
-// tokens elsewhere (excluding the arriving token). Capped at len(incoming).
-func countExpectedIncoming(inst *projection.Instance, joinID, arrivingTokenID string, incoming []string) int {
-	if inst == nil {
-		return 1
+// countExpectedReachableTokens determines how many tokens the join should wait for.
+// It avoids deadlock by counting only tokens that can still reach this join via
+// outgoing sequence flows within the same scope (process/subprocess).
+func countExpectedReachableTokens(dep *deploy.Deployment, inst *projection.Instance, joinID, arrivingTokenID string, incoming []string) int {
+	// At minimum, the arriving token itself is expected.
+	expected := 1
+	if dep == nil || inst == nil {
+		if expected > len(incoming) {
+			expected = len(incoming)
+		}
+		return expected
 	}
-	activeElsewhere := 0
-	atJoin := 0
+	joinScope, _ := dep.ScopeOf(joinID)
+
 	for tid, tok := range inst.Tokens {
 		if tok == nil || tid == arrivingTokenID {
 			continue
 		}
-		switch tok.Status {
-		case projection.TokenActive, projection.TokenWaiting:
-			if tok.ElementID == joinID {
-				atJoin++
-			} else {
-				activeElsewhere++
-			}
+		if tok.Status != projection.TokenActive && tok.Status != projection.TokenWaiting {
+			continue
+		}
+
+		// Only count tokens that are still capable of reaching the join.
+		if tok.ElementID == joinID || canReachJoin(dep, tok.ElementID, joinID, joinScope) {
+			expected++
 		}
 	}
-	expected := atJoin + 1 + activeElsewhere
+
+	// The join can't receive more arrivals than its incoming edges.
 	if expected > len(incoming) {
 		expected = len(incoming)
 	}
 	return expected
+}
+
+func canReachJoin(dep *deploy.Deployment, fromID, joinID, joinScope string) bool {
+	if fromID == joinID {
+		return true
+	}
+	if dep == nil {
+		return false
+	}
+
+	visited := make(map[string]bool)
+	var dfs func(string) bool
+	dfs = func(cur string) bool {
+		if cur == joinID {
+			return true
+		}
+		if visited[cur] {
+			return false
+		}
+		visited[cur] = true
+
+		curScope, ok := dep.ScopeOf(cur)
+		if !ok || curScope != joinScope {
+			return false
+		}
+
+		for _, flowID := range dep.Outgoing(cur) {
+			sf, err := dep.SequenceFlow(flowID)
+			if err != nil {
+				continue
+			}
+			next := sf.TargetRef
+			nextScope, ok := dep.ScopeOf(next)
+			if !ok || nextScope != joinScope {
+				continue
+			}
+			if dfs(next) {
+				return true
+			}
+		}
+		return false
+	}
+
+	return dfs(fromID)
 }
 
 func (InclusiveGatewayHandler) OnComplete(CompleteInput) (*Effect, error) {

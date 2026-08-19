@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             id="Definitions_inclusive_deadlock"
+             targetNamespace="http://sparrow.example/inclusive-deadlock">
+  <process id="Process_inclusive_deadlock" name="Inclusive OR-join Deadlock Prevention" isExecutable="true">
+    <startEvent id="Start_1">
+      <outgoing>Flow_start_to_split</outgoing>
+    </startEvent>
+
+    <inclusiveGateway id="Split_1">
+      <incoming>Flow_start_to_split</incoming>
+      <outgoing>Flow_split_to_A</outgoing>
+      <outgoing>Flow_split_to_GwB</outgoing>
+    </inclusiveGateway>
+
+    <userTask id="Task_A" name="Path A">
+      <incoming>Flow_split_to_A</incoming>
+      <outgoing>Flow_A_to_Join</outgoing>
+    </userTask>
+
+    <exclusiveGateway id="Gw_B" default="Flow_B_to_divert">
+      <incoming>Flow_split_to_GwB</incoming>
+      <outgoing>Flow_B_to_join</outgoing>
+      <outgoing>Flow_B_to_divert</outgoing>
+    </exclusiveGateway>
+
+    <userTask id="Task_B_to_join" name="Path B (can reach join)">
+      <incoming>Flow_B_to_join</incoming>
+      <outgoing>Flow_B_to_join_to_Join</outgoing>
+    </userTask>
+
+    <userTask id="Task_B_divert" name="Path B (divert, cannot reach join)">
+      <incoming>Flow_B_to_divert</incoming>
+      <outgoing>Flow_divert_to_end</outgoing>
+    </userTask>
+
+    <inclusiveGateway id="Join_1">
+      <incoming>Flow_A_to_Join</incoming>
+      <incoming>Flow_B_to_join_to_Join</incoming>
+      <outgoing>Flow_join_to_end</outgoing>
+    </inclusiveGateway>
+
+    <endEvent id="End_done">
+      <incoming>Flow_join_to_end</incoming>
+    </endEvent>
+
+    <endEvent id="End_divert">
+      <incoming>Flow_divert_to_end</incoming>
+    </endEvent>
+
+    <sequenceFlow id="Flow_start_to_split" sourceRef="Start_1" targetRef="Split_1"/>
+
+    <sequenceFlow id="Flow_split_to_A" sourceRef="Split_1" targetRef="Task_A">
+      <conditionExpression xsi:type="tFormalExpression">${take_a == "true"}</conditionExpression>
+    </sequenceFlow>
+
+    <sequenceFlow id="Flow_split_to_GwB" sourceRef="Split_1" targetRef="Gw_B">
+      <conditionExpression xsi:type="tFormalExpression">${take_b == "true"}</conditionExpression>
+    </sequenceFlow>
+
+    <sequenceFlow id="Flow_A_to_Join" sourceRef="Task_A" targetRef="Join_1"/>
+
+    <sequenceFlow id="Flow_B_to_join" sourceRef="Gw_B" targetRef="Task_B_to_join">
+      <conditionExpression xsi:type="tFormalExpression">${take_join_b == "true"}</conditionExpression>
+    </sequenceFlow>
+
+    <sequenceFlow id="Flow_B_to_divert" sourceRef="Gw_B" targetRef="Task_B_divert"/>
+
+    <sequenceFlow id="Flow_B_to_join_to_Join" sourceRef="Task_B_to_join" targetRef="Join_1"/>
+
+    <sequenceFlow id="Flow_divert_to_end" sourceRef="Task_B_divert" targetRef="End_divert"/>
+
+    <sequenceFlow id="Flow_join_to_end" sourceRef="Join_1" targetRef="End_done"/>
+
+  </process>
+</definitions>
