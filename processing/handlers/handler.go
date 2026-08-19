@@ -21,6 +21,16 @@ type Effect struct {
 	Fork []string
 	// TerminateJoinPeers ends other waiting tokens still at this parallel join.
 	TerminateJoinPeers string
+	// SpawnOutgoing mints a new token to follow the boundary outgoing flow while the
+	// activity token keeps waiting (non-interrupting boundary).
+	SpawnOutgoing *SpawnOutgoingEffect
+}
+
+// SpawnOutgoingEffect describes a boundary path taken on a newly minted token.
+type SpawnOutgoingEffect struct {
+	ElementID      string
+	Type           eventv1.Element_Type
+	OutgoingFlowID string
 }
 
 // EnterInput is the context when a token arrives at an element.

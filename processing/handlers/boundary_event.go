@@ -8,7 +8,7 @@ import (
 	eventv1 "github.com/sparrow-community/sparrow/protocol/gen/go/event/v1"
 )
 
-func attachInterruptingBoundary(dep *deploy.Deployment, activityID string, now time.Time, p *eventv1.ActivityPayload) (*eventv1.ActivityPayload, error) {
+func attachBoundary(dep *deploy.Deployment, activityID string, now time.Time, p *eventv1.ActivityPayload) (*eventv1.ActivityPayload, error) {
 	if dep == nil {
 		return p, nil
 	}
@@ -47,13 +47,20 @@ func cancelAttachedBoundary(dep *deploy.Deployment, activityID, tokenID string) 
 	if dep == nil {
 		return nil
 	}
-	bid, ok := dep.InterruptingBoundary(activityID)
+	bid, ok := dep.AttachedBoundary(activityID)
 	if !ok {
 		return nil
 	}
 	return []*eventv1.Element{
 		{Intent: eventv1.Element_INTENT_TERMINATING, Type: eventv1.Element_TYPE_BOUNDARY_EVENT, Id: bid, TokenId: tokenID},
 		{Intent: eventv1.Element_INTENT_TERMINATED, Type: eventv1.Element_TYPE_BOUNDARY_EVENT, Id: bid, TokenId: tokenID},
+	}
+}
+
+func disarmAttachedBoundary(boundaryID, activityTokenID string) []*eventv1.Element {
+	return []*eventv1.Element{
+		{Intent: eventv1.Element_INTENT_TERMINATING, Type: eventv1.Element_TYPE_BOUNDARY_EVENT, Id: boundaryID, TokenId: activityTokenID},
+		{Intent: eventv1.Element_INTENT_TERMINATED, Type: eventv1.Element_TYPE_BOUNDARY_EVENT, Id: boundaryID, TokenId: activityTokenID},
 	}
 }
 
@@ -64,13 +71,22 @@ func (BoundaryEventHandler) Type() eventv1.Element_Type {
 }
 
 func (BoundaryEventHandler) OnEnter(EnterInput) (*Effect, error) {
-	return nil, fmt.Errorf("UNSUPPORTED_ELEMENT: boundary events are entered by interrupting the attached activity")
+	return nil, fmt.Errorf("UNSUPPORTED_ELEMENT: boundary events are entered via Complete on the attached activity token")
 }
 
 func (BoundaryEventHandler) OnComplete(in CompleteInput) (*Effect, error) {
 	attached, ok := in.Deployment.AttachedActivity(in.ElementID)
 	if !ok {
 		return nil, fmt.Errorf("NOT_FOUND: boundary %q has no attached activity", in.ElementID)
+	}
+	if !in.Deployment.BoundaryInterrupting(in.ElementID) {
+		return &Effect{
+			Records: disarmAttachedBoundary(in.ElementID, in.TokenID),
+			SpawnOutgoing: &SpawnOutgoingEffect{
+				ElementID: in.ElementID,
+				Type:      in.Type,
+			},
+		}, nil
 	}
 	typ, err := in.Deployment.TypeOf(attached)
 	if err != nil {

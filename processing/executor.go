@@ -142,6 +142,26 @@ func (x *Executor) Complete(
 			return err
 		}
 	}
+	if effect.SpawnOutgoing != nil {
+		spawn := effect.SpawnOutgoing
+		spawnID, err := NextID()
+		if err != nil {
+			return err
+		}
+		for _, rec := range handlers.InstantLifecycle(spawn.Type, spawn.ElementID, spawnID, nil) {
+			if err := emit(rec); err != nil {
+				return err
+			}
+		}
+		next, err := x.takeOutgoing(dep, spawnID, spawn.ElementID, spawn.OutgoingFlowID, emit)
+		if err != nil {
+			return err
+		}
+		if err := x.Enter(ctx, dep, inst, spawnID, next, emit); err != nil {
+			return err
+		}
+		return x.tryCompleteProcess(dep, inst, emit)
+	}
 	if effect.Wait || !effect.TakeOutgoing {
 		return nil
 	}

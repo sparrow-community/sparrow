@@ -32,19 +32,18 @@ func timerCatchSpec(ev element.IntermediateCatchEvent) (timerCatch, error) {
 }
 
 type timerBoundary struct {
-	Catch      timerCatch
-	AttachedTo string
+	Catch        timerCatch
+	AttachedTo   string
+	Interrupting bool
 }
 
 type messageBoundary struct {
-	Name       string
-	AttachedTo string
+	Name         string
+	AttachedTo   string
+	Interrupting bool
 }
 
-func requireInterruptingAttach(ev element.BoundaryEvent) error {
-	if !ev.CancelActivity {
-		return fmt.Errorf("UNSUPPORTED_ELEMENT: boundaryEvent %q must be interrupting (cancelActivity=true)", ev.ID)
-	}
+func requireBoundaryAttach(ev element.BoundaryEvent) error {
 	if strings.TrimSpace(ev.AttachedToRef) == "" {
 		return fmt.Errorf("UNSUPPORTED_ELEMENT: boundaryEvent %q needs attachedToRef", ev.ID)
 	}
@@ -52,31 +51,31 @@ func requireInterruptingAttach(ev element.BoundaryEvent) error {
 }
 
 func timerBoundarySpec(ev element.BoundaryEvent) (timerBoundary, error) {
-	if err := requireInterruptingAttach(ev); err != nil {
+	if err := requireBoundaryAttach(ev); err != nil {
 		return timerBoundary{}, err
 	}
 	if extraCatchDefinitions(ev.EventDefinitions) > 0 || len(ev.TimerEventDefinitions) == 0 {
-		return timerBoundary{}, fmt.Errorf("UNSUPPORTED_ELEMENT: boundaryEvent %q must be an interrupting timer boundary", ev.ID)
+		return timerBoundary{}, fmt.Errorf("UNSUPPORTED_ELEMENT: boundaryEvent %q must be a timer boundary", ev.ID)
 	}
 	catch, err := timerCatchFromDefs(ev.ID, ev.EventDefinitions)
 	if err != nil {
 		return timerBoundary{}, err
 	}
-	return timerBoundary{Catch: catch, AttachedTo: ev.AttachedToRef}, nil
+	return timerBoundary{Catch: catch, AttachedTo: ev.AttachedToRef, Interrupting: ev.CancelActivity}, nil
 }
 
 func messageBoundarySpec(ev element.BoundaryEvent, messages []element.Message) (messageBoundary, error) {
-	if err := requireInterruptingAttach(ev); err != nil {
+	if err := requireBoundaryAttach(ev); err != nil {
 		return messageBoundary{}, err
 	}
 	if len(ev.TimerEventDefinitions) > 0 {
-		return messageBoundary{}, fmt.Errorf("UNSUPPORTED_ELEMENT: boundaryEvent %q must be an interrupting message boundary", ev.ID)
+		return messageBoundary{}, fmt.Errorf("UNSUPPORTED_ELEMENT: boundaryEvent %q must be a message boundary", ev.ID)
 	}
 	spec, err := messageCatchFromDefs(ev.ID, ev.EventDefinitions, messages, strings.TrimSpace(ev.Name))
 	if err != nil {
 		return messageBoundary{}, err
 	}
-	return messageBoundary{Name: spec.Name, AttachedTo: ev.AttachedToRef}, nil
+	return messageBoundary{Name: spec.Name, AttachedTo: ev.AttachedToRef, Interrupting: ev.CancelActivity}, nil
 }
 
 func timerCatchFromDefs(id string, defs element.EventDefinitions) (timerCatch, error) {
@@ -256,7 +255,7 @@ func (d *Deployment) CatchKind(id string) (CatchKind, error) {
 	return "", fmt.Errorf("NOT_FOUND: intermediate catch %q", id)
 }
 
-// TimerBoundary returns the interrupting timer boundary attached to an activity.
+// TimerBoundary returns the timer boundary attached to an activity.
 func (d *Deployment) TimerBoundary(activityID string) (string, bool) {
 	for _, e := range d.Process.BoundaryEvents {
 		if e.AttachedToRef != activityID {
@@ -270,7 +269,7 @@ func (d *Deployment) TimerBoundary(activityID string) (string, bool) {
 	return "", false
 }
 
-// MessageBoundary returns the interrupting message boundary attached to an activity.
+// MessageBoundary returns the message boundary attached to an activity.
 func (d *Deployment) MessageBoundary(activityID string) (string, bool) {
 	for _, e := range d.Process.BoundaryEvents {
 		if e.AttachedToRef != activityID {
@@ -283,12 +282,31 @@ func (d *Deployment) MessageBoundary(activityID string) (string, bool) {
 	return "", false
 }
 
-// InterruptingBoundary returns the single interrupting boundary attached to an activity.
-func (d *Deployment) InterruptingBoundary(activityID string) (string, bool) {
+// AttachedBoundary returns the single boundary attached to an activity.
+func (d *Deployment) AttachedBoundary(activityID string) (string, bool) {
 	if id, ok := d.TimerBoundary(activityID); ok {
 		return id, true
 	}
 	return d.MessageBoundary(activityID)
+}
+
+// InterruptingBoundary returns the attached boundary when it is interrupting.
+func (d *Deployment) InterruptingBoundary(activityID string) (string, bool) {
+	id, ok := d.AttachedBoundary(activityID)
+	if !ok || d.BoundaryInterrupting(id) {
+		return id, ok
+	}
+	return "", false
+}
+
+// BoundaryInterrupting reports whether a boundary cancels its host activity when it fires.
+func (d *Deployment) BoundaryInterrupting(boundaryID string) bool {
+	for _, e := range d.Process.BoundaryEvents {
+		if e.ID == boundaryID {
+			return e.CancelActivity
+		}
+	}
+	return true
 }
 
 // AttachedActivity returns the activity a timer or message boundary is attached to.

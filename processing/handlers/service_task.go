@@ -20,7 +20,7 @@ func (ServiceTaskHandler) OnEnter(in EnterInput) (*Effect, error) {
 		}
 	}
 	p := &eventv1.ActivityPayload{JobType: jobType}
-	p, err := attachInterruptingBoundary(in.Deployment, in.ElementID, in.Now, p)
+	p, err := attachBoundary(in.Deployment, in.ElementID, in.Now, p)
 	if err != nil {
 		return nil, err
 	}

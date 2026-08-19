@@ -135,6 +135,15 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 		tok = &Token{ID: tokenID}
 		inst.Tokens[tokenID] = tok
 	}
+	hostElementID := tok.ElementID
+	if boundaryDisarmOnWaitingHost(hostElementID, el, tok) {
+		if el.GetIntent() == eventv1.Element_INTENT_TERMINATED {
+			tok.DueUnixMs = 0
+			tok.MessageName = ""
+			tok.BoundaryID = ""
+		}
+		return
+	}
 	tok.ElementID = el.GetId()
 
 	// Tokens are updated only from EVENT records (not by the executor).
@@ -189,6 +198,21 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 		if sp := el.GetSequenceFlowPayload(); sp != nil && sp.GetTargetId() != "" {
 			tok.ElementID = sp.GetTargetId()
 		}
+	}
+}
+
+func boundaryDisarmOnWaitingHost(hostElementID string, el *eventv1.Element, tok *Token) bool {
+	if el.GetType() != eventv1.Element_TYPE_BOUNDARY_EVENT || tok.Status != TokenWaiting {
+		return false
+	}
+	if hostElementID == "" || hostElementID == el.GetId() {
+		return false
+	}
+	switch el.GetIntent() {
+	case eventv1.Element_INTENT_TERMINATING, eventv1.Element_INTENT_TERMINATED:
+		return true
+	default:
+		return false
 	}
 }
 

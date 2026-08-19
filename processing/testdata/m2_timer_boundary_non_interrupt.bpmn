@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             id="Definitions_timer_boundary_non_interrupt"
+             targetNamespace="http://sparrow.example/timer-boundary">
+  <process id="Process_timer_boundary_non_interrupt" name="M2 Non-Interrupting Timer Boundary" isExecutable="true">
+    <startEvent id="StartEvent_1">
+      <outgoing>Flow_start_to_task</outgoing>
+    </startEvent>
+    <userTask id="UserTask_1" name="Work">
+      <incoming>Flow_start_to_task</incoming>
+      <outgoing>Flow_task_to_ok</outgoing>
+    </userTask>
+    <boundaryEvent id="TimerBoundary_1" attachedToRef="UserTask_1" cancelActivity="false">
+      <outgoing>Flow_boundary_to_timeout</outgoing>
+      <timerEventDefinition id="TimerDef_1">
+        <timeDuration xsi:type="tFormalExpression">PT0S</timeDuration>
+      </timerEventDefinition>
+    </boundaryEvent>
+    <endEvent id="EndEvent_ok">
+      <incoming>Flow_task_to_ok</incoming>
+    </endEvent>
+    <endEvent id="EndEvent_timeout">
+      <incoming>Flow_boundary_to_timeout</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_task" sourceRef="StartEvent_1" targetRef="UserTask_1"/>
+    <sequenceFlow id="Flow_task_to_ok" sourceRef="UserTask_1" targetRef="EndEvent_ok"/>
+    <sequenceFlow id="Flow_boundary_to_timeout" sourceRef="TimerBoundary_1" targetRef="EndEvent_timeout"/>
+  </process>
+</definitions>

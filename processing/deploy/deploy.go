@@ -117,10 +117,10 @@ func validateM1(proc *element.Process) error {
 			}
 			attached = spec.AttachedTo
 		default:
-			return fmt.Errorf("UNSUPPORTED_ELEMENT: boundaryEvent %q must be an interrupting timer or message boundary", e.ID)
+			return fmt.Errorf("UNSUPPORTED_ELEMENT: boundaryEvent %q must be a timer or message boundary", e.ID)
 		}
 		if prev, ok := seenAttach[attached]; ok {
-			return fmt.Errorf("UNSUPPORTED_ELEMENT: activity %q already has interrupting boundary %q", attached, prev)
+			return fmt.Errorf("UNSUPPORTED_ELEMENT: activity %q already has boundary %q", attached, prev)
 		}
 		if err := validateBoundaryHost(proc, attached); err != nil {
 			return err

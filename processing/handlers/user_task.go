@@ -15,7 +15,7 @@ func (UserTaskHandler) OnEnter(in EnterInput) (*Effect, error) {
 		Id:      in.ElementID,
 		TokenId: in.TokenID,
 	}
-	p, err := attachInterruptingBoundary(in.Deployment, in.ElementID, in.Now, nil)
+	p, err := attachBoundary(in.Deployment, in.ElementID, in.Now, nil)
 	if err != nil {
 		return nil, err
 	}
