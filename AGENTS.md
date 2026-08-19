@@ -6,6 +6,8 @@ Sparrow is a single-node execution engine in early development. The intended cor
 
 Why this project exists in an AI-first world: see [`AI-Driven-BPMN.md`](./AI-Driven-BPMN.md).
 
+**Cross-session status** (milestone, recent commits, next steps): see [`STATUS.md`](./STATUS.md).
+
 ## Workspace
 
 Go **1.26.5** workspace (`go.work`) with four modules:
