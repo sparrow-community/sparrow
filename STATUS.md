@@ -31,7 +31,7 @@ cf47acf Add STATUS.md for cross-session project continuity.
 ## 已实现（运行时）
 
 - **核心**：`Deploy` / `CreateInstance` / `Complete`；`Recover` / `Open`；实例内串行锁
-- **网关**：Exclusive（条件 + default）；Parallel（fork mint token / join 同步）
+- **网关**：Exclusive（条件 + default）；Inclusive（OR-split / OR-join，可达 token 防死锁）；Parallel（fork mint token / join 同步）
 - **SubProcess**：嵌套子流程（递归支持多层），共享变量，scope completion
 - **等待与完成**：UserTask、ServiceTask、中间 Timer catch、中间 Message catch — 统一 `Complete`
 - **Timer**：`timeDuration` / `timeDate` / `timeCycle`（仅首次到期）；`Engine.FireDue`；`cmd/sparrow` 轮询
@@ -51,8 +51,7 @@ cf47acf Add STATUS.md for cross-session project continuity.
 ## 下一步候选（按优先级）
 
 1. **SubProcess 上挂 boundary** — 打断时终止所有内部 token（需要 scope boundary 机制）
-2. **Inclusive gateway** — OR-split / OR-join 语义
-3. 跨重启的 Job 租约 / 消息缓冲持久化
+2. 跨重启的 Job 租约 / 消息缓冲持久化
 
 ## 新会话开场模板
 
