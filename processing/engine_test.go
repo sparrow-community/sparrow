@@ -148,7 +148,7 @@ func TestDeployRejectsUnsupportedElement(t *testing.T) {
 	eng := processing.NewEngine(eventlog.NewMemory())
 	_, err = eng.Deploy(context.Background(), xml)
 	if err == nil {
-		t.Fatal("expected deploy to reject InclusiveGateway")
+		t.Fatal("expected deploy to reject unsupported element")
 	}
 }
 

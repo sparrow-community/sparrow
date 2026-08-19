@@ -90,6 +90,7 @@ func DefaultRegistry() *Registry {
 		BoundaryEventHandler{},
 		SequenceFlowHandler{},
 		SubProcessHandler{},
+		InclusiveGatewayHandler{},
 	)
 }
 

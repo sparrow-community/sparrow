@@ -103,6 +103,9 @@ func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messag
 	for _, e := range fe.ParallelGatewaies {
 		reg(e.ID, eventv1.Element_TYPE_PARALLEL_GATEWAY, e.Outgoing, e.Incoming)
 	}
+	for _, e := range fe.InclusiveGatewaies {
+		reg(e.ID, eventv1.Element_TYPE_INCLUSIVE_GATEWAY, e.Outgoing, e.Incoming)
+	}
 	for _, e := range fe.IntermediateCatchEvents {
 		reg(e.ID, eventv1.Element_TYPE_INTERMEDIATE_CATCH_EVENT, e.Outgoing, e.Incoming)
 		if spec, err := timerCatchSpec(e); err == nil {
@@ -134,7 +137,7 @@ func validateM1(proc *element.Process) error {
 	unsupported := 0
 	unsupported += len(proc.Tasks) + len(proc.ManualTasks)
 	unsupported += len(proc.SendTasks) + len(proc.ReceiveTasks) + len(proc.BusinessRuleTasks)
-	unsupported += len(proc.InclusiveGatewaies) + len(proc.EventBasedGatewaies)
+	unsupported += len(proc.EventBasedGatewaies)
 	unsupported += len(proc.CallActivities)
 	unsupported += len(proc.IntermediateThrowEvents)
 	if unsupported > 0 {
@@ -482,6 +485,60 @@ func (d *Deployment) ChooseExclusiveOutgoing(gatewayID string, vars map[string]s
 		}
 	}
 	return "", fmt.Errorf("NO_OUTGOING_FLOW")
+}
+
+// ChooseInclusiveOutgoing evaluates all outgoing flows; returns all whose condition is true.
+// If none match, the default flow is returned (or error if no default).
+func (d *Deployment) ChooseInclusiveOutgoing(gatewayID string, vars map[string]string) ([]string, error) {
+	g := findInclusiveGatewayIn(&d.Process.FlowElements, gatewayID)
+	if g == nil {
+		return nil, fmt.Errorf("NOT_FOUND: inclusive gateway %q", gatewayID)
+	}
+	var taken []string
+	for _, flowID := range d.Outgoing(gatewayID) {
+		if g.Default != "" && flowID == g.Default {
+			continue
+		}
+		flow, err := d.SequenceFlow(flowID)
+		if err != nil {
+			return nil, err
+		}
+		text := ConditionText(flow)
+		if text == "" {
+			taken = append(taken, flowID)
+			continue
+		}
+		match, err := expr.Eval(text, vars)
+		if err != nil {
+			return nil, fmt.Errorf("INVALID_CONDITION: flow %s: %w", flowID, err)
+		}
+		if match {
+			taken = append(taken, flowID)
+		}
+	}
+	if len(taken) == 0 {
+		if g.Default != "" {
+			if _, err := d.SequenceFlow(g.Default); err == nil {
+				return []string{g.Default}, nil
+			}
+		}
+		return nil, fmt.Errorf("NO_OUTGOING_FLOW: inclusive gateway %q", gatewayID)
+	}
+	return taken, nil
+}
+
+func findInclusiveGatewayIn(fe *element.FlowElements, id string) *element.InclusiveGateway {
+	for i := range fe.InclusiveGatewaies {
+		if fe.InclusiveGatewaies[i].ID == id {
+			return &fe.InclusiveGatewaies[i]
+		}
+	}
+	for i := range fe.SubProcesses {
+		if g := findInclusiveGatewayIn(&fe.SubProcesses[i].FlowElements, id); g != nil {
+			return g
+		}
+	}
+	return nil
 }
 
 func findExclusiveGatewayIn(fe *element.FlowElements, id string) *element.ExclusiveGateway {

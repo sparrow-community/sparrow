@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             id="Definitions_inclusive"
+             targetNamespace="http://sparrow.example/inclusive">
+  <process id="Process_inclusive" name="Inclusive Gateway" isExecutable="true">
+    <startEvent id="Start_1">
+      <outgoing>Flow_start_to_split</outgoing>
+    </startEvent>
+    <inclusiveGateway id="Split_1" default="Flow_split_to_B">
+      <incoming>Flow_start_to_split</incoming>
+      <outgoing>Flow_split_to_A</outgoing>
+      <outgoing>Flow_split_to_B</outgoing>
+      <outgoing>Flow_split_to_C</outgoing>
+    </inclusiveGateway>
+    <userTask id="Task_A" name="Path A">
+      <incoming>Flow_split_to_A</incoming>
+      <outgoing>Flow_A_to_join</outgoing>
+    </userTask>
+    <userTask id="Task_B" name="Path B">
+      <incoming>Flow_split_to_B</incoming>
+      <outgoing>Flow_B_to_join</outgoing>
+    </userTask>
+    <userTask id="Task_C" name="Path C">
+      <incoming>Flow_split_to_C</incoming>
+      <outgoing>Flow_C_to_join</outgoing>
+    </userTask>
+    <inclusiveGateway id="Join_1">
+      <incoming>Flow_A_to_join</incoming>
+      <incoming>Flow_B_to_join</incoming>
+      <incoming>Flow_C_to_join</incoming>
+      <outgoing>Flow_join_to_end</outgoing>
+    </inclusiveGateway>
+    <endEvent id="End_1">
+      <incoming>Flow_join_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_split" sourceRef="Start_1" targetRef="Split_1"/>
+    <sequenceFlow id="Flow_split_to_A" sourceRef="Split_1" targetRef="Task_A">
+      <conditionExpression xsi:type="tFormalExpression">${path_a == "true"}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="Flow_split_to_B" sourceRef="Split_1" targetRef="Task_B"/>
+    <sequenceFlow id="Flow_split_to_C" sourceRef="Split_1" targetRef="Task_C">
+      <conditionExpression xsi:type="tFormalExpression">${path_c == "true"}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="Flow_A_to_join" sourceRef="Task_A" targetRef="Join_1"/>
+    <sequenceFlow id="Flow_B_to_join" sourceRef="Task_B" targetRef="Join_1"/>
+    <sequenceFlow id="Flow_C_to_join" sourceRef="Task_C" targetRef="Join_1"/>
+    <sequenceFlow id="Flow_join_to_end" sourceRef="Join_1" targetRef="End_1"/>
+  </process>
+</definitions>
