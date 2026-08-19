@@ -47,6 +47,16 @@ type Token struct {
 	MessageBoundaryID string
 }
 
+// ScopeBoundary tracks a boundary armed on a SubProcess scope.
+type ScopeBoundary struct {
+	BoundaryID  string
+	ScopeID     string // the SubProcess element ID
+	TokenID     string // the token that entered the SubProcess
+	DueUnixMs   int64  // timer due (zero if message boundary)
+	TimerText   string // original timer expression
+	MessageName string // message name (empty if timer boundary)
+}
+
 type Instance struct {
 	ID           string
 	DeploymentID string
@@ -56,17 +66,21 @@ type Instance struct {
 	Tokens       map[string]*Token
 	// elementID -> last intent seen (for validation helpers)
 	ElementIntent map[string]eventv1.Element_Intent
+	// ScopeBoundaries tracks boundaries armed on SubProcess scopes.
+	// Key is the boundary element ID.
+	ScopeBoundaries map[string]*ScopeBoundary
 }
 
 func NewInstance(id, deploymentID string, version int32) *Instance {
 	return &Instance{
-		ID:            id,
-		DeploymentID:  deploymentID,
-		Version:       version,
-		Status:        StatusActive,
-		Variables:     make(map[string]string),
-		Tokens:        make(map[string]*Token),
-		ElementIntent: make(map[string]eventv1.Element_Intent),
+		ID:              id,
+		DeploymentID:    deploymentID,
+		Version:         version,
+		Status:          StatusActive,
+		Variables:       make(map[string]string),
+		Tokens:          make(map[string]*Token),
+		ElementIntent:   make(map[string]eventv1.Element_Intent),
+		ScopeBoundaries: make(map[string]*ScopeBoundary),
 	}
 }
 
@@ -91,13 +105,14 @@ func (inst *Instance) Clone() *Instance {
 		return nil
 	}
 	out := &Instance{
-		ID:            inst.ID,
-		DeploymentID:  inst.DeploymentID,
-		Version:       inst.Version,
-		Status:        inst.Status,
-		Variables:     make(map[string]string, len(inst.Variables)),
-		Tokens:        make(map[string]*Token, len(inst.Tokens)),
-		ElementIntent: make(map[string]eventv1.Element_Intent, len(inst.ElementIntent)),
+		ID:              inst.ID,
+		DeploymentID:    inst.DeploymentID,
+		Version:         inst.Version,
+		Status:          inst.Status,
+		Variables:       make(map[string]string, len(inst.Variables)),
+		Tokens:          make(map[string]*Token, len(inst.Tokens)),
+		ElementIntent:   make(map[string]eventv1.Element_Intent, len(inst.ElementIntent)),
+		ScopeBoundaries: make(map[string]*ScopeBoundary, len(inst.ScopeBoundaries)),
 	}
 	for k, v := range inst.Variables {
 		out.Variables[k] = v
@@ -111,6 +126,10 @@ func (inst *Instance) Clone() *Instance {
 	}
 	for k, v := range inst.ElementIntent {
 		out.ElementIntent[k] = v
+	}
+	for k, sb := range inst.ScopeBoundaries {
+		cp := *sb
+		out.ScopeBoundaries[k] = &cp
 	}
 	return out
 }
@@ -189,12 +208,16 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 		tok.BoundaryID = ""
 		tok.MessageBoundaryID = ""
 		if p := el.GetActivityPayload(); p != nil {
-			tok.JobType = p.GetJobType()
-			tok.DueUnixMs = p.GetDueUnixMs()
-			tok.TimerText = p.GetDuration()
-			tok.BoundaryID = p.GetBoundaryId()
-			tok.MessageName = p.GetMessageName()
-			tok.MessageBoundaryID = p.GetMessageBoundaryId()
+			if el.GetType() == eventv1.Element_TYPE_SUB_PROCESS {
+				inst.applyScopeBoundary(el.GetId(), tokenID, p)
+			} else {
+				tok.JobType = p.GetJobType()
+				tok.DueUnixMs = p.GetDueUnixMs()
+				tok.TimerText = p.GetDuration()
+				tok.BoundaryID = p.GetBoundaryId()
+				tok.MessageName = p.GetMessageName()
+				tok.MessageBoundaryID = p.GetMessageBoundaryId()
+			}
 		}
 		if p := el.GetEventPayload(); p != nil {
 			if p.GetDueUnixMs() != 0 {
@@ -296,6 +319,39 @@ func applyProcessLifecycle(inst *Instance, el *eventv1.Element) {
 }
 
 // VariablesFromMap encodes Go values as JSON text variables.
+func (inst *Instance) applyScopeBoundary(scopeID, tokenID string, p *eventv1.ActivityPayload) {
+	if p.GetBoundaryId() != "" {
+		inst.ScopeBoundaries[p.GetBoundaryId()] = &ScopeBoundary{
+			BoundaryID:  p.GetBoundaryId(),
+			ScopeID:     scopeID,
+			TokenID:     tokenID,
+			DueUnixMs:   p.GetDueUnixMs(),
+			TimerText:   p.GetDuration(),
+			MessageName: p.GetMessageName(),
+		}
+	}
+	if p.GetMessageBoundaryId() != "" {
+		inst.ScopeBoundaries[p.GetMessageBoundaryId()] = &ScopeBoundary{
+			BoundaryID:  p.GetMessageBoundaryId(),
+			ScopeID:     scopeID,
+			TokenID:     tokenID,
+			MessageName: p.GetMessageName(),
+		}
+	}
+}
+
+func (inst *Instance) RemoveScopeBoundary(boundaryID string) {
+	delete(inst.ScopeBoundaries, boundaryID)
+}
+
+func (inst *Instance) RemoveScopeBoundariesForScope(scopeID string) {
+	for id, sb := range inst.ScopeBoundaries {
+		if sb.ScopeID == scopeID {
+			delete(inst.ScopeBoundaries, id)
+		}
+	}
+}
+
 func VariablesFromMap(vars map[string]any) ([]*eventv1.Variable, error) {
 	if len(vars) == 0 {
 		return nil, nil

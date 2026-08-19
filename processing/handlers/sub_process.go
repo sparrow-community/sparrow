@@ -1,6 +1,9 @@
 package handlers
 
 import (
+	"time"
+
+	"github.com/sparrow-community/sparrow/processing/deploy"
 	eventv1 "github.com/sparrow-community/sparrow/protocol/gen/go/event/v1"
 )
 
@@ -13,13 +16,58 @@ func (SubProcessHandler) OnEnter(in EnterInput) (*Effect, error) {
 	if err != nil {
 		return nil, err
 	}
+	activated := &eventv1.Element{Intent: eventv1.Element_INTENT_ACTIVATED, Type: in.Type, Id: in.ElementID, TokenId: in.TokenID}
+	p, err := attachScopeBoundary(in.Deployment, in.ElementID, in.Now)
+	if err != nil {
+		return nil, err
+	}
+	if p != nil {
+		activated.Payload = &eventv1.Element_ActivityPayload{ActivityPayload: p}
+	}
 	return &Effect{
 		Records: []*eventv1.Element{
 			{Intent: eventv1.Element_INTENT_ACTIVATING, Type: in.Type, Id: in.ElementID, TokenId: in.TokenID},
-			{Intent: eventv1.Element_INTENT_ACTIVATED, Type: in.Type, Id: in.ElementID, TokenId: in.TokenID},
+			activated,
 		},
 		EnterChild: startID,
 	}, nil
+}
+
+func attachScopeBoundary(dep *deploy.Deployment, subProcessID string, now time.Time) (*eventv1.ActivityPayload, error) {
+	if dep == nil {
+		return nil, nil
+	}
+	var p *eventv1.ActivityPayload
+	if bid, ok := dep.TimerBoundary(subProcessID); ok {
+		if now.IsZero() {
+			now = time.Now()
+		}
+		due, text, err := dep.TimerDue(bid, now)
+		if err != nil {
+			return nil, err
+		}
+		p = &eventv1.ActivityPayload{
+			DueUnixMs:  due,
+			Duration:   text,
+			BoundaryId: bid,
+		}
+	}
+	if bid, ok := dep.MessageBoundary(subProcessID); ok {
+		name, err := dep.MessageName(bid)
+		if err != nil {
+			return nil, err
+		}
+		if p == nil {
+			p = &eventv1.ActivityPayload{}
+		}
+		p.MessageName = name
+		if p.BoundaryId == "" {
+			p.BoundaryId = bid
+		} else {
+			p.MessageBoundaryId = bid
+		}
+	}
+	return p, nil
 }
 
 func (SubProcessHandler) OnComplete(in CompleteInput) (*Effect, error) {

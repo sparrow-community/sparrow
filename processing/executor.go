@@ -252,7 +252,8 @@ func (x *Executor) tryCompleteScope(ctx context.Context, dep *deploy.Deployment,
 			}
 		}
 	}
-	// All tokens in this scope are at EndEvents; complete the SubProcess
+	// All tokens in this scope are at EndEvents; disarm scope boundaries and complete
+	inst.RemoveScopeBoundariesForScope(scopeID)
 	h, err := x.Handlers.Get(eventv1.Element_TYPE_SUB_PROCESS)
 	if err != nil {
 		return err

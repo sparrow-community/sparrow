@@ -33,7 +33,52 @@ func (e *Engine) FireDue(ctx context.Context) error {
 			}
 		}
 	}
+	// Scope boundaries (SubProcess timer boundaries)
+	scopeDue := e.collectScopeDue(now)
+	for _, sd := range scopeDue {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := e.completeScopeBoundary(ctx, sd.instanceID, sd.boundaryID); err != nil {
+			if first == nil {
+				first = err
+			}
+		}
+	}
 	return first
+}
+
+type scopeDueWait struct {
+	instanceID string
+	boundaryID string
+}
+
+func (e *Engine) collectScopeDue(nowUnixMs int64) []scopeDueWait {
+	e.mu.Lock()
+	ids := make([]string, 0, len(e.instances))
+	for id := range e.instances {
+		ids = append(ids, id)
+	}
+	e.mu.Unlock()
+
+	var due []scopeDueWait
+	for _, iid := range ids {
+		e.mu.Lock()
+		inst := e.instances[iid]
+		lock := e.instMu[iid]
+		e.mu.Unlock()
+		if inst == nil || lock == nil {
+			continue
+		}
+		lock.Lock()
+		for _, sb := range inst.ScopeBoundaries {
+			if sb.DueUnixMs > 0 && sb.DueUnixMs <= nowUnixMs {
+				due = append(due, scopeDueWait{instanceID: iid, boundaryID: sb.BoundaryID})
+			}
+		}
+		lock.Unlock()
+	}
+	return due
 }
 
 func (e *Engine) collectDue(nowUnixMs int64) []dueWait {

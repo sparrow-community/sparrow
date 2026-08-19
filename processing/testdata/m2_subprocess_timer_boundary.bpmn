@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             id="Definitions_sp_timer_boundary"
+             targetNamespace="http://sparrow.example/sp-timer-boundary">
+  <process id="Process_sp_timer_boundary" name="SubProcess Timer Boundary" isExecutable="true">
+    <startEvent id="StartEvent_1">
+      <outgoing>Flow_start_to_sub</outgoing>
+    </startEvent>
+    <subProcess id="SubProcess_1" name="Long Work">
+      <incoming>Flow_start_to_sub</incoming>
+      <outgoing>Flow_sub_to_ok</outgoing>
+      <startEvent id="Sub_Start">
+        <outgoing>Flow_sub_start_to_task</outgoing>
+      </startEvent>
+      <userTask id="Sub_Task" name="Inner Task">
+        <incoming>Flow_sub_start_to_task</incoming>
+        <outgoing>Flow_sub_task_to_end</outgoing>
+      </userTask>
+      <endEvent id="Sub_End">
+        <incoming>Flow_sub_task_to_end</incoming>
+      </endEvent>
+      <sequenceFlow id="Flow_sub_start_to_task" sourceRef="Sub_Start" targetRef="Sub_Task"/>
+      <sequenceFlow id="Flow_sub_task_to_end" sourceRef="Sub_Task" targetRef="Sub_End"/>
+    </subProcess>
+    <boundaryEvent id="TimerBoundary_1" attachedToRef="SubProcess_1" cancelActivity="true">
+      <outgoing>Flow_boundary_to_timeout</outgoing>
+      <timerEventDefinition id="TimerDef_1">
+        <timeDuration xsi:type="tFormalExpression">PT0S</timeDuration>
+      </timerEventDefinition>
+    </boundaryEvent>
+    <endEvent id="EndEvent_ok">
+      <incoming>Flow_sub_to_ok</incoming>
+    </endEvent>
+    <endEvent id="EndEvent_timeout">
+      <incoming>Flow_boundary_to_timeout</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_sub" sourceRef="StartEvent_1" targetRef="SubProcess_1"/>
+    <sequenceFlow id="Flow_sub_to_ok" sourceRef="SubProcess_1" targetRef="EndEvent_ok"/>
+    <sequenceFlow id="Flow_boundary_to_timeout" sourceRef="TimerBoundary_1" targetRef="EndEvent_timeout"/>
+  </process>
+</definitions>

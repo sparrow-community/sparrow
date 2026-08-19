@@ -509,7 +509,12 @@ func validateBoundaryHost(proc *element.Process, activityID string) error {
 			return nil
 		}
 	}
-	return fmt.Errorf("UNSUPPORTED_ELEMENT: interrupting boundary must attach to a userTask or serviceTask (%q)", activityID)
+	for _, e := range proc.SubProcesses {
+		if e.ID == activityID {
+			return nil
+		}
+	}
+	return fmt.Errorf("UNSUPPORTED_ELEMENT: boundary must attach to a userTask, serviceTask, or subProcess (%q)", activityID)
 }
 
 func validateSubProcesses(fe *element.FlowElements) error {

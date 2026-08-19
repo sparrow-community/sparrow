@@ -52,7 +52,8 @@ func (e *Engine) PublishMessage(ctx context.Context, req PublishMessageRequest) 
 		return 0, fmt.Errorf("INVALID_ARGUMENT: correlation_keys: %w", err)
 	}
 	waiters := e.collectMessageWaiters(name, instanceID, keys)
-	if len(waiters) == 0 {
+	scopeWaiters := e.collectScopeMessageWaiters(name, instanceID, keys)
+	if len(waiters) == 0 && len(scopeWaiters) == 0 {
 		if err := e.enqueueBuffered(name, instanceID, keys, req.Variables); err != nil {
 			return 0, err
 		}
@@ -68,6 +69,18 @@ func (e *Engine) PublishMessage(ctx context.Context, req PublishMessageRequest) 
 			if strings.HasPrefix(err.Error(), "INVALID_STATE:") {
 				continue
 			}
+			if first == nil {
+				first = err
+			}
+			continue
+		}
+		delivered++
+	}
+	for _, sw := range scopeWaiters {
+		if err := ctx.Err(); err != nil {
+			return delivered, err
+		}
+		if err := e.completeScopeBoundary(ctx, sw.instanceID, sw.boundaryID); err != nil {
 			if first == nil {
 				first = err
 			}
@@ -121,6 +134,44 @@ func (e *Engine) collectMessageWaiters(name, instanceID string, keys []*eventv1.
 			}
 			if tok.MessageName != "" && tok.MessageName == name {
 				waiters = append(waiters, dueWait{instanceID: iid, elementID: messageWaiterElementID(tok), tokenID: tok.ID, MessageName: tok.MessageName})
+			}
+		}
+		lock.Unlock()
+	}
+	return waiters
+}
+
+func (e *Engine) collectScopeMessageWaiters(name, instanceID string, keys []*eventv1.Variable) []scopeDueWait {
+	e.mu.Lock()
+	ids := make([]string, 0, len(e.instances))
+	if instanceID != "" {
+		if _, ok := e.instances[instanceID]; ok {
+			ids = append(ids, instanceID)
+		}
+	} else {
+		for id := range e.instances {
+			ids = append(ids, id)
+		}
+	}
+	e.mu.Unlock()
+
+	var waiters []scopeDueWait
+	for _, iid := range ids {
+		e.mu.Lock()
+		inst := e.instances[iid]
+		lock := e.instMu[iid]
+		e.mu.Unlock()
+		if inst == nil || lock == nil {
+			continue
+		}
+		lock.Lock()
+		if !correlationKeysMatch(inst.Variables, keys) {
+			lock.Unlock()
+			continue
+		}
+		for _, sb := range inst.ScopeBoundaries {
+			if sb.MessageName == name {
+				waiters = append(waiters, scopeDueWait{instanceID: iid, boundaryID: sb.BoundaryID})
 			}
 		}
 		lock.Unlock()

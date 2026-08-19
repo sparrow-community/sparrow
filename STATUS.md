@@ -50,8 +50,8 @@ cf47acf Add STATUS.md for cross-session project continuity.
 
 ## 下一步候选（按优先级）
 
-1. **SubProcess 内部 Parallel gateway** — 多 token 在 subprocess 内 fork/join
-2. **SubProcess 上挂 boundary** — 打断时终止所有内部 token
+1. **SubProcess 上挂 boundary** — 打断时终止所有内部 token（需要 scope boundary 机制）
+2. **Inclusive gateway** — OR-split / OR-join 语义
 3. 跨重启的 Job 租约 / 消息缓冲持久化
 
 ## 新会话开场模板

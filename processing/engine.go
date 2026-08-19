@@ -364,3 +364,140 @@ func (e *Engine) now() time.Time {
 	}
 	return time.Now()
 }
+
+// completeScopeBoundary fires a boundary attached to a SubProcess.
+// It terminates all tokens inside the scope, terminates the SubProcess,
+// completes the boundary, and takes the boundary's outgoing flow.
+func (e *Engine) completeScopeBoundary(ctx context.Context, instanceID, boundaryID string) error {
+	e.mu.Lock()
+	inst := e.instances[instanceID]
+	lock := e.instMu[instanceID]
+	var dep *deploy.Deployment
+	if inst != nil {
+		dep = e.deployments[inst.DeploymentID]
+	}
+	e.mu.Unlock()
+	if inst == nil || dep == nil {
+		return fmt.Errorf("NOT_FOUND: instance %q", instanceID)
+	}
+
+	lock.Lock()
+	defer lock.Unlock()
+
+	sb, ok := inst.ScopeBoundaries[boundaryID]
+	if !ok {
+		return nil // already disarmed
+	}
+	scopeID := sb.ScopeID
+	tokenID := sb.TokenID
+
+	cmdID, err := NextID()
+	if err != nil {
+		return err
+	}
+	cmd := &eventv1.Event{
+		Id:                cmdID,
+		Timestamp:         nowMillis(),
+		RecordType:        eventv1.Event_RECORD_TYPE_COMMAND,
+		DeploymentId:      inst.DeploymentID,
+		ProcessInstanceId: instanceID,
+		ProcessVersion:    inst.Version,
+		Element: &eventv1.Element{
+			Intent:  eventv1.Element_INTENT_COMPLETING,
+			Type:    eventv1.Element_TYPE_BOUNDARY_EVENT,
+			Id:      boundaryID,
+			TokenId: tokenID,
+		},
+	}
+	if _, err := e.log.Append(ctx, cmd); err != nil {
+		return err
+	}
+
+	emit := e.emitter(ctx, inst, cmdID)
+
+	// Terminate all tokens inside the scope (and nested sub-scopes)
+	for tid, tok := range inst.Tokens {
+		if tok == nil {
+			continue
+		}
+		tokScope, _ := dep.ScopeOf(tok.ElementID)
+		if !isInScope(dep, tokScope, scopeID) {
+			continue
+		}
+		tokType, _ := dep.TypeOf(tok.ElementID)
+		for _, intent := range []eventv1.Element_Intent{
+			eventv1.Element_INTENT_TERMINATING,
+			eventv1.Element_INTENT_TERMINATED,
+		} {
+			if err := emit(&eventv1.Element{
+				Intent:  intent,
+				Type:    tokType,
+				Id:      tok.ElementID,
+				TokenId: tid,
+			}); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Terminate the SubProcess itself
+	if err := emit(&eventv1.Element{
+		Intent:  eventv1.Element_INTENT_TERMINATING,
+		Type:    eventv1.Element_TYPE_SUB_PROCESS,
+		Id:      scopeID,
+		TokenId: tokenID,
+	}); err != nil {
+		return err
+	}
+	if err := emit(&eventv1.Element{
+		Intent:  eventv1.Element_INTENT_TERMINATED,
+		Type:    eventv1.Element_TYPE_SUB_PROCESS,
+		Id:      scopeID,
+		TokenId: tokenID,
+	}); err != nil {
+		return err
+	}
+
+	// Remove scope boundaries
+	inst.RemoveScopeBoundariesForScope(scopeID)
+
+	// Complete the boundary and take outgoing
+	if err := emit(&eventv1.Element{
+		Intent:  eventv1.Element_INTENT_COMPLETING,
+		Type:    eventv1.Element_TYPE_BOUNDARY_EVENT,
+		Id:      boundaryID,
+		TokenId: tokenID,
+	}); err != nil {
+		return err
+	}
+	if err := emit(&eventv1.Element{
+		Intent:  eventv1.Element_INTENT_COMPLETED,
+		Type:    eventv1.Element_TYPE_BOUNDARY_EVENT,
+		Id:      boundaryID,
+		TokenId: tokenID,
+	}); err != nil {
+		return err
+	}
+
+	// Take boundary outgoing flow
+	next, err := e.executor.takeOutgoing(dep, tokenID, boundaryID, "", emit)
+	if err != nil {
+		return err
+	}
+	return e.executor.Enter(ctx, dep, inst, tokenID, next, emit)
+}
+
+// isInScope checks if tokScope is inside targetScope (direct or nested).
+func isInScope(dep *deploy.Deployment, tokScope, targetScope string) bool {
+	for tokScope != "" {
+		if tokScope == targetScope {
+			return true
+		}
+		parent, ok := dep.ScopeOf(tokScope)
+		if !ok {
+			return false
+		}
+		tokScope = parent
+	}
+	return false
+}
