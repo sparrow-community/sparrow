@@ -129,6 +129,7 @@ func (x *Executor) Complete(
 	effect, err := h.OnComplete(handlers.CompleteInput{
 		Deployment: dep,
 		Instance:   inst,
+		Token:      inst.Tokens[tokenID],
 		ElementID:  elementID,
 		Type:       typ,
 		TokenID:    tokenID,

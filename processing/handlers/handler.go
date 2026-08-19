@@ -47,6 +47,7 @@ type EnterInput struct {
 type CompleteInput struct {
 	Deployment *deploy.Deployment
 	Instance   *projection.Instance
+	Token      *projection.Token
 	ElementID  string
 	Type       eventv1.Element_Type
 	TokenID    string

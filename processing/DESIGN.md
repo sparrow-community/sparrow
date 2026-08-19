@@ -6,7 +6,7 @@
 **M1 状态**：Deploy / CreateInstance / Complete、XOR 条件、内存与文件 EventLog、`Open` 重启回放已可用。  
 **M2 起步**：ServiceTask 等待；Job 经 `Activate` / `Fail` / `Heartbeat`；中间捕获 Timer（`timeDuration` / `timeDate` / `timeCycle`）+ `FireDue`；打断型 Timer / Message boundary（挂 UserTask/ServiceTask）；中间捕获 Message + `PublishMessage`（correlation keys + 内存缓冲）；gRPC 在 `gateway`（`engine.v1` + `job.v1`），进程入口 `gateway/cmd/sparrow`（含 `FireDue` 轮询）。  
 **M3 起步**：Parallel gateway fork/join（多 token；join 同步后 peer token 从投影移除）。  
-尚未实现：非打断 timer boundary 的 `timeCycle` 重复触发、Inclusive/EventBased gateway、SubProcess、同一活动多个 boundary、更多元素、跨重启的 Job 租约 / 消息缓冲。
+尚未实现：Inclusive/EventBased gateway、SubProcess、同一活动多个 boundary、更多元素、跨重启的 Job 租约 / 消息缓冲。
 
 ---
 
@@ -313,7 +313,7 @@ Recover(ctx, eventLog, deploymentStore)
 3. Timer 先到期 / Message 先到达：`Complete(boundary_id)`（命中的是挂接活动上的 waiting token）
    - **打断型**：活动 `TERMINATING` → `TERMINATED`；boundary `COMPLETING` → `COMPLETED`；同一 token 沿 boundary 出边
    - **非打断型**：活动保持 waiting，但清掉已触发的一次 boundary 等待；executor mint 新 token，写 boundary 生命周期后沿 boundary 出边
-4. 每个活动最多一个 boundary（Timer XOR Message）；非打断型 `timeCycle` 当前仍只触发一次，尚未 re-arm
+4. 每个活动最多一个 boundary（Timer XOR Message）；非打断型 timer `timeCycle` 会在活动仍等待时按剩余周期重新武装
 
 ### Message catch 时序链（M2）
 
@@ -507,7 +507,7 @@ Recover(ctx, eventLog, deploymentStore)
 | 18 | 打断型 Timer boundary（UserTask/ServiceTask） | 已完成 |
 | 19 | 打断型 Message boundary（UserTask/ServiceTask） | 已完成 |
 | 20 | Parallel gateway fork/join（多 token） | 已完成 |
-| 21 | 非打断 boundary | 已完成（`timeCycle` 重复触发未做） |
+| 21 | 非打断 boundary | 已完成（含 timer `timeCycle` 重复触发） |
 | 22 | Inclusive；SubProcess；更多元素 | 未开始 |
 
 ---

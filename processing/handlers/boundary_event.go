@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/sparrow-community/sparrow/processing/deploy"
@@ -64,6 +65,25 @@ func disarmAttachedBoundary(boundaryID, activityTokenID string) []*eventv1.Eleme
 	}
 }
 
+func rearmAttachedBoundary(boundaryID, activityTokenID, text string, dueUnixMs int64) []*eventv1.Element {
+	return []*eventv1.Element{
+		{Intent: eventv1.Element_INTENT_ACTIVATING, Type: eventv1.Element_TYPE_BOUNDARY_EVENT, Id: boundaryID, TokenId: activityTokenID},
+		{
+			Intent:  eventv1.Element_INTENT_ACTIVATED,
+			Type:    eventv1.Element_TYPE_BOUNDARY_EVENT,
+			Id:      boundaryID,
+			TokenId: activityTokenID,
+			Payload: &eventv1.Element_ActivityPayload{
+				ActivityPayload: &eventv1.ActivityPayload{
+					BoundaryId: boundaryID,
+					DueUnixMs:  dueUnixMs,
+					Duration:   text,
+				},
+			},
+		},
+	}
+}
+
 type BoundaryEventHandler struct{}
 
 func (BoundaryEventHandler) Type() eventv1.Element_Type {
@@ -80,8 +100,18 @@ func (BoundaryEventHandler) OnComplete(in CompleteInput) (*Effect, error) {
 		return nil, fmt.Errorf("NOT_FOUND: boundary %q has no attached activity", in.ElementID)
 	}
 	if !in.Deployment.BoundaryInterrupting(in.ElementID) {
+		records := disarmAttachedBoundary(in.ElementID, in.TokenID)
+		if in.Token != nil && in.Token.DueUnixMs > 0 && strings.HasPrefix(strings.TrimSpace(in.Token.TimerText), "R") {
+			nextText, nextDue, ok, err := deploy.NextCycleTimer(in.Token.TimerText, time.UnixMilli(in.Token.DueUnixMs))
+			if err != nil {
+				return nil, err
+			}
+			if ok {
+				records = append(records, rearmAttachedBoundary(in.ElementID, in.TokenID, nextText, nextDue.UnixMilli())...)
+			}
+		}
 		return &Effect{
-			Records: disarmAttachedBoundary(in.ElementID, in.TokenID),
+			Records: records,
 			SpawnOutgoing: &SpawnOutgoingEffect{
 				ElementID: in.ElementID,
 				Type:      in.Type,

@@ -190,3 +190,86 @@ func (c cycleSpec) FirstDue(now time.Time) (time.Time, error) {
 	}
 	return due, nil
 }
+
+func (c cycleSpec) NextDue(prev time.Time) (time.Time, bool) {
+	if prev.IsZero() || c.Period < 0 {
+		return time.Time{}, false
+	}
+	if c.Repeat == 1 {
+		return time.Time{}, false
+	}
+	next := prev.Add(c.Period)
+	if !c.End.IsZero() && next.After(c.End) {
+		return time.Time{}, false
+	}
+	return next, true
+}
+
+func (c cycleSpec) Rearmed() (cycleSpec, bool) {
+	if c.Repeat == 1 {
+		return cycleSpec{}, false
+	}
+	if c.Repeat > 1 {
+		c.Repeat--
+	}
+	return c, true
+}
+
+func (c cycleSpec) String() string {
+	repeat := "R"
+	if c.Repeat > 0 {
+		repeat = fmt.Sprintf("R%d", c.Repeat)
+	}
+	if !c.Start.IsZero() {
+		return repeat + "/" + c.Start.UTC().Format(time.RFC3339) + "/" + formatISO8601Duration(c.Period)
+	}
+	if !c.End.IsZero() {
+		return repeat + "/" + formatISO8601Duration(c.Period) + "/" + c.End.UTC().Format(time.RFC3339)
+	}
+	return repeat + "/" + formatISO8601Duration(c.Period)
+}
+
+func formatISO8601Duration(d time.Duration) string {
+	if d == 0 {
+		return "PT0S"
+	}
+	if d < 0 {
+		d = -d
+	}
+	var b strings.Builder
+	b.WriteString("PT")
+	h := d / time.Hour
+	if h > 0 {
+		b.WriteString(strconv.FormatInt(int64(h), 10))
+		b.WriteByte('H')
+		d -= h * time.Hour
+	}
+	m := d / time.Minute
+	if m > 0 {
+		b.WriteString(strconv.FormatInt(int64(m), 10))
+		b.WriteByte('M')
+		d -= m * time.Minute
+	}
+	s := d / time.Second
+	if s > 0 || b.Len() == 2 {
+		b.WriteString(strconv.FormatInt(int64(s), 10))
+		b.WriteByte('S')
+	}
+	return b.String()
+}
+
+func NextCycleTimer(text string, prevDue time.Time) (nextText string, nextDue time.Time, ok bool, err error) {
+	spec, err := ParseISO8601Cycle(text)
+	if err != nil {
+		return "", time.Time{}, false, err
+	}
+	nextDue, ok = spec.NextDue(prevDue)
+	if !ok {
+		return "", time.Time{}, false, nil
+	}
+	spec, ok = spec.Rearmed()
+	if !ok {
+		return "", time.Time{}, false, nil
+	}
+	return spec.String(), nextDue, true, nil
+}

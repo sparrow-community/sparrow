@@ -245,6 +245,118 @@ func TestNonInterruptingTimerBoundaryCompleteBeforeFireDue(t *testing.T) {
 	}
 }
 
+func TestNonInterruptingTimerBoundaryTimeCycleRearms(t *testing.T) {
+	xml := readTestdata(t, "m2_timer_boundary_non_interrupt_cycle.bpmn")
+	eng := processing.NewEngine(eventlog.NewMemory())
+	ctx := context.Background()
+	dep, err := eng.Deploy(ctx, xml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instanceID, err := eng.CreateInstance(ctx, dep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := eng.FireDue(ctx); err != nil {
+		t.Fatalf("first FireDue: %v", err)
+	}
+	inst, _ := eng.GetInstance(instanceID)
+	elementID, tokenID := waitingAt(inst)
+	if elementID != "UserTask_1" {
+		t.Fatalf("activity should still wait after first fire, tokens=%#v", inst.Tokens)
+	}
+	tok := inst.Tokens[tokenID]
+	if tok.BoundaryID != "TimerBoundary_1" || tok.DueUnixMs == 0 || tok.TimerText != "R1/PT0S" {
+		t.Fatalf("expected re-armed cycle after first fire, token=%#v", tok)
+	}
+
+	if err := eng.FireDue(ctx); err != nil {
+		t.Fatalf("second FireDue: %v", err)
+	}
+	inst, _ = eng.GetInstance(instanceID)
+	elementID, tokenID = waitingAt(inst)
+	if elementID != "UserTask_1" {
+		t.Fatalf("activity should still wait after second fire, tokens=%#v", inst.Tokens)
+	}
+	tok = inst.Tokens[tokenID]
+	if tok.BoundaryID != "" || tok.DueUnixMs != 0 || tok.TimerText != "" {
+		t.Fatalf("final cycle fire should disarm boundary, token=%#v", tok)
+	}
+
+	if err := eng.FireDue(ctx); err != nil {
+		t.Fatalf("third FireDue: %v", err)
+	}
+	events, err := eng.ListEvents(ctx, instanceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := countElementIntent(events, eventv1.Element_TYPE_BOUNDARY_EVENT, "TimerBoundary_1", eventv1.Element_INTENT_COMPLETED); got != 2 {
+		t.Fatalf("boundary completions=%d want 2", got)
+	}
+	if err := eng.Complete(ctx, instanceID, elementID, tokenID, nil); err != nil {
+		t.Fatal(err)
+	}
+	inst, _ = eng.GetInstance(instanceID)
+	if inst.Status != projection.StatusCompleted {
+		t.Fatalf("status=%s want completed", inst.Status)
+	}
+}
+
+func TestNonInterruptingTimerBoundaryTimeCycleRecoverThenRearm(t *testing.T) {
+	xml := readTestdata(t, "m2_timer_boundary_non_interrupt_cycle.bpmn")
+	dir := t.TempDir()
+	ctx := context.Background()
+
+	eng1, err := processing.Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dep, err := eng1.Deploy(ctx, xml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instanceID, err := eng1.CreateInstance(ctx, dep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := eng1.FireDue(ctx); err != nil {
+		t.Fatalf("first FireDue: %v", err)
+	}
+	if err := eng1.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	eng2, err := processing.Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer eng2.Close()
+
+	inst, ok := eng2.GetInstance(instanceID)
+	if !ok {
+		t.Fatal("instance missing after recover")
+	}
+	elementID, tokenID := waitingAt(inst)
+	if elementID != "UserTask_1" {
+		t.Fatalf("activity should still wait after recover, tokens=%#v", inst.Tokens)
+	}
+	tok := inst.Tokens[tokenID]
+	if tok.TimerText != "R1/PT0S" || tok.DueUnixMs == 0 {
+		t.Fatalf("expected remaining cycle after recover, token=%#v", tok)
+	}
+	if err := eng2.FireDue(ctx); err != nil {
+		t.Fatalf("second FireDue: %v", err)
+	}
+	events, err := eng2.ListEvents(ctx, instanceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := countElementIntent(events, eventv1.Element_TYPE_BOUNDARY_EVENT, "TimerBoundary_1", eventv1.Element_INTENT_COMPLETED); got != 2 {
+		t.Fatalf("boundary completions=%d want 2", got)
+	}
+}
+
 func TestNonInterruptingMessageBoundaryPublishThenComplete(t *testing.T) {
 	xml := readTestdata(t, "m2_message_boundary_non_interrupt.bpmn")
 	eng := processing.NewEngine(eventlog.NewMemory())
@@ -491,4 +603,18 @@ func sawElementIntent(events []*eventv1.Event, typ eventv1.Element_Type, id stri
 		}
 	}
 	return false
+}
+
+func countElementIntent(events []*eventv1.Event, typ eventv1.Element_Type, id string, intent eventv1.Element_Intent) int {
+	n := 0
+	for _, ev := range events {
+		if ev.GetRecordType() != eventv1.Event_RECORD_TYPE_EVENT {
+			continue
+		}
+		el := ev.GetElement()
+		if el != nil && el.GetType() == typ && el.GetId() == id && el.GetIntent() == intent {
+			n++
+		}
+	}
+	return n
 }

@@ -47,9 +47,9 @@ cf47acf Add STATUS.md for cross-session project continuity.
 
 ## 下一步候选（按优先级）
 
-1. **非打断 boundary 的 timeCycle 重复触发** — 活动等待期间 re-arm 与多次出边
-2. **Recover 与 boundary / Parallel 的组合回归** — 多 token + 重启后扫描与 Complete 目标
-3. SubProcess / Inclusive gateway — 范围更大，后置
+1. **同一活动上的多个 boundary（Timer + Message）** — 需要扩展等待态与命中规则
+2. **SubProcess / Inclusive gateway** — 范围更大，后置
+3. 跨重启的 Job 租约 / 消息缓冲持久化
 
 ## 新会话开场模板
 

@@ -31,6 +31,9 @@ type Token struct {
 	// DueUnixMs is the timer catch due time copied from INTERMEDIATE_CATCH_EVENT ACTIVATED.
 	// Zero when the token is not waiting on a timer.
 	DueUnixMs int64
+	// TimerText stores the original timer expression text for waiting timer catches
+	// and timer boundaries so cycle-based waits can re-arm across recovery.
+	TimerText string
 	// MessageName is the BPMN message name copied from a message catch ACTIVATED
 	// or an interrupting message boundary on a waiting activity.
 	// Empty when the token is not waiting on a message.
@@ -139,8 +142,18 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 	if boundaryDisarmOnWaitingHost(hostElementID, el, tok) {
 		if el.GetIntent() == eventv1.Element_INTENT_TERMINATED {
 			tok.DueUnixMs = 0
+			tok.TimerText = ""
 			tok.MessageName = ""
 			tok.BoundaryID = ""
+		}
+		return
+	}
+	if boundaryRearmOnWaitingHost(hostElementID, el, tok) {
+		if p := el.GetActivityPayload(); p != nil {
+			tok.DueUnixMs = p.GetDueUnixMs()
+			tok.TimerText = p.GetDuration()
+			tok.BoundaryID = p.GetBoundaryId()
+			tok.MessageName = p.GetMessageName()
 		}
 		return
 	}
@@ -156,17 +169,22 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 		}
 		tok.JobType = ""
 		tok.DueUnixMs = 0
+		tok.TimerText = ""
 		tok.MessageName = ""
 		tok.BoundaryID = ""
 		if p := el.GetActivityPayload(); p != nil {
 			tok.JobType = p.GetJobType()
 			tok.DueUnixMs = p.GetDueUnixMs()
+			tok.TimerText = p.GetDuration()
 			tok.BoundaryID = p.GetBoundaryId()
 			tok.MessageName = p.GetMessageName()
 		}
 		if p := el.GetEventPayload(); p != nil {
 			if p.GetDueUnixMs() != 0 {
 				tok.DueUnixMs = p.GetDueUnixMs()
+			}
+			if p.GetDuration() != "" {
+				tok.TimerText = p.GetDuration()
 			}
 			if p.GetMessageName() != "" {
 				tok.MessageName = p.GetMessageName()
@@ -181,6 +199,7 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 		tok.Status = TokenActive
 		tok.JobType = ""
 		tok.DueUnixMs = 0
+		tok.TimerText = ""
 		tok.MessageName = ""
 		tok.BoundaryID = ""
 	case eventv1.Element_INTENT_FAILED:
@@ -193,6 +212,7 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 		tok.Status = TokenActive
 		tok.JobType = ""
 		tok.DueUnixMs = 0
+		tok.TimerText = ""
 		tok.MessageName = ""
 		tok.BoundaryID = ""
 		if sp := el.GetSequenceFlowPayload(); sp != nil && sp.GetTargetId() != "" {
@@ -210,6 +230,21 @@ func boundaryDisarmOnWaitingHost(hostElementID string, el *eventv1.Element, tok 
 	}
 	switch el.GetIntent() {
 	case eventv1.Element_INTENT_TERMINATING, eventv1.Element_INTENT_TERMINATED:
+		return true
+	default:
+		return false
+	}
+}
+
+func boundaryRearmOnWaitingHost(hostElementID string, el *eventv1.Element, tok *Token) bool {
+	if el.GetType() != eventv1.Element_TYPE_BOUNDARY_EVENT || tok.Status != TokenWaiting {
+		return false
+	}
+	if hostElementID == "" || hostElementID == el.GetId() {
+		return false
+	}
+	switch el.GetIntent() {
+	case eventv1.Element_INTENT_ACTIVATING, eventv1.Element_INTENT_ACTIVATED:
 		return true
 	default:
 		return false
