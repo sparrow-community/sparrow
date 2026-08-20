@@ -5,8 +5,8 @@
 
 **M1 状态**：Deploy / CreateInstance / Complete、XOR 条件、内存与文件 EventLog、`Open` 重启回放已可用。  
 **M2 起步**：ServiceTask 等待；Job 经 `Activate` / `Fail` / `Heartbeat`；中间捕获 Timer（`timeDuration` / `timeDate` / `timeCycle`）+ `FireDue`；打断型 Timer / Message boundary（挂 UserTask/ServiceTask）；中间捕获 Message + `PublishMessage`（correlation keys + 内存缓冲）；gRPC 在 `gateway`（`engine.v1` + `job.v1`），进程入口 `gateway/cmd/sparrow`（含 `FireDue` 轮询）。  
-**M3 起步**：Parallel gateway fork/join（多 token；join 同步后 peer token 从投影移除）。  
-尚未实现：Inclusive/EventBased gateway、SubProcess、同一活动多个 boundary、更多元素、跨重启的 Job 租约 / 消息缓冲。
+**M3 起步**：Parallel gateway fork/join（多 token）；Inclusive gateway；SubProcess + scope boundary。  
+**持久化**：`log.EventLog` + `deploy.Store` + `runtime.Store`（Job 租约与消息缓冲；`Open` 写 `dataDir/runtime/state.json`）。
 
 ---
 
@@ -99,7 +99,8 @@ Job / Timer / Message 等待等，视为 **该元素行为的载荷与阶段**�
                     │                                            │
                     │  deploy.Deployment  ← element.Process      │
                     │  projection.Instance ← ApplyEvent          │
-                    │  EventLog / deploy.Store（可替换实现）        │
+                    │  EventLog / deploy.Store / runtime.Store     │
+                    │  （可替换实现；runtime 可选，非账本）           │
                     └──────────────────────────────────────────┘
 ```
 
@@ -107,7 +108,7 @@ Job / Timer / Message 等待等，视为 **该元素行为的载荷与阶段**�
 
 - 投影可丢；EventLog 不可丢。`Recover` 按 EVENT 重建投影。
 - **元素语义在 handlers**；Engine 不写具体生命周期分支。
-- 持久化只有两个注入点：`log.EventLog`（行为账本）与 `deploy.Store`（定义字节）。Memory / File 是开发默认实现。
+- 持久化三个注入点：`log.EventLog`（行为账本）、`deploy.Store`（定义字节）、`runtime.Store`（Job 租约 + 消息缓冲，可选）。Memory / File 是开发默认实现；`runtime.Store == nil` 时租约与缓冲仅进程内有效。
 - COMMAND 处理由 Engine 内联；不另留空的 Processor 接口。
 
 ---
@@ -119,8 +120,9 @@ processing/
 ├── README.md
 ├── DESIGN.md
 ├── engine.go                 // API、实例锁、写日志、emitter
-├── jobs.go                   // Activate、Job 快照、内存租约
-├── open.go                   // Recover(ctx, log, store)、Open 便捷封装
+├── jobs.go                   // Activate、Job 快照、租约（同步 runtime.Store）
+├── runtime_store.go          // load/persist/sweep runtime 状态
+├── open.go                   // Recover(ctx, log, depStore, rtStore)、Open 便捷封装
 ├── executor.go               // 令牌推进编排（调用 handlers）
 ├── id.go                     // UUIDv7
 ├── expr/                     // 条件表达式（expr-lang）
@@ -138,6 +140,7 @@ processing/
 │   ├── exclusive_gateway.go
 │   └── sequence_flow.go
 ├── log/                      // EventLog（Memory / File）
+├── runtime/                  // runtime.Store（Memory / File state.json）
 ├── projection/               // Instance / Token / ApplyEvent
 └── testdata/                 // m1_simple.bpmn 等
 ```
@@ -148,12 +151,14 @@ processing/
 dataDir/
   events.log                     // length-delimited protobuf Event
   deployments/<id>.bpmn          // 原始定义，供重启后 Compile
+  runtime/state.json             // Job 租约 + 消息缓冲（非账本；可变）
 ```
 
 自定义持久化：
 
 ```go
-eng, err := processing.Recover(ctx, myEventLog, myDeploymentStore)
+eng, err := processing.Recover(ctx, myEventLog, myDeploymentStore, myRuntimeStore)
+// myRuntimeStore 传 nil → 租约与缓冲仅内存，Recover 后不保留
 ```
 扩展新 BPMN 元素时：**新增一个 handler 文件 + 注册到 `DefaultRegistry`**，并在 `deploy.validateM1`（或后续更细校验）中放开该类型。
 
@@ -173,6 +178,17 @@ type Store interface {
     LoadAll() (map[string][]byte, error) // id → xml
 }
 
+// runtime.Store — 辅助运行时状态（MemoryStore / FileStore / 自实现）
+// 不是 EventLog 事实；丢失后流程仍可 replay，但租约/缓冲语义退化。
+type Store interface { // runtime 包
+    PutLease(lease JobLease) error
+    DeleteLease(instanceID, tokenID string) error
+    LoadLeases() ([]JobLease, error)
+    EnqueueMessage(msg BufferedMessage) error
+    DeleteMessage(id string) error
+    LoadMessages() ([]BufferedMessage, error)
+}
+
 // ElementHandler（handlers 包）
 type ElementHandler interface {
     Type() eventv1.Element_Type
@@ -180,7 +196,8 @@ type ElementHandler interface {
     OnComplete(in CompleteInput) (*Effect, error)
 }
 
-// Recover(ctx, log, store) 加载定义并回放 EVENT；Open(ctx, dataDir) = Recover(File, DirStore)
+// Recover(ctx, log, depStore, rtStore) 加载定义、回放 EVENT、加载 runtime 状态
+// Open(ctx, dataDir) = Recover(File, DirStore, FileStore)
 // NewEngine(log) 仅内存定义、不回放（测试 / 无持久化会话）
 ```
 
@@ -256,13 +273,22 @@ M1 为单 token；Parallel 等多 token 时仍落在同一 map，由 gateway han
 ### 5.4 重启恢复
 
 ```text
-Recover(ctx, eventLog, deploymentStore)
+Recover(ctx, eventLog, deploymentStore, runtimeStore)
   → Store.LoadAll → Compile → deployments map
   → EventLog.ReadAll
   → 按序对每条 EVENT 调用 Instance.ApplyEvent（必要时先创建投影）
+  → runtimeStore.LoadLeases / LoadMessages（可选；校验后写入 Engine 内存）
   → 未完成的 COMMAND 用同一 cmd.id 接着跑（幂等 emitter 不重复写已有 EVENT）
-  → 恢复等待点（如 UserTask waiting），可继续 Complete
+  → 恢复等待点（如 UserTask waiting），可继续 Complete / Activate
 ```
+
+`runtimeStore == nil` 时跳过加载；租约与缓冲仅进程内有效。
+
+**runtime 加载校验（防死信）**：
+
+- **Lease**：丢弃已过期、token 不在 waiting、或无 `job_type` 的条目
+- **Message buffer**：丢弃超过 TTL（默认 7 天）、绑定实例已结束/不存在的条目
+- **实例结束**：PROCESS `COMPLETED` / `TERMINATED` 时 sweep 该实例的 lease 与 buffer
 
 `Open(ctx, dataDir)` 只是文件实现的便捷封装。M1 采用全量重放；实例量大时再引入快照。COMMAND / REJECTION 不驱动投影（仅 EVENT）。文件日志读到不完整尾包时截断，不让 Recover 失败。
 ---
@@ -328,11 +354,11 @@ Recover(ctx, eventLog, deploymentStore)
    - 扫描 `waiting && Token.MessageName == name`（可限定实例）
    - `correlation_keys` 与实例变量 JSON 值全等匹配（Camunda 7 风格；不写新 payload 字段）
    - 对每个匹配 token 调用统一 `Engine.Complete`（变量走 `EventPayload.variables`）
-4. **无 waiter 则内存缓冲**（FIFO，一条消息唤醒一个 catch）；catch ACTIVATED 后由 Engine 再 `Complete`
-   - 缓冲不是 EventLog 记录；`Recover` 后为空（与 Job 租约相同）
+4. **无 waiter 则缓冲**（FIFO，一条消息唤醒一个 catch）；catch ACTIVATED 后由 Engine 再 `Complete`
+   - 缓冲不是 EventLog 记录；配置了 `runtime.Store` 时 `Open` 后保留
 5. `gateway` 通过 `engine.v1.PublishMessage` 暴露（`delivered` / `buffered`）；无独立 Message 账本主语
 
-重启后 `Recover` 从 `ACTIVATED{message_name}` 还原 `Token.MessageName`；内存缓冲不会恢复，需再次 `PublishMessage`。
+重启后 `Recover` 从 `ACTIVATED{message_name}` 还原 `Token.MessageName`；缓冲从 `runtime.Store` 恢复（若有）。
 
 ### 6.2 (Type, Intent) 使用（M1）
 
@@ -413,8 +439,8 @@ Recover(ctx, eventLog, deploymentStore)
 - 行为：收集 **waiting 且 `token.message_name` 匹配** 的 Message（中间捕获，或打断型 message boundary），逐个 `Complete`（boundary 目标是 `token.boundary_id`）
 - `correlation_keys`：与实例变量（JSON 文本）全等；未设则只按 name / instance 匹配（可广播）
 - **不**把 Message 写成与 Element 平级的账本主语；投递只是触发统一 Complete
-- 无 waiter：写入 **内存缓冲**（FIFO，一条消息对应一个后续 catch / message boundary）；进入 waiting 后 Engine 再 Complete
-- 缓冲不是账本事实；`Recover` 后为空，迟到消息需再次 Publish
+- 无 waiter：写入 **缓冲**（FIFO，一条消息对应一个后续 catch / message boundary）；进入 waiting 后 Engine 再 Complete
+- 缓冲不是账本事实；配置了 `runtime.Store` 时跨重启保留；实例结束或 TTL 过期则清扫
 - `Recover` 从 `EventPayload.message_name`（中间捕获）或 `ActivityPayload.message_name` + `boundary_id`（打断型 boundary）与实例变量还原；gateway 暴露 `engine.v1.PublishMessage`（`delivered` / `buffered`）
 
 ### Activate
@@ -422,7 +448,7 @@ Recover(ctx, eventLog, deploymentStore)
 - 输入：`job_type`，可选 `max_jobs` / `wait` / `worker_id` / `lock_duration`  
 - 行为：从投影收集 **waiting 且 `token.job_type` 匹配** 的 ServiceTask；加上内存租约后返回 Job 快照（含 instance / element / token / variables）  
 - `wait=0` 立即返回（可为空）；否则长轮询，新的 `SERVICE_TASK ACTIVATED` 会唤醒  
-- **不写 EventLog**。租约不是账本事实；`Recover` 后租约为空，waiting token 仍可再次 Activate  
+- **不写 EventLog**。租约不是账本事实；配置了 `runtime.Store` 时跨重启保留直至过期或释放
 - Worker 完成仍调用 `Complete(instance, element, token, vars)`；租约在成功 Complete 后释放  
 
 ### Fail
@@ -451,7 +477,7 @@ Recover(ctx, eventLog, deploymentStore)
 - 缺字段时：先在 `protocol/proto` 增加，再 `buf generate`，再改 processing
 - 演进约定：
   - 元素行为扩展 → `Intent` / `Type` / **payload 字段**
-  - 非元素事实（如纯 Deployment 元数据、Job 租约）→ 另议；不默认塞进 Element
+  - 非元素事实（Job 租约、消息缓冲）→ `runtime.Store`；**不**默认塞进 Element / EventLog
 - Worker 线协议在 `protocol/proto/job/v1`（`JobService`）；进程客户端在 `engine/v1`（`EngineService`）。均由 `gateway` 适配，**不**进入 processing。进程入口：`gateway/cmd/sparrow`。
 
 ---
@@ -478,7 +504,8 @@ Recover(ctx, eventLog, deploymentStore)
 | 回归 | 不支持元素部署失败；非法 Complete → REJECTION；XOR default / 条件选路 |
 | Job | Activate 领取 / Fail 释放重领 / Heartbeat 续租 / Recover 后仍可 Activate |
 | Timer | `PT0S` / 过去 `timeDate` / `R/PT0S` 后 `FireDue` 完成；`PT1H` / 未来 `timeDate` / `R/PT1H` 未到期仍 waiting；Recover 后 due 仍在；打断型 boundary `PT0S` 走超时出边，活动 Complete 则取消 boundary |
-| Message | `PublishMessage` 按 name 完成 catch 或打断型 message boundary；`correlation_keys` 只命中变量匹配的实例；无 waiter 则内存缓冲，catch/boundary 进入后投递；Recover 后缓冲丢失 |
+| Message | `PublishMessage` 按 name 完成 catch 或 boundary；correlation keys 匹配；无 waiter 则缓冲；`Open` 后缓冲可恢复 |
+| Job | Activate 领取；Fail 释放；Heartbeat 续租；`Open` 后租约可恢复 |
 | 恢复 | `Open` 后仍在 UserTask waiting，Complete 可完成实例 |
 
 ---
@@ -503,12 +530,15 @@ Recover(ctx, eventLog, deploymentStore)
 | 14 | 中间捕获 Timer（duration / date / cycle）+ `FireDue` | 已完成 |
 | 15 | Message catch + `PublishMessage` | 已完成 |
 | 16 | Message correlation keys（按实例变量匹配） | 已完成 |
-| 17 | Message 内存缓冲（迟到消息；非账本） | 已完成 |
+| 17 | Message 缓冲（迟到消息；非账本；runtime.Store 可选持久化） | 已完成 |
 | 18 | 打断型 Timer boundary（UserTask/ServiceTask） | 已完成 |
 | 19 | 打断型 Message boundary（UserTask/ServiceTask） | 已完成 |
 | 20 | Parallel gateway fork/join（多 token） | 已完成 |
 | 21 | 非打断 boundary | 已完成（含 timer `timeCycle` 重复触发） |
-| 22 | Inclusive；SubProcess；更多元素 | 未开始 |
+| 22 | Inclusive gateway（OR-split / OR-join，可达 token 防死锁） | 已完成 |
+| 23 | SubProcess + scope boundary | 已完成 |
+| 24 | runtime.Store（Job 租约 + 消息缓冲跨重启） | 已完成 |
+| 25 | EventBased gateway；Throw；补偿 | 未开始 |
 
 ---
 
@@ -518,8 +548,10 @@ Recover(ctx, eventLog, deploymentStore)
 |------|------|
 | `engine.go` | 薄门面：锁、COMMAND/REJECTION、emitter |
 | `timers.go` | `FireDue`：到期的 timer catch 走 `Complete` |
-| `messages.go` | `PublishMessage`：按 name + 可选 correlation keys 匹配；无 waiter 则内存缓冲 |
-| `jobs.go` | `Activate` / `Fail` / `Heartbeat`：Job 快照、长轮询、内存租约 |
+| `messages.go` | `PublishMessage`：按 name + correlation keys 匹配；无 waiter 则缓冲（同步 runtime.Store） |
+| `jobs.go` | `Activate` / `Fail` / `Heartbeat`：Job 快照、长轮询、租约（同步 runtime.Store） |
+| `runtime_store.go` | load/persist/sweep runtime 状态；实例结束/TTL 防死信 |
+| `runtime/` | `Store` 接口（Memory / File `state.json`） |
 | `open.go` / `recover.go` | `Recover` 回放 EVENT；未完成 COMMAND 接着跑 |
 | `executor.go` | Enter/Complete、出边、流程完成判定 |
 | `handlers/*.go` | 每元素一类文件；语义只在此扩展 |
