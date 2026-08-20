@@ -77,6 +77,15 @@ func (IntermediateCatchEventHandler) OnComplete(in CompleteInput) (*Effect, erro
 			completing,
 			{Intent: eventv1.Element_INTENT_COMPLETED, Type: in.Type, Id: in.ElementID, TokenId: in.TokenID},
 		},
-		TakeOutgoing: true,
+		TakeOutgoing:       true,
+		TerminateWaitingAt: eventBasedSiblingCatches(in),
 	}, nil
+}
+
+func eventBasedSiblingCatches(in CompleteInput) []string {
+	if in.Deployment == nil {
+		return nil
+	}
+	_, siblings := in.Deployment.EventBasedSiblings(in.ElementID)
+	return siblings
 }

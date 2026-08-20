@@ -19,8 +19,11 @@ type Effect struct {
 	// Fork lists outgoing sequence flow ids for a parallel split. The entering
 	// token takes Fork[0]; additional tokens are minted for Fork[1:].
 	Fork []string
-	// TerminateJoinPeers ends other waiting tokens still at this parallel join.
+	// TerminateJoinPeers ends other waiting tokens still at this parallel/inclusive join.
 	TerminateJoinPeers string
+	// TerminateWaitingAt ends waiting tokens at the listed element IDs (other tokens).
+	// Used by exclusive event-based gateway: winning catch cancels sibling catches.
+	TerminateWaitingAt []string
 	// SpawnOutgoing mints a new token to follow the boundary outgoing flow while the
 	// activity token keeps waiting (non-interrupting boundary).
 	SpawnOutgoing *SpawnOutgoingEffect
@@ -91,6 +94,7 @@ func DefaultRegistry() *Registry {
 		SequenceFlowHandler{},
 		SubProcessHandler{},
 		InclusiveGatewayHandler{},
+		EventBasedGatewayHandler{},
 	)
 }
 

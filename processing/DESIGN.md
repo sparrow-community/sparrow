@@ -5,7 +5,7 @@
 
 **M1 状态**：Deploy / CreateInstance / Complete、XOR 条件、内存与文件 EventLog、`Open` 重启回放已可用。  
 **M2 起步**：ServiceTask 等待；Job 经 `Activate` / `Fail` / `Heartbeat`；中间捕获 Timer（`timeDuration` / `timeDate` / `timeCycle`）+ `FireDue`；打断型 Timer / Message boundary（挂 UserTask/ServiceTask）；中间捕获 Message + `PublishMessage`（correlation keys + 内存缓冲）；gRPC 在 `gateway`（`engine.v1` + `job.v1`），进程入口 `gateway/cmd/sparrow`（含 `FireDue` 轮询）。  
-**M3 起步**：Parallel gateway fork/join（多 token）；Inclusive gateway；SubProcess + scope boundary。  
+**M3 起步**：Parallel / Inclusive / Event-Based gateway；SubProcess + scope boundary。  
 **持久化**：`log.EventLog` + `deploy.Store` + `runtime.Store`（Job 租约与消息缓冲；`Open` 写 `dataDir/runtime/state.json`）。
 
 ---
@@ -538,7 +538,8 @@ Recover(ctx, eventLog, deploymentStore, runtimeStore)
 | 22 | Inclusive gateway（OR-split / OR-join，可达 token 防死锁） | 已完成 |
 | 23 | SubProcess + scope boundary | 已完成 |
 | 24 | runtime.Store（Job 租约 + 消息缓冲跨重启） | 已完成 |
-| 25 | EventBased gateway；Throw；补偿 | 未开始 |
+| 25 | Exclusive Event-Based gateway | 已完成 |
+| 26 | Intermediate Throw；补偿；Parallel Event Gateway | 未开始 |
 
 ---
 

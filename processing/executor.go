@@ -147,6 +147,11 @@ func (x *Executor) Complete(
 			return err
 		}
 	}
+	if len(effect.TerminateWaitingAt) > 0 {
+		if err := x.terminateWaitingAt(inst, tokenID, effect.TerminateWaitingAt, emit); err != nil {
+			return err
+		}
+	}
 	if effect.SpawnOutgoing != nil {
 		spawn := effect.SpawnOutgoing
 		spawnID, err := NextID()
@@ -195,6 +200,36 @@ func (x *Executor) terminateJoinPeers(inst *projection.Instance, survivorTokenID
 				Intent:  intent,
 				Type:    typ,
 				Id:      joinElementID,
+				TokenId: tid,
+			}); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (x *Executor) terminateWaitingAt(inst *projection.Instance, survivorTokenID string, elementIDs []string, emit Emitter) error {
+	want := make(map[string]bool, len(elementIDs))
+	for _, id := range elementIDs {
+		want[id] = true
+	}
+	for tid, tok := range inst.Tokens {
+		if tid == survivorTokenID || tok == nil {
+			continue
+		}
+		if !want[tok.ElementID] || tok.Status != projection.TokenWaiting {
+			continue
+		}
+		typ := eventv1.Element_TYPE_INTERMEDIATE_CATCH_EVENT
+		for _, intent := range []eventv1.Element_Intent{
+			eventv1.Element_INTENT_TERMINATING,
+			eventv1.Element_INTENT_TERMINATED,
+		} {
+			if err := emit(&eventv1.Element{
+				Intent:  intent,
+				Type:    typ,
+				Id:      tok.ElementID,
 				TokenId: tid,
 			}); err != nil {
 				return err

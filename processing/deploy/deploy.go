@@ -106,6 +106,9 @@ func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messag
 	for _, e := range fe.InclusiveGatewaies {
 		reg(e.ID, eventv1.Element_TYPE_INCLUSIVE_GATEWAY, e.Outgoing, e.Incoming)
 	}
+	for _, e := range fe.EventBasedGatewaies {
+		reg(e.ID, eventv1.Element_TYPE_EVENT_BASED_GATEWAY, e.Outgoing, e.Incoming)
+	}
 	for _, e := range fe.IntermediateCatchEvents {
 		reg(e.ID, eventv1.Element_TYPE_INTERMEDIATE_CATCH_EVENT, e.Outgoing, e.Incoming)
 		if spec, err := timerCatchSpec(e); err == nil {
@@ -137,13 +140,15 @@ func validateM1(proc *element.Process) error {
 	unsupported := 0
 	unsupported += len(proc.Tasks) + len(proc.ManualTasks)
 	unsupported += len(proc.SendTasks) + len(proc.ReceiveTasks) + len(proc.BusinessRuleTasks)
-	unsupported += len(proc.EventBasedGatewaies)
 	unsupported += len(proc.CallActivities)
 	unsupported += len(proc.IntermediateThrowEvents)
 	if unsupported > 0 {
 		return fmt.Errorf("UNSUPPORTED_ELEMENT: process contains elements outside M1 subset")
 	}
 	if err := validateSubProcesses(&proc.FlowElements); err != nil {
+		return err
+	}
+	if err := validateEventBasedGateways(&proc.FlowElements); err != nil {
 		return err
 	}
 	for _, e := range proc.IntermediateCatchEvents {
@@ -584,4 +589,79 @@ func validateSubProcesses(fe *element.FlowElements) error {
 		}
 	}
 	return nil
+}
+
+func validateEventBasedGateways(fe *element.FlowElements) error {
+	catchIDs := make(map[string]bool, len(fe.IntermediateCatchEvents))
+	for _, e := range fe.IntermediateCatchEvents {
+		catchIDs[e.ID] = true
+	}
+	for _, g := range fe.EventBasedGatewaies {
+		if g.Instantiate {
+			return fmt.Errorf("UNSUPPORTED_ELEMENT: eventBasedGateway %q instantiate is not supported", g.ID)
+		}
+		if g.EventGatewayType == element.EventGatewayTypeParallel {
+			return fmt.Errorf("UNSUPPORTED_ELEMENT: eventBasedGateway %q parallel type is not supported", g.ID)
+		}
+		outs := g.Outgoing
+		if len(outs) == 0 {
+			for _, f := range fe.SequenceFlows {
+				if f.SourceRef == g.ID {
+					outs = append(outs, f.ID)
+				}
+			}
+		}
+		if len(outs) < 2 {
+			return fmt.Errorf("UNSUPPORTED_ELEMENT: eventBasedGateway %q must have at least two outgoing flows", g.ID)
+		}
+		for _, flowID := range outs {
+			var target string
+			for _, f := range fe.SequenceFlows {
+				if f.ID == flowID {
+					target = f.TargetRef
+					break
+				}
+			}
+			if target == "" {
+				return fmt.Errorf("UNSUPPORTED_ELEMENT: eventBasedGateway %q outgoing flow %q not found", g.ID, flowID)
+			}
+			if !catchIDs[target] {
+				return fmt.Errorf("UNSUPPORTED_ELEMENT: eventBasedGateway %q must target intermediateCatchEvent (%q)", g.ID, target)
+			}
+		}
+	}
+	for i := range fe.SubProcesses {
+		if err := validateEventBasedGateways(&fe.SubProcesses[i].FlowElements); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// EventBasedSiblings returns sibling catch element IDs when catchID is a target
+// of an exclusive event-based gateway. The gateway id is returned as the first value.
+func (d *Deployment) EventBasedSiblings(catchID string) (gatewayID string, siblings []string) {
+	if d == nil {
+		return "", nil
+	}
+	for _, flowID := range d.Incoming(catchID) {
+		sf, err := d.SequenceFlow(flowID)
+		if err != nil {
+			continue
+		}
+		typ, err := d.TypeOf(sf.SourceRef)
+		if err != nil || typ != eventv1.Element_TYPE_EVENT_BASED_GATEWAY {
+			continue
+		}
+		gatewayID = sf.SourceRef
+		for _, outID := range d.Outgoing(gatewayID) {
+			out, err := d.SequenceFlow(outID)
+			if err != nil || out.TargetRef == catchID {
+				continue
+			}
+			siblings = append(siblings, out.TargetRef)
+		}
+		return gatewayID, siblings
+	}
+	return "", nil
 }

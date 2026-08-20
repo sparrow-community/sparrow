@@ -232,7 +232,8 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 		}
 	case eventv1.Element_INTENT_COMPLETED, eventv1.Element_INTENT_TERMINATED:
 		if el.GetIntent() == eventv1.Element_INTENT_TERMINATED &&
-			el.GetType() == eventv1.Element_TYPE_PARALLEL_GATEWAY {
+			(el.GetType() == eventv1.Element_TYPE_PARALLEL_GATEWAY ||
+				el.GetType() == eventv1.Element_TYPE_INTERMEDIATE_CATCH_EVENT) {
 			delete(inst.Tokens, tokenID)
 			return
 		}
