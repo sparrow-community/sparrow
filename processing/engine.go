@@ -10,16 +10,19 @@ import (
 	"github.com/sparrow-community/sparrow/processing/handlers"
 	eventlog "github.com/sparrow-community/sparrow/processing/log"
 	"github.com/sparrow-community/sparrow/processing/projection"
+	"github.com/sparrow-community/sparrow/processing/runtime"
 	eventv1 "github.com/sparrow-community/sparrow/protocol/gen/go/event/v1"
 )
 
 // Engine is the single-node BPMN execution facade.
 // Element semantics live in handlers; definitions come from bpmn via deploy.Deployment.
-// Persistence is injected: EventLog (behavior ledger) and optional deploy.Store (BPMN XML).
+// Persistence is injected: EventLog (behavior ledger), optional deploy.Store (BPMN XML),
+// and optional runtime.Store (job leases + message buffer).
 type Engine struct {
-	log      eventlog.EventLog
-	store    deploy.Store
-	executor *Executor
+	log          eventlog.EventLog
+	store        deploy.Store
+	runtimeStore runtime.Store
+	executor     *Executor
 
 	mu          sync.Mutex
 	deployments map[string]*deploy.Deployment
@@ -275,7 +278,16 @@ func (e *Engine) emitter(ctx context.Context, inst *projection.Instance, sourceC
 			return err
 		}
 		e.markSeen(sourceCmdID, el)
+		prevStatus := inst.Status
 		inst.ApplyEvent(ev)
+		if el.GetType() == eventv1.Element_TYPE_PROCESS {
+			switch el.GetIntent() {
+			case eventv1.Element_INTENT_COMPLETED, eventv1.Element_INTENT_TERMINATED:
+				if prevStatus != inst.Status {
+					e.sweepRuntimeForInstance(inst.ID)
+				}
+			}
+		}
 		if el.GetType() == eventv1.Element_TYPE_SERVICE_TASK &&
 			el.GetIntent() == eventv1.Element_INTENT_ACTIVATED {
 			e.notifyJobs()

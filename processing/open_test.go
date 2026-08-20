@@ -95,7 +95,7 @@ func TestRecoverReplayWithMemoryBackends(t *testing.T) {
 	memLog := eventlog.NewMemory()
 	memStore := deploy.NewMemoryStore()
 
-	eng1, err := processing.Recover(ctx, memLog, memStore)
+	eng1, err := processing.Recover(ctx, memLog, memStore, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func TestRecoverReplayWithMemoryBackends(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	eng2, err := processing.Recover(ctx, memLog, memStore)
+	eng2, err := processing.Recover(ctx, memLog, memStore, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

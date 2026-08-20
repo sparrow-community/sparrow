@@ -31,8 +31,8 @@ type Job struct {
 
 // ActivateRequest is the pull-worker claim for jobs of one type.
 // Wait is the long-poll budget (0 returns immediately). LockDuration is the
-// exclusive lease; 0 uses a 5-minute default. Leases are in-memory and empty
-// after Recover.
+// exclusive lease; 0 uses a 5-minute default. With a runtime.Store, leases
+// survive restart until expiry or release.
 type ActivateRequest struct {
 	JobType      string
 	MaxJobs      int
@@ -147,6 +147,7 @@ func (e *Engine) claimJobs(req ActivateRequest) ([]Job, time.Time) {
 				continue
 			}
 			e.leases[key] = jobLease{workerID: req.WorkerID, deadline: deadline}
+			e.persistLease(iid, tid, req.WorkerID, deadline)
 			out = append(out, Job{
 				JobType:           tok.JobType,
 				ProcessInstanceID: inst.ID,
@@ -192,6 +193,7 @@ func (e *Engine) releaseLease(instanceID, tokenID string) {
 	e.jobMu.Lock()
 	delete(e.leases, leaseKey(instanceID, tokenID))
 	e.jobMu.Unlock()
+	e.persistReleaseLease(instanceID, tokenID)
 }
 
 // Fail records SERVICE_TASK FAILED, keeps the token waiting, and drops the
@@ -304,15 +306,19 @@ func (e *Engine) Heartbeat(_ context.Context, instanceID, tokenID, workerID stri
 	key := leaseKey(instanceID, tokenID)
 	now := time.Now()
 	e.jobMu.Lock()
-	defer e.jobMu.Unlock()
 	lease, ok := e.leases[key]
 	if !ok || !now.Before(lease.deadline) {
+		e.jobMu.Unlock()
 		return fmt.Errorf("INVALID_STATE: job is not locked")
 	}
 	if lease.workerID != workerID {
+		e.jobMu.Unlock()
 		return fmt.Errorf("INVALID_STATE: job is locked by another worker")
 	}
-	e.leases[key] = jobLease{workerID: workerID, deadline: now.Add(lockDuration)}
+	newDeadline := now.Add(lockDuration)
+	e.leases[key] = jobLease{workerID: workerID, deadline: newDeadline}
+	e.jobMu.Unlock()
+	e.persistLease(instanceID, tokenID, workerID, newDeadline)
 	return nil
 }
 

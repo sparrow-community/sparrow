@@ -194,7 +194,7 @@ func TestRecoverThenActivateServiceTask(t *testing.T) {
 	ctx := context.Background()
 	memLog := eventlog.NewMemory()
 	memStore := deploy.NewMemoryStore()
-	eng1, err := processing.Recover(ctx, memLog, memStore)
+	eng1, err := processing.Recover(ctx, memLog, memStore, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +207,7 @@ func TestRecoverThenActivateServiceTask(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	eng2, err := processing.Recover(ctx, memLog, memStore)
+	eng2, err := processing.Recover(ctx, memLog, memStore, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

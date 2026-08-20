@@ -9,22 +9,27 @@ import (
 	"github.com/sparrow-community/sparrow/processing/deploy"
 	eventlog "github.com/sparrow-community/sparrow/processing/log"
 	"github.com/sparrow-community/sparrow/processing/projection"
+	"github.com/sparrow-community/sparrow/processing/runtime"
 	eventv1 "github.com/sparrow-community/sparrow/protocol/gen/go/event/v1"
 )
 
 // Recover builds an Engine from caller-supplied persistence:
-// EventLog for the behavior ledger, Store for BPMN definitions.
-// Both may be in-memory, files, or a custom implementation.
-func Recover(ctx context.Context, l eventlog.EventLog, store deploy.Store) (*Engine, error) {
+// EventLog for the behavior ledger, Store for BPMN definitions, optional
+// runtime.Store for job leases and message buffer.
+func Recover(ctx context.Context, l eventlog.EventLog, depStore deploy.Store, rtStore runtime.Store) (*Engine, error) {
 	if l == nil {
 		return nil, fmt.Errorf("event log is required")
 	}
 	e := NewEngine(l)
-	e.store = store
+	e.store = depStore
+	e.runtimeStore = rtStore
 	if err := e.loadDeployments(); err != nil {
 		return nil, err
 	}
 	if err := e.replay(ctx); err != nil {
+		return nil, err
+	}
+	if err := e.loadRuntime(); err != nil {
 		return nil, err
 	}
 	return e, nil
@@ -34,6 +39,7 @@ func Recover(ctx context.Context, l eventlog.EventLog, store deploy.Store) (*Eng
 //
 //	dataDir/events.log
 //	dataDir/deployments/<id>.bpmn
+//	dataDir/runtime/state.json
 func Open(ctx context.Context, dataDir string) (*Engine, error) {
 	if dataDir == "" {
 		return nil, fmt.Errorf("dataDir is required")
@@ -47,7 +53,12 @@ func Open(ctx context.Context, dataDir string) (*Engine, error) {
 		_ = fl.Close()
 		return nil, err
 	}
-	e, err := Recover(ctx, fl, ds)
+	rs, err := runtime.OpenFileStore(filepath.Join(dataDir, "runtime"))
+	if err != nil {
+		_ = fl.Close()
+		return nil, err
+	}
+	e, err := Recover(ctx, fl, ds, rs)
 	if err != nil {
 		_ = fl.Close()
 		return nil, err

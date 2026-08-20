@@ -10,9 +10,10 @@ import (
 )
 
 // PublishMessageRequest correlates a BPMN message to waiting message catches.
-// If no waiter matches, the message is kept in an in-memory buffer until a
-// matching catch activates. The buffer is not an EventLog record and is empty
-// after Recover.
+// If no waiter matches, the message is kept in a runtime buffer until a
+// matching catch activates. The buffer is not an EventLog record; when a
+// runtime.Store is configured (Open / Recover with FileStore or MemoryStore),
+// buffered messages survive restart.
 type PublishMessageRequest struct {
 	Name              string
 	ProcessInstanceID string // empty: all matching waiters
@@ -23,11 +24,12 @@ type PublishMessageRequest struct {
 }
 
 type bufferedMessage struct {
-	id         string
-	name       string
-	instanceID string
-	keys       []*eventv1.Variable
-	vars       map[string]any
+	id             string
+	name           string
+	instanceID     string
+	keys           []*eventv1.Variable
+	vars           map[string]any
+	enqueuedUnixMs int64
 }
 
 // PublishMessage completes waiting message-catch tokens whose MessageName matches.
@@ -194,14 +196,17 @@ func (e *Engine) enqueueBuffered(name, instanceID string, keys []*eventv1.Variab
 		return err
 	}
 	e.msgMu.Lock()
-	e.msgBuf = append(e.msgBuf, bufferedMessage{
-		id:         id,
-		name:       name,
-		instanceID: instanceID,
-		keys:       keys,
-		vars:       cloneAnyMap(vars),
-	})
+	msg := bufferedMessage{
+		id:             id,
+		name:           name,
+		instanceID:     instanceID,
+		keys:           keys,
+		vars:           cloneAnyMap(vars),
+		enqueuedUnixMs: e.now().UnixMilli(),
+	}
+	e.msgBuf = append(e.msgBuf, msg)
 	e.msgMu.Unlock()
+	e.persistEnqueueBuffered(msg)
 	return nil
 }
 
@@ -219,6 +224,7 @@ func (e *Engine) takeBuffered(name, instanceID string, vars map[string]string) (
 			continue
 		}
 		e.msgBuf = append(e.msgBuf[:i], e.msgBuf[i+1:]...)
+		e.persistDeleteBuffered(m.id)
 		return m, true
 	}
 	return bufferedMessage{}, false
@@ -228,6 +234,7 @@ func (e *Engine) prependBuffered(m bufferedMessage) {
 	e.msgMu.Lock()
 	e.msgBuf = append([]bufferedMessage{m}, e.msgBuf...)
 	e.msgMu.Unlock()
+	e.persistEnqueueBuffered(m)
 }
 
 func (e *Engine) tryDeliverBuffered(ctx context.Context, instanceID string) error {

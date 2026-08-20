@@ -506,7 +506,7 @@ func TestPublishMessageBufferAfterUserTask(t *testing.T) {
 	}
 }
 
-func TestPublishMessageBufferLostOnRecover(t *testing.T) {
+func TestPublishMessageBufferSurvivesRecover(t *testing.T) {
 	xml := readTestdataMessage(t, "m2_message_catch.bpmn")
 	dir := t.TempDir()
 	ctx := context.Background()
@@ -537,11 +537,8 @@ func TestPublishMessageBufferLostOnRecover(t *testing.T) {
 		t.Fatal(err)
 	}
 	inst, _ := eng2.GetInstance(instanceID)
-	if inst.Status != projection.StatusActive {
-		t.Fatalf("status=%s want waiting; buffer must not survive Recover", inst.Status)
-	}
-	if waitingElement(inst) != "MessageCatch_1" {
-		t.Fatalf("tokens=%#v", inst.Tokens)
+	if inst.Status != projection.StatusCompleted {
+		t.Fatalf("status=%s want completed from persisted buffer", inst.Status)
 	}
 }
 

@@ -18,7 +18,7 @@ func TestRecoverRedrivesCreateInstanceCommand(t *testing.T) {
 	ctx := context.Background()
 	memLog := eventlog.NewMemory()
 	store := deploy.NewMemoryStore()
-	eng1, err := processing.Recover(ctx, memLog, store)
+	eng1, err := processing.Recover(ctx, memLog, store, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func TestRecoverRedrivesCreateInstanceCommand(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	eng2, err := processing.Recover(ctx, memLog, store)
+	eng2, err := processing.Recover(ctx, memLog, store, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +65,7 @@ func TestRecoverRedrivesCompleteCommand(t *testing.T) {
 	ctx := context.Background()
 	memLog := eventlog.NewMemory()
 	store := deploy.NewMemoryStore()
-	eng1, err := processing.Recover(ctx, memLog, store)
+	eng1, err := processing.Recover(ctx, memLog, store, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +101,7 @@ func TestRecoverRedrivesCompleteCommand(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	eng2, err := processing.Recover(ctx, memLog, store)
+	eng2, err := processing.Recover(ctx, memLog, store, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +116,7 @@ func TestRecoverRedrivesPartialCompleteChain(t *testing.T) {
 	ctx := context.Background()
 	memLog := eventlog.NewMemory()
 	store := deploy.NewMemoryStore()
-	eng1, err := processing.Recover(ctx, memLog, store)
+	eng1, err := processing.Recover(ctx, memLog, store, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +166,7 @@ func TestRecoverRedrivesPartialCompleteChain(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	eng2, err := processing.Recover(ctx, memLog, store)
+	eng2, err := processing.Recover(ctx, memLog, store, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +184,7 @@ func TestRecoverDoesNotDuplicateFinishedCommands(t *testing.T) {
 	ctx := context.Background()
 	memLog := eventlog.NewMemory()
 	store := deploy.NewMemoryStore()
-	eng1, err := processing.Recover(ctx, memLog, store)
+	eng1, err := processing.Recover(ctx, memLog, store, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,7 +206,7 @@ func TestRecoverDoesNotDuplicateFinishedCommands(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	eng2, err := processing.Recover(ctx, memLog, store)
+	eng2, err := processing.Recover(ctx, memLog, store, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,7 +231,7 @@ func TestRecoverRedrivesFailCommand(t *testing.T) {
 	ctx := context.Background()
 	memLog := eventlog.NewMemory()
 	store := deploy.NewMemoryStore()
-	eng1, err := processing.Recover(ctx, memLog, store)
+	eng1, err := processing.Recover(ctx, memLog, store, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -267,7 +267,7 @@ func TestRecoverRedrivesFailCommand(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	eng2, err := processing.Recover(ctx, memLog, store)
+	eng2, err := processing.Recover(ctx, memLog, store, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
