@@ -45,7 +45,7 @@ cf47acf Add STATUS.md for cross-session project continuity.
 
 - 流程定义**版本管理与迁移**（每次 `Deploy` 新 `deployment_id`）
 - 同一活动上 **三个及以上 boundary**
-- Inclusive gateway（已完成）、EventBased gateway（已完成 Exclusive）、Throw、补偿、Incident
+- Throw、补偿、Incident；Parallel Event Gateway / instantiate EventBasedGateway
 - 集群 / 多活
 - 复制 Camunda 产品广度（建模器、Cockpit 等）
 
