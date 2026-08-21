@@ -312,7 +312,7 @@ Recover(ctx, eventLog, deploymentStore, runtimeStore)
 | `SEQUENCE_FLOW` | `sequence_flow.go` | 经 transit 发 `SEQUENCE_FLOW_TAKEN`（不走 OnEnter） |
 | `END_EVENT` | `end_event.go` | 完成后 `TryCompleteProcess` |
 
-部署时 `validateM1` 拒绝尚未实现的元素（CallActivity、补偿 throw、嵌套 Event Sub-Process、instantiate EventBasedGateway、同一活动多个同类 boundary、更多元素等）。ServiceTask、中间捕获（Timer + Message + Signal catch）、Intermediate Throw（none / message / signal）、打断型 / 非打断型 Timer / Message boundary、Parallel / Inclusive / Exclusive+Parallel Event-Based gateway、embedded SubProcess、流程级 Event Sub-Process 已纳入可执行子集。
+部署时 `validateM1` 拒绝尚未实现的元素（CallActivity、嵌套 Event Sub-Process、instantiate EventBasedGateway、同一活动多个同类 boundary、更多元素等）。ServiceTask、中间捕获（Timer + Message + Signal catch）、Intermediate Throw（none / message / signal / compensate）、打断型 / 非打断型 Timer / Message boundary、Compensation boundary、Parallel / Inclusive / Exclusive+Parallel Event-Based gateway、embedded SubProcess、流程级 Event Sub-Process 已纳入可执行子集。
 
 ### Timer catch（timeDuration / timeDate）时序链（M2）
 
@@ -386,6 +386,12 @@ Recover(ctx, eventLog, deploymentStore, runtimeStore)
    - **打断型**：终止父 scope 内 token，进入 ESP；ESP 完成后丢弃 token 并尝试完成流程
    - **非打断型**：父 token 继续；mint 新 token 跑 ESP；ESP 完成后丢弃该 token
 4. 迟到 message 可走现有缓冲，在 ESP arm 就绪后投递
+
+### Compensation（M3）
+
+1. 活动挂 `boundaryEvent` + `compensateEventDefinition`，经 `association` 指向 `isForCompensation` 的 UserTask/ServiceTask
+2. 活动 COMPLETED 后写 `BOUNDARY_EVENT ACTIVATED`（`EventPayload.compensation_handler_id`）形成订阅
+3. `intermediateThrowEvent` + `compensateEventDefinition`（可选 `activityRef`）：ACTIVATED 后 `Wait`，按订阅 Seq **逆序**进入 handler；handler 完成后丢弃 token 并推进；全部完成后 throw `Complete` 并出边
 
 ### 6.2 (Type, Intent) 使用（M1）
 
@@ -576,7 +582,8 @@ Recover(ctx, eventLog, deploymentStore, runtimeStore)
 | 26 | Intermediate Throw（none / message / signal）+ Signal catch + `PublishSignal` | 已完成 |
 | 27 | Event Sub-Process（流程级 message/timer，打断 / 非打断） | 已完成 |
 | 28 | Parallel Event-Based gateway（不取消兄弟 catch） | 已完成 |
-| 29 | 补偿 | 未开始 |
+| 29 | Compensation（boundary + throw，逆序 handler） | 已完成 |
+| 30 | 版本管理；Signal boundary；嵌套 ESP | 未开始 |
 
 ---
 

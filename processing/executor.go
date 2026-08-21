@@ -98,6 +98,11 @@ func (x *Executor) Enter(
 			return pubs, nil
 		}
 		if effect.Wait {
+			if effect.TriggerCompensation {
+				more, err := x.startCompensation(ctx, dep, inst, tokenID, elementID, emit)
+				pubs = append(pubs, more...)
+				return pubs, err
+			}
 			return pubs, nil
 		}
 		if effect.TryCompleteProcess {
@@ -190,6 +195,11 @@ func (x *Executor) Complete(
 	}
 	if effect.DiscardToken {
 		delete(inst.Tokens, tokenID)
+	}
+	if effect.AdvanceCompensation {
+		more, err := x.advanceCompensation(ctx, dep, inst, emit)
+		pubs = append(pubs, more...)
+		return pubs, err
 	}
 	if effect.TryCompleteProcess {
 		more, err := x.tryCompleteScope(ctx, dep, inst, tokenID, elementID, emit)
@@ -392,4 +402,107 @@ func (x *Executor) tryCompleteProcessScope(dep *deploy.Deployment, inst *project
 		pubs = append(pubs, *effect.Publish)
 	}
 	return pubs, nil
+}
+
+func (x *Executor) startCompensation(
+	ctx context.Context,
+	dep *deploy.Deployment,
+	inst *projection.Instance,
+	throwTokenID, throwElementID string,
+	emit Emitter,
+) ([]handlers.Publication, error) {
+	activityRef, err := dep.CompensateActivityRef(throwElementID)
+	if err != nil {
+		return nil, err
+	}
+	throwScope, _ := dep.ScopeOf(throwElementID)
+
+	type item struct {
+		boundaryID string
+		handlerID  string
+		seq        int64
+	}
+	var items []item
+	for bid, sub := range inst.CompensationSubs {
+		if sub == nil {
+			continue
+		}
+		c, ok := dep.CompensationByBoundary(bid)
+		if !ok {
+			continue
+		}
+		if activityRef != "" && c.ActivityID != activityRef {
+			continue
+		}
+		actScope, _ := dep.ScopeOf(c.ActivityID)
+		if actScope != throwScope {
+			continue
+		}
+		items = append(items, item{boundaryID: bid, handlerID: c.HandlerID, seq: sub.Seq})
+	}
+	// Reverse order of completion (higher Seq first).
+	for i := 0; i < len(items); i++ {
+		for j := i + 1; j < len(items); j++ {
+			if items[j].seq > items[i].seq {
+				items[i], items[j] = items[j], items[i]
+			}
+		}
+	}
+	queue := make([]string, 0, len(items))
+	consumed := make([]string, 0, len(items))
+	for _, it := range items {
+		queue = append(queue, it.handlerID)
+		consumed = append(consumed, it.boundaryID)
+	}
+	for _, bid := range consumed {
+		if err := emit(&eventv1.Element{
+			Intent:  eventv1.Element_INTENT_COMPLETING,
+			Type:    eventv1.Element_TYPE_BOUNDARY_EVENT,
+			Id:      bid,
+			TokenId: throwTokenID,
+		}); err != nil {
+			return nil, err
+		}
+		if err := emit(&eventv1.Element{
+			Intent:  eventv1.Element_INTENT_COMPLETED,
+			Type:    eventv1.Element_TYPE_BOUNDARY_EVENT,
+			Id:      bid,
+			TokenId: throwTokenID,
+		}); err != nil {
+			return nil, err
+		}
+	}
+	inst.PendingCompensation = &projection.PendingCompensation{
+		ThrowTokenID:   throwTokenID,
+		ThrowElementID: throwElementID,
+		Queue:          queue,
+		Consumed:       consumed,
+	}
+	return x.advanceCompensation(ctx, dep, inst, emit)
+}
+
+func (x *Executor) advanceCompensation(
+	ctx context.Context,
+	dep *deploy.Deployment,
+	inst *projection.Instance,
+	emit Emitter,
+) ([]handlers.Publication, error) {
+	pc := inst.PendingCompensation
+	if pc == nil {
+		return nil, nil
+	}
+	if len(pc.Queue) == 0 {
+		throwTok, throwEl := pc.ThrowTokenID, pc.ThrowElementID
+		inst.PendingCompensation = nil
+		return x.Complete(ctx, dep, inst, throwTok, throwEl, nil, emit)
+	}
+	handler := pc.Queue[0]
+	pc.Queue = pc.Queue[1:]
+	hid, err := NextID()
+	if err != nil {
+		return nil, err
+	}
+	pc.ActiveTokenID = hid
+	pc.ActiveHandler = handler
+	return x.Enter(ctx, dep, inst, hid, handler, emit)
 }

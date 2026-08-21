@@ -21,7 +21,8 @@ type Deployment struct {
 	signalCatch       map[string]string     // intermediate signal catch id -> name
 	throwEvents       map[string]throwSpec  // intermediate throw id -> spec
 	eventSubProcesses map[string]EventSubProcess
-	elements          map[string]*elemEntry // flat index of all elements (recursive into subprocesses)
+	compensations     map[string]Compensation // activity id -> compensation
+	elements          map[string]*elemEntry   // flat index of all elements (recursive into subprocesses)
 	seqFlows          map[string]*seqFlowEntry
 }
 
@@ -80,14 +81,29 @@ func (d *Deployment) compile(messages []element.Message, signals []element.Signa
 	d.signalCatch = make(map[string]string, len(p.IntermediateCatchEvents))
 	d.throwEvents = make(map[string]throwSpec, len(p.IntermediateThrowEvents))
 	d.eventSubProcesses = make(map[string]EventSubProcess)
+	d.compensations = make(map[string]Compensation)
 	d.elements = make(map[string]*elemEntry)
 	d.seqFlows = make(map[string]*seqFlowEntry)
 
-	d.indexScope(&p.FlowElements, p.ID, messages, signals)
+	d.indexScope(&p.FlowElements, p.ID, messages, signals, collectAssociations(p))
 	d.elements[p.ID] = &elemEntry{Type: eventv1.Element_TYPE_PROCESS, ScopeID: ""}
 }
 
-func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messages []element.Message, signals []element.Signal) {
+func collectAssociations(p *element.Process) []element.Association {
+	out := append([]element.Association{}, p.Associations...)
+	var walk func(fe *element.FlowElements)
+	walk = func(fe *element.FlowElements) {
+		for i := range fe.SubProcesses {
+			sp := &fe.SubProcesses[i]
+			out = append(out, sp.Associations...)
+			walk(&sp.FlowElements)
+		}
+	}
+	walk(&p.FlowElements)
+	return out
+}
+
+func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messages []element.Message, signals []element.Signal, associations []element.Association) {
 	reg := func(id string, typ eventv1.Element_Type, outgoing, incoming []string) {
 		d.elements[id] = &elemEntry{Type: typ, ScopeID: scopeID, Outgoing: outgoing, Incoming: incoming}
 	}
@@ -137,6 +153,8 @@ func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messag
 			d.timerCatch[e.ID] = spec.Catch
 		} else if spec, err := messageBoundarySpec(e, messages); err == nil {
 			d.messageCatch[e.ID] = spec.Name
+		} else if spec, err := compensationBoundarySpec(e, associations); err == nil {
+			d.compensations[spec.ActivityID] = spec
 		}
 	}
 	for _, e := range fe.SequenceFlows {
@@ -163,7 +181,7 @@ func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messag
 				}
 			}
 		}
-		d.indexScope(&sp.FlowElements, sp.ID, messages, signals)
+		d.indexScope(&sp.FlowElements, sp.ID, messages, signals, associations)
 	}
 }
 
@@ -186,9 +204,10 @@ func validateM1(proc *element.Process) error {
 	}
 	type seenKey struct {
 		activity string
-		kind     string // "timer" or "message"
+		kind     string // "timer", "message", or "compensate"
 	}
 	seenAttach := make(map[seenKey]string, len(proc.BoundaryEvents))
+	assocs := collectAssociations(proc)
 	for _, e := range proc.BoundaryEvents {
 		attached := ""
 		kind := ""
@@ -207,8 +226,18 @@ func validateM1(proc *element.Process) error {
 			}
 			attached = spec.AttachedTo
 			kind = "message"
+		case len(e.CompensateEventDefinitions) > 0:
+			spec, err := compensationBoundarySpec(e, assocs)
+			if err != nil {
+				return err
+			}
+			if err := validateCompensationHandler(&proc.FlowElements, spec.HandlerID); err != nil {
+				return err
+			}
+			attached = spec.ActivityID
+			kind = "compensate"
 		default:
-			return fmt.Errorf("UNSUPPORTED_ELEMENT: boundaryEvent %q must be a timer or message boundary", e.ID)
+			return fmt.Errorf("UNSUPPORTED_ELEMENT: boundaryEvent %q must be a timer, message, or compensation boundary", e.ID)
 		}
 		key := seenKey{attached, kind}
 		if prev, ok := seenAttach[key]; ok {

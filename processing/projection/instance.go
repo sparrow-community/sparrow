@@ -87,6 +87,31 @@ type Instance struct {
 	ScopeBoundaries map[string]*ScopeBoundary
 	// EventSubProcesses tracks armed event sub-process starts. Key is subProcess id.
 	EventSubProcesses map[string]*EventSubProcessArm
+	// CompensationSubs tracks compensation subscriptions after host activities complete.
+	// Key is compensation boundary id.
+	CompensationSubs map[string]*CompensationSub
+	// PendingCompensation is set while a compensate throw waits for handlers.
+	PendingCompensation *PendingCompensation
+}
+
+// CompensationSub is created when a host activity COMPLETED and a compensation
+// boundary ACTIVATED (ledger-backed via EventPayload.compensation_handler_id).
+type CompensationSub struct {
+	BoundaryID   string
+	ActivityID   string
+	HandlerID    string
+	Seq          int64 // subscription order (later compensated first)
+	HostTokenID  string
+}
+
+// PendingCompensation tracks an in-flight compensate throw waiting for handlers.
+type PendingCompensation struct {
+	ThrowTokenID   string
+	ThrowElementID string
+	Queue          []string // remaining handler element ids (reverse execution order)
+	ActiveTokenID  string
+	ActiveHandler  string
+	Consumed       []string // boundary ids consumed by this throw
 }
 
 func NewInstance(id, deploymentID string, version int32) *Instance {
@@ -100,6 +125,7 @@ func NewInstance(id, deploymentID string, version int32) *Instance {
 		ElementIntent:     make(map[string]eventv1.Element_Intent),
 		ScopeBoundaries:   make(map[string]*ScopeBoundary),
 		EventSubProcesses: make(map[string]*EventSubProcessArm),
+		CompensationSubs:  make(map[string]*CompensationSub),
 	}
 }
 
@@ -133,6 +159,7 @@ func (inst *Instance) Clone() *Instance {
 		ElementIntent:     make(map[string]eventv1.Element_Intent, len(inst.ElementIntent)),
 		ScopeBoundaries:   make(map[string]*ScopeBoundary, len(inst.ScopeBoundaries)),
 		EventSubProcesses: make(map[string]*EventSubProcessArm, len(inst.EventSubProcesses)),
+		CompensationSubs:  make(map[string]*CompensationSub, len(inst.CompensationSubs)),
 	}
 	for k, v := range inst.Variables {
 		out.Variables[k] = v
@@ -154,6 +181,16 @@ func (inst *Instance) Clone() *Instance {
 	for k, arm := range inst.EventSubProcesses {
 		cp := *arm
 		out.EventSubProcesses[k] = &cp
+	}
+	for k, sub := range inst.CompensationSubs {
+		cp := *sub
+		out.CompensationSubs[k] = &cp
+	}
+	if inst.PendingCompensation != nil {
+		pc := *inst.PendingCompensation
+		pc.Queue = append([]string{}, inst.PendingCompensation.Queue...)
+		pc.Consumed = append([]string{}, inst.PendingCompensation.Consumed...)
+		out.PendingCompensation = &pc
 	}
 	return out
 }
@@ -214,6 +251,25 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 			}
 		}
 		return
+	}
+	if el.GetType() == eventv1.Element_TYPE_BOUNDARY_EVENT {
+		if el.GetIntent() == eventv1.Element_INTENT_ACTIVATED {
+			if p := el.GetEventPayload(); p != nil && p.GetCompensationHandlerId() != "" {
+				inst.CompensationSubs[el.GetId()] = &CompensationSub{
+					BoundaryID:  el.GetId(),
+					HandlerID:   p.GetCompensationHandlerId(),
+					HostTokenID: tokenID,
+					Seq:         int64(len(inst.CompensationSubs)) + 1,
+				}
+				return
+			}
+		}
+		if el.GetIntent() == eventv1.Element_INTENT_TERMINATED || el.GetIntent() == eventv1.Element_INTENT_COMPLETED {
+			if _, ok := inst.CompensationSubs[el.GetId()]; ok {
+				delete(inst.CompensationSubs, el.GetId())
+				return
+			}
+		}
 	}
 	tok.ElementID = el.GetId()
 
@@ -326,7 +382,7 @@ func boundaryRearmOnWaitingHost(hostElementID string, el *eventv1.Element, tok *
 
 func waitingActivation(t eventv1.Element_Type) bool {
 	switch t {
-	case eventv1.Element_TYPE_USER_TASK, eventv1.Element_TYPE_SERVICE_TASK, eventv1.Element_TYPE_INTERMEDIATE_CATCH_EVENT, eventv1.Element_TYPE_PARALLEL_GATEWAY, eventv1.Element_TYPE_INCLUSIVE_GATEWAY:
+	case eventv1.Element_TYPE_USER_TASK, eventv1.Element_TYPE_SERVICE_TASK, eventv1.Element_TYPE_INTERMEDIATE_CATCH_EVENT, eventv1.Element_TYPE_INTERMEDIATE_THROW_EVENT, eventv1.Element_TYPE_PARALLEL_GATEWAY, eventv1.Element_TYPE_INCLUSIVE_GATEWAY:
 		return true
 	default:
 		return false
@@ -343,11 +399,15 @@ func applyProcessLifecycle(inst *Instance, el *eventv1.Element) {
 		inst.Tokens = make(map[string]*Token)
 		inst.EventSubProcesses = make(map[string]*EventSubProcessArm)
 		inst.ScopeBoundaries = make(map[string]*ScopeBoundary)
+		inst.CompensationSubs = make(map[string]*CompensationSub)
+		inst.PendingCompensation = nil
 	case eventv1.Element_INTENT_TERMINATED:
 		inst.Status = StatusTerminated
 		inst.Tokens = make(map[string]*Token)
 		inst.EventSubProcesses = make(map[string]*EventSubProcessArm)
 		inst.ScopeBoundaries = make(map[string]*ScopeBoundary)
+		inst.CompensationSubs = make(map[string]*CompensationSub)
+		inst.PendingCompensation = nil
 	case eventv1.Element_INTENT_ACTIVATED:
 		inst.Status = StatusActive
 	}

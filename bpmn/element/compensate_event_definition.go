@@ -16,6 +16,6 @@ package element
 
 type CompensateEventDefinition struct {
 	EventDefinition
-	WaitForCompletion bool `xml:"waitForCompletion,attr"`
-	ActivityRef       string
+	WaitForCompletion bool   `xml:"waitForCompletion,attr"`
+	ActivityRef       string `xml:"activityRef,attr"`
 }

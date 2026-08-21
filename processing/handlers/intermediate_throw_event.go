@@ -37,6 +37,15 @@ func (IntermediateThrowEventHandler) OnEnter(in EnterInput) (*Effect, error) {
 		}
 		payload = &eventv1.EventPayload{SignalName: name}
 		pub = &Publication{Kind: PublicationSignal, Name: name}
+	case deploy.ThrowKindCompensate:
+		return &Effect{
+			Records: []*eventv1.Element{
+				{Intent: eventv1.Element_INTENT_ACTIVATING, Type: in.Type, Id: in.ElementID, TokenId: in.TokenID},
+				{Intent: eventv1.Element_INTENT_ACTIVATED, Type: in.Type, Id: in.ElementID, TokenId: in.TokenID},
+			},
+			Wait:                true,
+			TriggerCompensation: true,
+		}, nil
 	default:
 		return nil, fmt.Errorf("UNSUPPORTED_ELEMENT: intermediateThrowEvent %q has unsupported kind %q", in.ElementID, string(kind))
 	}
@@ -57,6 +66,19 @@ func (IntermediateThrowEventHandler) OnEnter(in EnterInput) (*Effect, error) {
 	}, nil
 }
 
-func (IntermediateThrowEventHandler) OnComplete(CompleteInput) (*Effect, error) {
-	return nil, errUnsupportedComplete(eventv1.Element_TYPE_INTERMEDIATE_THROW_EVENT)
+func (IntermediateThrowEventHandler) OnComplete(in CompleteInput) (*Effect, error) {
+	kind, err := in.Deployment.ThrowKind(in.ElementID)
+	if err != nil {
+		return nil, err
+	}
+	if kind != deploy.ThrowKindCompensate {
+		return nil, errUnsupportedComplete(eventv1.Element_TYPE_INTERMEDIATE_THROW_EVENT)
+	}
+	return &Effect{
+		Records: []*eventv1.Element{
+			{Intent: eventv1.Element_INTENT_COMPLETING, Type: in.Type, Id: in.ElementID, TokenId: in.TokenID},
+			{Intent: eventv1.Element_INTENT_COMPLETED, Type: in.Type, Id: in.ElementID, TokenId: in.TokenID},
+		},
+		TakeOutgoing: true,
+	}, nil
 }

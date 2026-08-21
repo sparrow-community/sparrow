@@ -11,14 +11,16 @@ import (
 type ThrowKind string
 
 const (
-	ThrowKindNone    ThrowKind = "none"
-	ThrowKindMessage ThrowKind = "message"
-	ThrowKindSignal  ThrowKind = "signal"
+	ThrowKindNone       ThrowKind = "none"
+	ThrowKindMessage    ThrowKind = "message"
+	ThrowKindSignal     ThrowKind = "signal"
+	ThrowKindCompensate ThrowKind = "compensate"
 )
 
 type throwSpec struct {
-	Kind ThrowKind
-	Name string // message or signal name; empty for none
+	Kind        ThrowKind
+	Name        string // message or signal name; empty for none/compensate
+	ActivityRef string // optional compensate target activity id
 }
 
 func messageThrowSpec(ev element.IntermediateThrowEvent, messages []element.Message) (throwSpec, error) {
@@ -76,6 +78,8 @@ func throwEventSpec(ev element.IntermediateThrowEvent, messages []element.Messag
 		return messageThrowSpec(ev, messages)
 	case len(ev.SignalEventDefinitions) > 0:
 		return signalThrowSpec(ev, signals)
+	case len(ev.CompensateEventDefinitions) > 0:
+		return compensateThrowSpec(ev)
 	default:
 		return noneThrowSpec(ev)
 	}

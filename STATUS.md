@@ -16,15 +16,15 @@
 |------|------|
 | **M1** | 完成：Start → UserTask → XOR → End；文件日志 + `Recover` |
 | **M2** | 完成：ServiceTask + Job；Timer/Message catch；Timer/Message boundary（打断型 + 非打断型） |
-| **M3** | 进行中：网关 / SubProcess / Throw / Event Sub-Process / **Parallel Event-Based Gateway** |
+| **M3** | 进行中：网关 / SubProcess / Throw / ESP / Parallel EBG / **Compensation** |
 
 **`main` 最新提交**（更新时改这里）：
 
 ```text
+Support activity compensation (boundary + throw)
+60f5fba Record parallel event-based gateway commit in STATUS.md
 664fc85 Support parallel event-based gateway (keep sibling catches)
-4f68052 Record event sub-process commit in STATUS.md
 ad765c9 Support process-level event sub-process (message/timer)
-aa2a936 Support intermediate throw (message/signal) and signal catch
 ```
 
 ## 已实现（运行时）
@@ -38,7 +38,8 @@ aa2a936 Support intermediate throw (message/signal) and signal catch
 - **Timer**：`timeDuration` / `timeDate` / `timeCycle`（仅首次到期）；`Engine.FireDue`；`cmd/sparrow` 轮询
 - **Message**：`PublishMessage`（name + 可选 correlation_keys + 缓冲）；`Open` 时缓冲持久化到 `runtime.Store`
 - **Signal**：`PublishSignal`（name；无缓冲）；throw 与外部注入共用路径
-- **Boundary**：Timer / Message 可挂 UserTask、ServiceTask 或 SubProcess；支持打断型与非打断型；同一活动可同时挂 Timer + Message
+- **Boundary**：Timer / Message 可挂 UserTask、ServiceTask 或 SubProcess；支持打断型与非打断型；同一活动可同时挂 Timer + Message；**Compensation** boundary + association 处理器
+- **Compensation**：活动完成后订阅；`compensate` intermediate throw 按完成逆序执行 handler（wait）；可选 `activityRef`
 - **Job**：`Activate` / `Fail` / `Heartbeat`；`Open` 时租约持久化到 `runtime.Store`（非账本）
 - **持久化**：`log.EventLog`（行为账本）+ `deploy.Store`（定义）+ `runtime.Store`（租约 + 消息缓冲，`dataDir/runtime/state.json`）
 - **传输**：`gateway` — `engine.v1` + `job.v1` gRPC
@@ -47,15 +48,15 @@ aa2a936 Support intermediate throw (message/signal) and signal catch
 
 - 流程定义**版本管理与迁移**（每次 `Deploy` 新 `deployment_id`）
 - 同一活动上 **三个及以上 boundary**；Signal boundary
-- 补偿、Incident；嵌套在 embedded SubProcess 内的 Event Sub-Process；instantiate EventBasedGateway
+- Incident；嵌套在 embedded SubProcess 内的 Event Sub-Process；instantiate EventBasedGateway；补偿传播进未完成的 SubProcess
 - 集群 / 多活
 - 复制 Camunda 产品广度（建模器、Cockpit 等）
 
 ## 下一步候选（按优先级）
 
-1. 补偿（Compensation）
-2. 流程定义版本管理与迁移
-3. Signal boundary / 嵌套 Event Sub-Process
+1. 流程定义版本管理与迁移
+2. Signal boundary / 嵌套 Event Sub-Process
+3. 补偿增强（activityRef 多活动、End compensate、嵌套 scope）
 
 ## 新会话开场模板
 

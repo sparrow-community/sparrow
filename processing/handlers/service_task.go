@@ -55,7 +55,15 @@ func (ServiceTaskHandler) OnComplete(in CompleteInput) (*Effect, error) {
 		completing,
 		{Intent: eventv1.Element_INTENT_COMPLETED, Type: in.Type, Id: in.ElementID, TokenId: in.TokenID},
 	}
+	if in.Deployment != nil && in.Deployment.IsCompensationHandler(in.ElementID) {
+		return &Effect{
+			Records:             records,
+			DiscardToken:        true,
+			AdvanceCompensation: true,
+		}, nil
+	}
 	records = append(records, cancelAttachedBoundary(in.Deployment, in.ElementID, in.TokenID)...)
+	records = append(records, subscribeCompensation(in.Deployment, in.ElementID, in.TokenID)...)
 	return &Effect{
 		Records:      records,
 		TakeOutgoing: true,

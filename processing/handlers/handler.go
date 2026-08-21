@@ -36,6 +36,11 @@ type Effect struct {
 	// DiscardToken removes the token after records are applied (event sub-process
 	// completion has no outgoing sequence flow).
 	DiscardToken bool
+	// TriggerCompensation runs compensation handlers for this compensate throw
+	// (throw token waits until handlers finish, then OnComplete takes outgoing).
+	TriggerCompensation bool
+	// AdvanceCompensation continues the pending compensate throw after a handler finishes.
+	AdvanceCompensation bool
 }
 
 // PublicationKind is message or signal broadcast from an intermediate throw.

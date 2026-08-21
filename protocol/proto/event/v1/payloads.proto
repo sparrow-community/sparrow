@@ -25,6 +25,9 @@ message EventPayload {
   repeated Variable variables = 4;
   // BPMN signal name for a signal catch or signal throw. Empty when unused.
   string signal_name = 5;
+  // Compensation handler element id. Set on BOUNDARY_EVENT ACTIVATED after the
+  // host activity COMPLETED (compensation subscription). Empty otherwise.
+  string compensation_handler_id = 6;
 }
 
 // Shared payload for BPMN activities (tasks, subProcess, callActivity, …).

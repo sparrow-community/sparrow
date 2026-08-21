@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             id="Definitions_compensation"
+             targetNamespace="http://sparrow.example/compensation">
+  <process id="Process_compensation" name="M3 Compensation" isExecutable="true">
+    <startEvent id="Start_1">
+      <outgoing>Flow_start_to_a</outgoing>
+    </startEvent>
+    <userTask id="Task_A" name="Book">
+      <incoming>Flow_start_to_a</incoming>
+      <outgoing>Flow_a_to_throw</outgoing>
+    </userTask>
+    <boundaryEvent id="CompensateBoundary_A" attachedToRef="Task_A" cancelActivity="false">
+      <compensateEventDefinition id="CompensateDef_A"/>
+    </boundaryEvent>
+    <userTask id="Undo_A" name="Cancel Booking" isForCompensation="true"/>
+    <association id="Assoc_A" sourceRef="CompensateBoundary_A" targetRef="Undo_A" associationDirection="One"/>
+    <intermediateThrowEvent id="CompensateThrow_1">
+      <incoming>Flow_a_to_throw</incoming>
+      <outgoing>Flow_throw_to_end</outgoing>
+      <compensateEventDefinition id="CompensateThrowDef_1"/>
+    </intermediateThrowEvent>
+    <endEvent id="End_1">
+      <incoming>Flow_throw_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_a" sourceRef="Start_1" targetRef="Task_A"/>
+    <sequenceFlow id="Flow_a_to_throw" sourceRef="Task_A" targetRef="CompensateThrow_1"/>
+    <sequenceFlow id="Flow_throw_to_end" sourceRef="CompensateThrow_1" targetRef="End_1"/>
+  </process>
+</definitions>

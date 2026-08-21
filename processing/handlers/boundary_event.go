@@ -63,7 +63,31 @@ func cancelAttachedBoundary(dep *deploy.Deployment, activityID, tokenID string) 
 			&eventv1.Element{Intent: eventv1.Element_INTENT_TERMINATED, Type: eventv1.Element_TYPE_BOUNDARY_EVENT, Id: bid, TokenId: tokenID},
 		)
 	}
+	// Compensation boundaries are subscribed on COMPLETED, not cancelled here.
 	return records
+}
+
+// subscribeCompensation arms a compensation subscription after the host activity completes.
+func subscribeCompensation(dep *deploy.Deployment, activityID, tokenID string) []*eventv1.Element {
+	if dep == nil {
+		return nil
+	}
+	comp, ok := dep.CompensationOf(activityID)
+	if !ok {
+		return nil
+	}
+	return []*eventv1.Element{
+		{Intent: eventv1.Element_INTENT_ACTIVATING, Type: eventv1.Element_TYPE_BOUNDARY_EVENT, Id: comp.BoundaryID, TokenId: tokenID},
+		{
+			Intent:  eventv1.Element_INTENT_ACTIVATED,
+			Type:    eventv1.Element_TYPE_BOUNDARY_EVENT,
+			Id:      comp.BoundaryID,
+			TokenId: tokenID,
+			Payload: &eventv1.Element_EventPayload{
+				EventPayload: &eventv1.EventPayload{CompensationHandlerId: comp.HandlerID},
+			},
+		},
+	}
 }
 
 func disarmAttachedBoundary(boundaryID, activityTokenID string) []*eventv1.Element {
