@@ -60,6 +60,19 @@ type ScopeBoundary struct {
 	MessageName string // message name (empty if timer boundary)
 }
 
+// EventSubProcessArm is a process-scoped subscription for a triggeredByEvent subProcess.
+// It is not an EventLog record; Engine re-syncs from the deployment while the instance is active.
+type EventSubProcessArm struct {
+	SubProcessID  string
+	StartEventID  string
+	ParentScopeID string
+	Interrupting  bool
+	MessageName   string
+	SignalName    string
+	DueUnixMs     int64
+	TimerText     string
+}
+
 type Instance struct {
 	ID           string
 	DeploymentID string
@@ -72,18 +85,21 @@ type Instance struct {
 	// ScopeBoundaries tracks boundaries armed on SubProcess scopes.
 	// Key is the boundary element ID.
 	ScopeBoundaries map[string]*ScopeBoundary
+	// EventSubProcesses tracks armed event sub-process starts. Key is subProcess id.
+	EventSubProcesses map[string]*EventSubProcessArm
 }
 
 func NewInstance(id, deploymentID string, version int32) *Instance {
 	return &Instance{
-		ID:              id,
-		DeploymentID:    deploymentID,
-		Version:         version,
-		Status:          StatusActive,
-		Variables:       make(map[string]string),
-		Tokens:          make(map[string]*Token),
-		ElementIntent:   make(map[string]eventv1.Element_Intent),
-		ScopeBoundaries: make(map[string]*ScopeBoundary),
+		ID:                id,
+		DeploymentID:      deploymentID,
+		Version:           version,
+		Status:            StatusActive,
+		Variables:         make(map[string]string),
+		Tokens:            make(map[string]*Token),
+		ElementIntent:     make(map[string]eventv1.Element_Intent),
+		ScopeBoundaries:   make(map[string]*ScopeBoundary),
+		EventSubProcesses: make(map[string]*EventSubProcessArm),
 	}
 }
 
@@ -108,14 +124,15 @@ func (inst *Instance) Clone() *Instance {
 		return nil
 	}
 	out := &Instance{
-		ID:              inst.ID,
-		DeploymentID:    inst.DeploymentID,
-		Version:         inst.Version,
-		Status:          inst.Status,
-		Variables:       make(map[string]string, len(inst.Variables)),
-		Tokens:          make(map[string]*Token, len(inst.Tokens)),
-		ElementIntent:   make(map[string]eventv1.Element_Intent, len(inst.ElementIntent)),
-		ScopeBoundaries: make(map[string]*ScopeBoundary, len(inst.ScopeBoundaries)),
+		ID:                inst.ID,
+		DeploymentID:      inst.DeploymentID,
+		Version:           inst.Version,
+		Status:            inst.Status,
+		Variables:         make(map[string]string, len(inst.Variables)),
+		Tokens:            make(map[string]*Token, len(inst.Tokens)),
+		ElementIntent:     make(map[string]eventv1.Element_Intent, len(inst.ElementIntent)),
+		ScopeBoundaries:   make(map[string]*ScopeBoundary, len(inst.ScopeBoundaries)),
+		EventSubProcesses: make(map[string]*EventSubProcessArm, len(inst.EventSubProcesses)),
 	}
 	for k, v := range inst.Variables {
 		out.Variables[k] = v
@@ -133,6 +150,10 @@ func (inst *Instance) Clone() *Instance {
 	for k, sb := range inst.ScopeBoundaries {
 		cp := *sb
 		out.ScopeBoundaries[k] = &cp
+	}
+	for k, arm := range inst.EventSubProcesses {
+		cp := *arm
+		out.EventSubProcesses[k] = &cp
 	}
 	return out
 }
@@ -320,9 +341,13 @@ func applyProcessLifecycle(inst *Instance, el *eventv1.Element) {
 	case eventv1.Element_INTENT_COMPLETED:
 		inst.Status = StatusCompleted
 		inst.Tokens = make(map[string]*Token)
+		inst.EventSubProcesses = make(map[string]*EventSubProcessArm)
+		inst.ScopeBoundaries = make(map[string]*ScopeBoundary)
 	case eventv1.Element_INTENT_TERMINATED:
 		inst.Status = StatusTerminated
 		inst.Tokens = make(map[string]*Token)
+		inst.EventSubProcesses = make(map[string]*EventSubProcessArm)
+		inst.ScopeBoundaries = make(map[string]*ScopeBoundary)
 	case eventv1.Element_INTENT_ACTIVATED:
 		inst.Status = StatusActive
 	}
@@ -360,6 +385,18 @@ func (inst *Instance) RemoveScopeBoundariesForScope(scopeID string) {
 			delete(inst.ScopeBoundaries, id)
 		}
 	}
+}
+
+func (inst *Instance) RemoveEventSubProcessesInScope(scopeID string) {
+	for id, arm := range inst.EventSubProcesses {
+		if arm.ParentScopeID == scopeID {
+			delete(inst.EventSubProcesses, id)
+		}
+	}
+}
+
+func (inst *Instance) RemoveEventSubProcess(subProcessID string) {
+	delete(inst.EventSubProcesses, subProcessID)
 }
 
 func VariablesFromMap(vars map[string]any) ([]*eventv1.Variable, error) {

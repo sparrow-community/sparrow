@@ -16,12 +16,13 @@ type Deployment struct {
 	Version int32
 	Process element.Process
 
-	timerCatch   map[string]timerCatch // catch or interrupting timer boundary id
-	messageCatch map[string]string     // intermediate catch or interrupting message boundary id -> name
-	signalCatch  map[string]string     // intermediate signal catch id -> name
-	throwEvents  map[string]throwSpec  // intermediate throw id -> spec
-	elements     map[string]*elemEntry // flat index of all elements (recursive into subprocesses)
-	seqFlows     map[string]*seqFlowEntry
+	timerCatch        map[string]timerCatch // catch or interrupting timer boundary id
+	messageCatch      map[string]string     // intermediate catch or interrupting message boundary id -> name
+	signalCatch       map[string]string     // intermediate signal catch id -> name
+	throwEvents       map[string]throwSpec  // intermediate throw id -> spec
+	eventSubProcesses map[string]EventSubProcess
+	elements          map[string]*elemEntry // flat index of all elements (recursive into subprocesses)
+	seqFlows          map[string]*seqFlowEntry
 }
 
 type elemEntry struct {
@@ -78,6 +79,7 @@ func (d *Deployment) compile(messages []element.Message, signals []element.Signa
 	d.messageCatch = make(map[string]string, len(p.IntermediateCatchEvents)+len(p.BoundaryEvents))
 	d.signalCatch = make(map[string]string, len(p.IntermediateCatchEvents))
 	d.throwEvents = make(map[string]throwSpec, len(p.IntermediateThrowEvents))
+	d.eventSubProcesses = make(map[string]EventSubProcess)
 	d.elements = make(map[string]*elemEntry)
 	d.seqFlows = make(map[string]*seqFlowEntry)
 
@@ -144,6 +146,23 @@ func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messag
 	for i := range fe.SubProcesses {
 		sp := &fe.SubProcesses[i]
 		reg(sp.ID, eventv1.Element_TYPE_SUB_PROCESS, sp.Outgoing, sp.Incoming)
+		if sp.TriggeredByEvent {
+			spec, err := eventSubProcessStartSpec(sp.ID, sp.StartEvents[0], messages, signals)
+			if err == nil {
+				spec.ParentScopeID = scopeID
+				d.eventSubProcesses[sp.ID] = spec
+				switch spec.Kind {
+				case CatchKindMessage:
+					d.messageCatch[spec.StartEventID] = spec.MessageName
+				case CatchKindSignal:
+					d.signalCatch[spec.StartEventID] = spec.SignalName
+				case CatchKindTimer:
+					if tc, err := timerCatchFromDefs(spec.StartEventID, sp.StartEvents[0].EventDefinitions); err == nil {
+						d.timerCatch[spec.StartEventID] = tc
+					}
+				}
+			}
+		}
 		d.indexScope(&sp.FlowElements, sp.ID, messages, signals)
 	}
 }
@@ -612,11 +631,33 @@ func validateBoundaryHost(proc *element.Process, activityID string) error {
 }
 
 func validateSubProcesses(fe *element.FlowElements) error {
-	for _, sp := range fe.SubProcesses {
+	return validateSubProcessesAt(fe, false)
+}
+
+func validateSubProcessesAt(fe *element.FlowElements, insideEmbedded bool) error {
+	for i := range fe.SubProcesses {
+		sp := &fe.SubProcesses[i]
+		if sp.TriggeredByEvent {
+			if insideEmbedded {
+				return fmt.Errorf("UNSUPPORTED_ELEMENT: event subProcess %q nested in embedded subProcess is not supported yet", sp.ID)
+			}
+			if err := validateEventSubProcess(sp, nil, nil); err != nil {
+				return err
+			}
+			for _, f := range fe.SequenceFlows {
+				if f.SourceRef == sp.ID || f.TargetRef == sp.ID {
+					return fmt.Errorf("UNSUPPORTED_ELEMENT: event subProcess %q must not have sequence flow connections", sp.ID)
+				}
+			}
+			if err := validateSubProcessesAt(&sp.FlowElements, false); err != nil {
+				return err
+			}
+			continue
+		}
 		if len(sp.StartEvents) == 0 {
 			return fmt.Errorf("UNSUPPORTED_ELEMENT: subProcess %q must have a startEvent", sp.ID)
 		}
-		if err := validateSubProcesses(&sp.FlowElements); err != nil {
+		if err := validateSubProcessesAt(&sp.FlowElements, true); err != nil {
 			return err
 		}
 	}

@@ -147,6 +147,7 @@ func (e *Engine) CreateInstance(ctx context.Context, deploymentID string, vars m
 			return "", err
 		}
 	}
+	e.armEventSubProcesses(dep, inst, e.now())
 	pubs, err := e.executor.Enter(ctx, dep, inst, tokenID, startID, emit)
 	lock.Unlock()
 	if err != nil {

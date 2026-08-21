@@ -55,7 +55,8 @@ func (e *Engine) PublishMessage(ctx context.Context, req PublishMessageRequest) 
 	}
 	waiters := e.collectMessageWaiters(name, instanceID, keys)
 	scopeWaiters := e.collectScopeMessageWaiters(name, instanceID, keys)
-	if len(waiters) == 0 && len(scopeWaiters) == 0 {
+	espWaiters := e.collectESPMessageArms(name, instanceID, keys)
+	if len(waiters) == 0 && len(scopeWaiters) == 0 && len(espWaiters) == 0 {
 		if err := e.enqueueBuffered(name, instanceID, keys, req.Variables); err != nil {
 			return 0, err
 		}
@@ -83,6 +84,18 @@ func (e *Engine) PublishMessage(ctx context.Context, req PublishMessageRequest) 
 			return delivered, err
 		}
 		if err := e.completeScopeBoundary(ctx, sw.instanceID, sw.boundaryID); err != nil {
+			if first == nil {
+				first = err
+			}
+			continue
+		}
+		delivered++
+	}
+	for _, ew := range espWaiters {
+		if err := ctx.Err(); err != nil {
+			return delivered, err
+		}
+		if err := e.triggerEventSubProcess(ctx, ew.instanceID, ew.subProcessID, req.Variables); err != nil {
 			if first == nil {
 				first = err
 			}
@@ -239,6 +252,9 @@ func (e *Engine) prependBuffered(m bufferedMessage) {
 
 func (e *Engine) tryDeliverBuffered(ctx context.Context, instanceID string) error {
 	for {
+		if err := e.tryDeliverBufferedESP(ctx, instanceID); err != nil {
+			return err
+		}
 		w, vars, ok := e.messageWaiterOn(instanceID)
 		if !ok {
 			return nil
@@ -255,6 +271,43 @@ func (e *Engine) tryDeliverBuffered(ctx context.Context, instanceID string) erro
 			return err
 		}
 	}
+}
+
+func (e *Engine) tryDeliverBufferedESP(ctx context.Context, instanceID string) error {
+	for {
+		arm, vars, ok := e.espMessageArmOn(instanceID)
+		if !ok {
+			return nil
+		}
+		msg, ok := e.takeBuffered(arm.MessageName, instanceID, vars)
+		if !ok {
+			return nil
+		}
+		if err := e.triggerEventSubProcess(ctx, instanceID, arm.SubProcessID, msg.vars); err != nil {
+			e.prependBuffered(msg)
+			return err
+		}
+	}
+}
+
+func (e *Engine) espMessageArmOn(instanceID string) (*projection.EventSubProcessArm, map[string]string, bool) {
+	e.mu.Lock()
+	inst := e.instances[instanceID]
+	lock := e.instMu[instanceID]
+	e.mu.Unlock()
+	if inst == nil || lock == nil {
+		return nil, nil, false
+	}
+	lock.Lock()
+	defer lock.Unlock()
+	for _, arm := range inst.EventSubProcesses {
+		if arm == nil || arm.MessageName == "" {
+			continue
+		}
+		cp := *arm
+		return &cp, cloneStringMap(inst.Variables), true
+	}
+	return nil, nil, false
 }
 
 func (e *Engine) messageWaiterOn(instanceID string) (dueWait, map[string]string, bool) {

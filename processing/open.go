@@ -125,5 +125,9 @@ func (e *Engine) replay(ctx context.Context) error {
 			e.markSeen(ev.GetSourceRecordId(), ev.GetElement())
 		}
 	}
-	return e.redrive(ctx)
+	if err := e.redrive(ctx); err != nil {
+		return err
+	}
+	e.rearmEventSubProcesses()
+	return nil
 }

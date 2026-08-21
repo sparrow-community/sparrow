@@ -33,6 +33,9 @@ type Effect struct {
 	// Publish is a deferred message/signal throw. The engine delivers it after
 	// the instance lock is released (avoids re-entrant Complete under the same lock).
 	Publish *Publication
+	// DiscardToken removes the token after records are applied (event sub-process
+	// completion has no outgoing sequence flow).
+	DiscardToken bool
 }
 
 // PublicationKind is message or signal broadcast from an intermediate throw.

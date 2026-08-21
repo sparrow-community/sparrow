@@ -14,7 +14,18 @@
 
 package element
 
+// StartEvent is a catch event that starts a process or event sub-process.
 type StartEvent struct {
 	CatchEvent
-	Interrupting bool `xml:"interrupting,attr"`
+	// Interrupting maps BPMN isInterrupting. Nil means attribute absent
+	// (BPMN default true for event sub-process starts).
+	Interrupting *bool `xml:"isInterrupting,attr"`
+}
+
+// IsInterrupting returns the effective interrupting flag (default true).
+func (s StartEvent) IsInterrupting() bool {
+	if s.Interrupting == nil {
+		return true
+	}
+	return *s.Interrupting
 }

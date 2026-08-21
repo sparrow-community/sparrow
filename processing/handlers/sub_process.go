@@ -71,11 +71,19 @@ func attachScopeBoundary(dep *deploy.Deployment, subProcessID string, now time.T
 }
 
 func (SubProcessHandler) OnComplete(in CompleteInput) (*Effect, error) {
-	return &Effect{
+	effect := &Effect{
 		Records: []*eventv1.Element{
 			{Intent: eventv1.Element_INTENT_COMPLETING, Type: in.Type, Id: in.ElementID, TokenId: in.TokenID},
 			{Intent: eventv1.Element_INTENT_COMPLETED, Type: in.Type, Id: in.ElementID, TokenId: in.TokenID},
 		},
-		TakeOutgoing: true,
-	}, nil
+	}
+	if in.Deployment != nil && in.Deployment.IsEventSubProcess(in.ElementID) {
+		// Event sub-process has no outgoing sequence flow; drop the token and
+		// try to complete the enclosing process/scope.
+		effect.DiscardToken = true
+		effect.TryCompleteProcess = true
+		return effect, nil
+	}
+	effect.TakeOutgoing = true
+	return effect, nil
 }

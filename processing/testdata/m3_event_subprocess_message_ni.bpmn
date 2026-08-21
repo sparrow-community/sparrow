@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             id="Definitions_esp_message_ni"
+             targetNamespace="http://sparrow.example/esp-message-ni">
+  <message id="message_1" name="notify"/>
+  <process id="Process_esp_message_ni" name="M3 Event SubProcess Non-Interrupting" isExecutable="true">
+    <startEvent id="StartEvent_1">
+      <outgoing>Flow_start_to_task</outgoing>
+    </startEvent>
+    <userTask id="UserTask_1" name="Work">
+      <incoming>Flow_start_to_task</incoming>
+      <outgoing>Flow_task_to_end</outgoing>
+    </userTask>
+    <endEvent id="EndEvent_1">
+      <incoming>Flow_task_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_task" sourceRef="StartEvent_1" targetRef="UserTask_1"/>
+    <sequenceFlow id="Flow_task_to_end" sourceRef="UserTask_1" targetRef="EndEvent_1"/>
+
+    <subProcess id="Event_SubProcess_1" name="On Notify" triggeredByEvent="true">
+      <startEvent id="ESP_Start_1" isInterrupting="false">
+        <outgoing>Flow_esp_start_to_end</outgoing>
+        <messageEventDefinition id="ESP_MsgDef_1" messageRef="message_1"/>
+      </startEvent>
+      <endEvent id="ESP_End_1">
+        <incoming>Flow_esp_start_to_end</incoming>
+      </endEvent>
+      <sequenceFlow id="Flow_esp_start_to_end" sourceRef="ESP_Start_1" targetRef="ESP_End_1"/>
+    </subProcess>
+  </process>
+</definitions>

@@ -160,6 +160,7 @@ func (e *Engine) redriveCreateInstance(ctx context.Context, dep *deploy.Deployme
 			return nil, err
 		}
 	}
+	e.armEventSubProcesses(dep, inst, e.now())
 	return e.executor.Enter(ctx, dep, inst, tokenID, startID, emit)
 }
 

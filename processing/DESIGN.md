@@ -311,7 +311,7 @@ Recover(ctx, eventLog, deploymentStore, runtimeStore)
 | `SEQUENCE_FLOW` | `sequence_flow.go` | 经 transit 发 `SEQUENCE_FLOW_TAKEN`（不走 OnEnter） |
 | `END_EVENT` | `end_event.go` | 完成后 `TryCompleteProcess` |
 
-部署时 `validateM1` 拒绝尚未实现的元素（CallActivity、补偿 throw、同一活动多个同类 boundary、更多元素等）。ServiceTask、中间捕获（Timer + Message + Signal catch）、Intermediate Throw（none / message / signal）、打断型 / 非打断型 Timer / Message boundary、Parallel / Inclusive / Exclusive Event-Based gateway、SubProcess 已纳入可执行子集。
+部署时 `validateM1` 拒绝尚未实现的元素（CallActivity、补偿 throw、嵌套 Event Sub-Process、同一活动多个同类 boundary、更多元素等）。ServiceTask、中间捕获（Timer + Message + Signal catch）、Intermediate Throw（none / message / signal）、打断型 / 非打断型 Timer / Message boundary、Parallel / Inclusive / Exclusive Event-Based gateway、embedded SubProcess、流程级 Event Sub-Process 已纳入可执行子集。
 
 ### Timer catch（timeDuration / timeDate）时序链（M2）
 
@@ -374,6 +374,17 @@ Recover(ctx, eventLog, deploymentStore, runtimeStore)
 ### Signal catch 时序链（M3）
 
 与 Message catch 相同等待故事：`ACTIVATED{signal_name}` → `PublishSignal` / signal throw → `Complete`。无缓冲。
+
+### Event Sub-Process（流程级）（M3）
+
+以 `Start → UserTask` 并行挂 `subProcess triggeredByEvent`（message / timer start）为例：
+
+1. 部署：`triggeredByEvent=true`，无进出边；恰好一个 startEvent（message / signal / timer）；禁止嵌套在 embedded SubProcess 内
+2. `CreateInstance` 在 PROCESS ACTIVATED 后武装 `Instance.EventSubProcesses`（非账本；`Recover` 后按部署重武装）
+3. `PublishMessage` / `PublishSignal` / `FireDue` 命中 arm：
+   - **打断型**：终止父 scope 内 token，进入 ESP；ESP 完成后丢弃 token 并尝试完成流程
+   - **非打断型**：父 token 继续；mint 新 token 跑 ESP；ESP 完成后丢弃该 token
+4. 迟到 message 可走现有缓冲，在 ESP arm 就绪后投递
 
 ### 6.2 (Type, Intent) 使用（M1）
 
@@ -562,7 +573,8 @@ Recover(ctx, eventLog, deploymentStore, runtimeStore)
 | 24 | runtime.Store（Job 租约 + 消息缓冲跨重启） | 已完成 |
 | 25 | Exclusive Event-Based gateway | 已完成 |
 | 26 | Intermediate Throw（none / message / signal）+ Signal catch + `PublishSignal` | 已完成 |
-| 27 | 补偿；Event Sub-Process；Parallel Event Gateway | 未开始 |
+| 27 | Event Sub-Process（流程级 message/timer，打断 / 非打断） | 已完成 |
+| 28 | 补偿；Parallel Event Gateway | 未开始 |
 
 ---
 

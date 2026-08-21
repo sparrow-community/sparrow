@@ -188,6 +188,14 @@ func (x *Executor) Complete(
 		pubs = append(pubs, more...)
 		return pubs, err
 	}
+	if effect.DiscardToken {
+		delete(inst.Tokens, tokenID)
+	}
+	if effect.TryCompleteProcess {
+		more, err := x.tryCompleteScope(ctx, dep, inst, tokenID, elementID, emit)
+		pubs = append(pubs, more...)
+		return pubs, err
+	}
 	if effect.Wait || !effect.TakeOutgoing {
 		return pubs, nil
 	}
@@ -329,6 +337,14 @@ func (x *Executor) tryCompleteScope(ctx context.Context, dep *deploy.Deployment,
 	}
 	if effect.Publish != nil {
 		pubs = append(pubs, *effect.Publish)
+	}
+	if effect.DiscardToken {
+		delete(inst.Tokens, tokenID)
+	}
+	if effect.TryCompleteProcess {
+		more, err := x.tryCompleteProcessScope(dep, inst, emit)
+		pubs = append(pubs, more...)
+		return pubs, err
 	}
 	if effect.TakeOutgoing {
 		next, err := x.takeOutgoing(dep, tokenID, scopeID, effect.OutgoingFlowID, emit)

@@ -34,7 +34,8 @@ func (e *Engine) PublishSignal(ctx context.Context, req PublishSignalRequest) (i
 		}
 	}
 	waiters := e.collectSignalWaiters(name, instanceID)
-	if len(waiters) == 0 {
+	espWaiters := e.collectESPSignalArms(name, instanceID)
+	if len(waiters) == 0 && len(espWaiters) == 0 {
 		return 0, nil
 	}
 	delivered := 0
@@ -47,6 +48,18 @@ func (e *Engine) PublishSignal(ctx context.Context, req PublishSignalRequest) (i
 			if strings.HasPrefix(err.Error(), "INVALID_STATE:") {
 				continue
 			}
+			if first == nil {
+				first = err
+			}
+			continue
+		}
+		delivered++
+	}
+	for _, ew := range espWaiters {
+		if err := ctx.Err(); err != nil {
+			return delivered, err
+		}
+		if err := e.triggerEventSubProcess(ctx, ew.instanceID, ew.subProcessID, req.Variables); err != nil {
 			if first == nil {
 				first = err
 			}
