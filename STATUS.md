@@ -21,11 +21,10 @@
 **`main` 最新提交**（更新时改这里）：
 
 ```text
-Support intermediate throw (message/signal) and signal catch
+aa2a936 Support intermediate throw (message/signal) and signal catch
 88cc79d Clarify STATUS: exclusive Event-Based gateway is done
 ccc302f Support exclusive Event-Based Gateway
 ff5f5da Document runtime.Store as the third persistence layer
-e0764a5 Add runtime.Store for durable job leases and message buffer
 ```
 
 ## 已实现（运行时）
