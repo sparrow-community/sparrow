@@ -21,7 +21,7 @@
 **`main` 最新提交**（更新时改这里）：
 
 ```text
-Support parallel event-based gateway (keep sibling catches)
+664fc85 Support parallel event-based gateway (keep sibling catches)
 4f68052 Record event sub-process commit in STATUS.md
 ad765c9 Support process-level event sub-process (message/timer)
 aa2a936 Support intermediate throw (message/signal) and signal catch
