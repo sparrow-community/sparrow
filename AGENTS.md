@@ -6,7 +6,7 @@ Sparrow is a single-node execution engine in early development. The intended cor
 
 Why this project exists in an AI-first world: see [`AI-Driven-BPMN.md`](./AI-Driven-BPMN.md).
 
-**Cross-session status** (milestone, recent commits, next steps): see [`STATUS.md`](./STATUS.md).
+**Plan and status** (roadmap, what works, next steps): see [`STATUS.md`](./STATUS.md). Core runtime design: [`processing/DESIGN.md`](./processing/DESIGN.md).
 
 ## Workspace
 
@@ -75,7 +75,7 @@ cd protocol/proto && ./build.sh
 
 ## processing
 
-- Runtime module: see `processing/README.md` and `processing/DESIGN.md`.
+- Runtime module: see `processing/README.md`; design `processing/DESIGN.md`; plan/status `STATUS.md`.
 - M1 engine available: Deploy / CreateInstance / Complete with in-memory or file event log.
 - Waiting activities (UserTask, ServiceTask, intermediate timer catch, intermediate message catch, intermediate signal catch) complete via one `Complete` API; type comes from the deployment. ServiceTask job type is `ActivityPayload.job_type`. Timer due is `EventPayload.due_unix_ms` from `timeDuration`, `timeDate`, or `timeCycle` (first due only); `FireDue` completes expired timer catches. An interrupting timer or message boundary on UserTask/ServiceTask stores `ActivityPayload.boundary_id` (timer also `due_unix_ms`; message also `message_name`); up to one timer + one message boundary per activity (both may coexist). `FireDue` / `PublishMessage` completes the boundary (activity TERMINATED, boundary outgoing). Message catch name is `EventPayload.message_name`; `PublishMessage` completes matching waiters by name plus optional `correlation_keys` (instance variable JSON match). Late messages are buffered in memory until a catch or message boundary waits (not an EventLog record; empty after Recover unless `runtime.Store`). Signal catch name is `EventPayload.signal_name`; `PublishSignal` completes matching waiters by name (no buffer). Intermediate throw (none / message / signal) is instantaneous; message/signal throws are delivered after the instance lock is released via `PublishMessage` / `PublishSignal`. Process-level Event Sub-Process (`triggeredByEvent`) is armed after process start; message/timer (and signal) starts may interrupt or run non-interrupting alongside the parent. `cmd/sparrow` ticks `FireDue`.
 - Workers pull ServiceTask jobs with `Activate` (in-memory lease; not an EventLog record). `Fail` keeps the token waiting and releases the lease; `Heartbeat` extends it. Complete still finishes the waiting token.

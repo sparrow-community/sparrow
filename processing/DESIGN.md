@@ -1,33 +1,29 @@
 # processing 程序设计
 
-本文描述 `processing` 模块的目标形态、核心模型、包结构、处理流程与 M1 实现边界。  
-实现应以本文为准；协议字段变更在 `protocol` 中进行，并保持「Event = 元素行为」的定位。
+`processing` 是 Sparrow 的 BPMN 执行内核。本文只描述**核心设计**：模型、架构、语义契约与模块边界。  
+**里程碑、已实现清单与下一步**见仓库根目录 [`STATUS.md`](../STATUS.md)。
 
-**M1 状态**：Deploy / CreateInstance / Complete、XOR 条件、内存与文件 EventLog、`Open` 重启回放已可用。  
-**M2 起步**：ServiceTask 等待；Job 经 `Activate` / `Fail` / `Heartbeat`；中间捕获 Timer（`timeDuration` / `timeDate` / `timeCycle`）+ `FireDue`；打断型 Timer / Message boundary（挂 UserTask/ServiceTask）；中间捕获 Message + `PublishMessage`（correlation keys + 内存缓冲）；gRPC 在 `gateway`（`engine.v1` + `job.v1`），进程入口 `gateway/cmd/sparrow`（含 `FireDue` 轮询）。  
-**M3 起步**：Parallel / Inclusive / Event-Based gateway；SubProcess + scope boundary。  
-**持久化**：`log.EventLog` + `deploy.Store` + `runtime.Store`（Job 租约与消息缓冲；`Open` 写 `dataDir/runtime/state.json`）。
+实现以本文的语义为准；协议字段变更在 `protocol` 中进行。约定：**Event = 元素行为**，**Element = 行为主语**。
 
 ---
 
-## 1. 目标与非目标
+## 1. 目标与约束
 
-### 1.1 目标
+**目标**
 
-- **轻量级且功能完备的 BPMN 执行引擎**：覆盖可执行 BPMN 语义（任务、网关、事件、子流程、边界与补偿等），而非「先做一个小子集再长期停留」
-- 单节点可运行；实现与部署形态保持轻量（少中间层、薄 API、事件账本为真相源）
-- 事件日志为唯一真相源；实例状态为投影
+- 轻量级且功能完备的 BPMN **执行引擎**（可执行语义完备，而非长期停留在最小子集）
+- 单节点可运行；少中间层、薄 API；append-only 事件账本为真相源
 - 行为可审计、可回放、可拒绝（COMMAND → EVENT / REJECTION）
-- API 表面保持简单，便于后续在不改语义的前提下加分区做水平扩展
-- **少中间层**：定义层直接复用 `bpmn/element`，不为执行另造平行图模型
+- 定义层直接复用 `bpmn/element`，不为执行另造平行图模型
+- API 保持简单，日后可在不改语义的前提下按 `process_instance_id` 分区扩展
 
-### 1.2 非目标（当前阶段）
+**不做（设计层）**
 
-- 集群、多活、跨节点分区调度
-- 将 Job / Timer 提升为与 Element 同级的事件主语
-- Camunda 类**产品套件**（建模器、Cockpit / 运维 UI、Tasklist 等周边）；目标是引擎完备，不是产品克隆
-- DMN / CMMN（非 BPMN 引擎本体）
-- 为「整洁」而堆叠无必要的 adapter / Node / Flow 包装类型
+- 把 Job / Timer / Message 提升为与 Element 同级的账本主语
+- 为「整洁」堆叠无必要的 adapter / Node / Flow 包装类型
+- Camunda 类产品套件、DMN / CMMN（非本引擎本体）
+
+规划上暂缓的能力（版本管理、集群等）见 `STATUS.md`，不在本文展开。
 
 ---
 
@@ -35,575 +31,232 @@
 
 ### 2.1 行为账本
 
-每条 `event.v1.Event` 描述 **一次行为**：
+每条 `event.v1.Event` 描述一次行为：
 
 | 字段 | 含义 |
 |------|------|
-| `record_type` | COMMAND（请求）/ EVENT（已发生事实）/ REJECTION（拒绝） |
-| `deployment_id` / `process_instance_id` / `process_version` | 行为发生的定义与实例上下文 |
-| `element` | 行为主语：哪个元素、什么 Intent、附带 payload |
-| `source_record_id` | 因果：通常指向触发本条 EVENT/REJECTION 的 COMMAND |
-| `rejection` | 仅 REJECTION：机器可读 code + 说明 |
+| `record_type` | COMMAND / EVENT / REJECTION |
+| `deployment_id` / `process_instance_id` / `process_version` | 定义与实例上下文 |
+| `element` | 主语：Type、id、token_id、Intent、payload |
+| `source_record_id` | 因果（通常指向触发本条的 COMMAND） |
+| `rejection` | 仅 REJECTION：code + message |
 
-日志偏移（position/sequence）由存储层维护，可不写入 protobuf；回放按追加顺序即可。
+日志偏移由存储层维护；回放按追加顺序。投影可丢，EventLog 不可丢。
 
 ### 2.2 Element 是行为主语
 
 ```text
 谁：Type + element.id + token_id
 做了什么：Intent
-附带什么：payload（变量增量、选中的 sequenceFlow、后续的 job/timer 字段等）
+附带什么：payload（变量、选中的 sequenceFlow、job/timer/message 等）
 ```
 
-`Element.Type` 与 BPMN 独立元素对齐（`PROCESS` + `FlowElements` 具体类型）。  
-**不使用**「粗 Type + kind」合并不同 BPMN 元素。
-
-Job / Timer / Message 等待等，视为 **该元素行为的载荷与阶段**，写入对应 `payload` 与 `Intent`，而不是新的顶层 value 类型。
+`Element.Type` 与 BPMN 独立元素对齐（`PROCESS` + 具体 FlowElements）。  
+不使用「粗 Type + kind」合并不同 BPMN 元素。  
+Job / Timer / Message 等待是该元素行为的**载荷与阶段**，不是新的顶层主语。
 
 ### 2.3 串行与分区键
 
 - 分区键：`process_instance_id`
-- 同一实例上的 COMMAND 严格串行处理（每实例一把互斥锁）
-- 单节点 = 一个逻辑分区的宿主；日后多节点只是多分区复制同一模型
+- 同一实例上的 COMMAND 严格串行（每实例一把锁）
+- 单节点 = 一个逻辑分区；多节点只是多分区宿主，Handler 语义不变
 
 ### 2.4 定义 vs 运行时
 
 | 层 | 来源 | 作用 |
 |----|------|------|
-| 定义 | `bpmn` 解析的 `element.Process` | 静态结构：节点、边、默认流等 |
-| 部署 | `deploy.Deployment` | 校验后的不可变定义快照 + `deployment_id` |
-| 实例 | `projection.Instance` | 一次执行的投影（状态 / 变量 / 令牌） |
-| 令牌 | `token_id` → `{element_id, active\|waiting, job_type, due_unix_ms, message_name, boundary_id}` | 实例内控制流位置（M1 单 token） |
+| 定义 | `bpmn` → `element.Process` | 静态结构 |
+| 部署 | `deploy.Deployment` | 校验后的不可变快照 + `deployment_id` |
+| 实例 | `projection.Instance` | 状态 / 变量 / 令牌（投影） |
+| 令牌 | `token_id` → 元素位置与等待载荷 | 控制流位置 |
 
-**不另建** `graph.Node` / `graph.Flow`。`deploy` 在 `element.Process` 上查询（`TypeOf`、`Outgoing`、`SequenceFlow`、`ChooseExclusiveOutgoing`）；仅缓存已解析的 timer 与 message 名。
+不另建 `graph.Node` / `graph.Flow`。`deploy` 在 `element.Process` 上查询，并缓存已解析的 timer / message / signal 等。
 
 ---
 
-## 3. 架构总览
+## 3. 架构
 
 ```text
-                    ┌──────────────────────────────────────────┐
-                    │              Engine（薄门面）               │
-                    │  Deploy / CreateInstance / Complete        │
-                    │  Activate / Fail / Heartbeat（Job 拉模型）   │
-                    │  FireDue / PublishMessage（Timer / Message） │
-                    │  实例锁 · 写 COMMAND/EVENT/REJECTION        │
-                    │              │                             │
-                    │              ▼                             │
-                    │         Executor                           │
-                    │  Enter / Complete · 应用 Effect            │
-                    │  出边 → SEQUENCE_FLOW_TAKEN · 自动步进      │
-                    │              │                             │
-                    │              ▼                             │
-                    │   handlers（按 Element.Type）               │
-                    │   OnEnter / OnComplete → Effect            │
-                    │                                            │
-                    │  deploy.Deployment  ← element.Process      │
-                    │  projection.Instance ← ApplyEvent          │
-                    │  EventLog / deploy.Store / runtime.Store     │
-                    │  （可替换实现；runtime 可选，非账本）           │
-                    └──────────────────────────────────────────┘
+Engine（薄门面）
+  Deploy / CreateInstance / Complete
+  Activate / Fail / Heartbeat
+  FireDue / PublishMessage / PublishSignal
+  实例锁 · COMMAND / EVENT / REJECTION
+        │
+        ▼
+   Executor — Enter / Complete · 应用 Effect · 出边步进
+        │
+        ▼
+   handlers（按 Element.Type）— OnEnter / OnComplete → Effect
+
+  deploy.Deployment  ← element.Process
+  projection.Instance ← ApplyEvent（仅 EVENT）
+  EventLog / deploy.Store / runtime.Store（runtime 可选，非账本）
 ```
 
-**原则**：
+**原则**
 
-- 投影可丢；EventLog 不可丢。`Recover` 按 EVENT 重建投影。
-- **元素语义在 handlers**；Engine 不写具体生命周期分支。
-- 持久化三个注入点：`log.EventLog`（行为账本）、`deploy.Store`（定义字节）、`runtime.Store`（Job 租约 + 消息缓冲，可选）。Memory / File 是开发默认实现；`runtime.Store == nil` 时租约与缓冲仅进程内有效。
-- COMMAND 处理由 Engine 内联；不另留空的 Processor 接口。
+- 元素语义只在 `handlers/`；Engine 不写具体生命周期分支
+- 持久化三点注入：`log.EventLog`（账本）、`deploy.Store`（定义）、`runtime.Store`（Job 租约 + 消息缓冲）
+- `runtime.Store == nil` 时租约与缓冲仅进程内有效；丢失后流程仍可 replay，辅助语义退化
+- COMMAND 处理内联在 Engine；不另留空 Processor 接口
 
----
-
-## 4. 包结构（与仓库一致）
-
-```text
-processing/
-├── README.md
-├── DESIGN.md
-├── engine.go                 // API、实例锁、写日志、emitter
-├── jobs.go                   // Activate、Job 快照、租约（同步 runtime.Store）
-├── runtime_store.go          // load/persist/sweep runtime 状态
-├── open.go                   // Recover(ctx, log, depStore, rtStore)、Open 便捷封装
-├── executor.go               // 令牌推进编排（调用 handlers）
-├── id.go                     // UUIDv7
-├── expr/                     // 条件表达式（expr-lang）
-├── deploy/
-│   ├── deploy.go             // Compile + Deployment 查询辅助
-│   ├── store.go              // Store 接口 + MemoryStore
-│   └── store_dir.go          // 目录实现
-├── handlers/
-│   ├── handler.go            // Effect / 接口 / Registry / InstantLifecycle
-│   ├── process.go
-│   ├── start_event.go
-│   ├── end_event.go
-│   ├── user_task.go
-│   ├── service_task.go
-│   ├── exclusive_gateway.go
-│   └── sequence_flow.go
-├── log/                      // EventLog（Memory / File）
-├── runtime/                  // runtime.Store（Memory / File state.json）
-├── projection/               // Instance / Token / ApplyEvent
-└── testdata/                 // m1_simple.bpmn 等
-```
-
-持久化布局（`Open` 文件便捷实现，不是唯一方式）：
-
-```text
-dataDir/
-  events.log                     // length-delimited protobuf Event
-  deployments/<id>.bpmn          // 原始定义，供重启后 Compile
-  runtime/state.json             // Job 租约 + 消息缓冲（非账本；可变）
-```
-
-自定义持久化：
-
-```go
-eng, err := processing.Recover(ctx, myEventLog, myDeploymentStore, myRuntimeStore)
-// myRuntimeStore 传 nil → 租约与缓冲仅内存，Recover 后不保留
-```
-扩展新 BPMN 元素时：**新增一个 handler 文件 + 注册到 `DefaultRegistry`**，并在 `deploy.validateM1`（或后续更细校验）中放开该类型。
-
-### 4.1 关键类型
-
-```go
-// EventLog — 行为账本（Memory / File / 自实现）
-type EventLog interface {
-    Append(ctx context.Context, e *eventv1.Event) (position int64, err error)
-    ReadByInstance(ctx context.Context, processInstanceID string) ([]*eventv1.Event, error)
-    ReadAll(ctx context.Context) ([]*eventv1.Event, error)
-}
-
-// Store — BPMN 定义字节（MemoryStore / DirStore / 自实现）
-type Store interface {
-    Put(id string, bpmnXML []byte) error
-    LoadAll() (map[string][]byte, error) // id → xml
-}
-
-// runtime.Store — 辅助运行时状态（MemoryStore / FileStore / 自实现）
-// 不是 EventLog 事实；丢失后流程仍可 replay，但租约/缓冲语义退化。
-type Store interface { // runtime 包
-    PutLease(lease JobLease) error
-    DeleteLease(instanceID, tokenID string) error
-    LoadLeases() ([]JobLease, error)
-    EnqueueMessage(msg BufferedMessage) error
-    DeleteMessage(id string) error
-    LoadMessages() ([]BufferedMessage, error)
-}
-
-// ElementHandler（handlers 包）
-type ElementHandler interface {
-    Type() eventv1.Element_Type
-    OnEnter(in EnterInput) (*Effect, error)
-    OnComplete(in CompleteInput) (*Effect, error)
-}
-
-// Recover(ctx, log, depStore, rtStore) 加载定义、回放 EVENT、加载 runtime 状态
-// Open(ctx, dataDir) = Recover(File, DirStore, FileStore)
-// NewEngine(log) 仅内存定义、不回放（测试 / 无持久化会话）
-```
-
-Effect：handler 产出，由 Executor 应用（Records / Wait / OutgoingFlowID / TakeOutgoing / TryCompleteProcess）。
-
-Engine 对外能力：Deploy / CreateInstance / Complete / Activate / Fail / Heartbeat / GetInstance / ListEvents。
-
-ID 统一走 `NextID()`（UUIDv7 字符串）。时间戳使用 Unix millis。空 id 用空字符串表示。
-
-### 4.2 Effect 与步进
-
-| Effect 字段 | 含义 |
-|-------------|------|
-| `Records` | 要写成 EVENT 的 Element 行为（经 emitter 追加并 `ApplyEvent`） |
-| `Wait` | 停止自动步进（UserTask ACTIVATED） |
-| `TakeOutgoing` | 取一条出边并发 `SEQUENCE_FLOW_TAKEN`，再 Enter target |
-| `OutgoingFlowID` | 指定出边（XOR 选路）；空则取第一条 outgoing |
-| `TryCompleteProcess` | End 后尝试 PROCESS COMPLETING→COMPLETED |
-
-瞬时元素（Start / XOR / End）可用 `InstantLifecycle` 写出完整 Intent 链。
-
----
-
-## 5. 处理循环（详细）
-
-### 5.1 当前路径（Engine 内联）
-
-```text
-CreateInstance / Complete:
-  1. 取 deployment + instance；加实例锁
-  2. 校验投影（如 UserTask 须 waiting）
-  3. Append(COMMAND)
-  4. Executor.Enter 或 Executor.Complete
-       → handler.OnEnter / OnComplete → Effect
-       → emitter(Records)  // Append EVENT + ApplyEvent
-       → 按 Effect 出边 / 等待 / 尝试完成流程
-  5. 校验失败路径：Append(COMMAND) + Append(REJECTION)
-```
-
-同一 COMMAND 处理中可连续写出多条 EVENT（启动链、瞬时生命周期、流转移），均共享该 COMMAND 的 `source_record_id`。
-
-### 5.2 幂等与半截链
-
-COMMAND 先入账，再连写多条 EVENT（共享 `source_record_id`）。崩溃可能停在「只有 COMMAND」或「EVENT 链写了一半」。
-
-`Recover` 回放 EVENT 后按日志顺序检查每条 COMMAND：
-
-- 已有对应 REJECTION → 跳过  
-- 已有至少一条 EVENT **且** 投影稳定（waiting / completed / terminated）→ 视为该命令已做完，跳过  
-- 否则 **接着执行同一条 COMMAND**（不新写 COMMAND）。Emitter 对 `(source_record_id, Type, Intent, element.id, token_id)` 已出现过的 EVENT 不再追加，因此重入 `Enter` / `Complete` 只会补上缺失的步骤。
-
-客户端未带 `cmd.id` 的重试仍是新 COMMAND；成功后的第二次 Complete 仍是 `INVALID_STATE`。幂等保证的是 **磁盘上那条未完成的命令** 能被 `Open` 做完。
-
-### 5.3 投影与令牌
-
-`projection.Instance` 最少包含：
-
-- 实例状态：`active | completed | terminated`
-- `Tokens`：`token_id → {element_id, active|waiting, job_type, due_unix_ms, message_name, boundary_id}`
-- 变量表（实例级 `name → json_value`）
-- `ElementIntent`：元素级最近 Intent（辅助校验）
-
-令牌更新 **只走 EVENT → ApplyEvent → applyToken**：
-
-- Executor 只决定步进（`Effect.Wait` / 出边），不改 `Tokens`
-- `USER_TASK` + `ACTIVATED` → `waiting`；`SERVICE_TASK` + `ACTIVATED` → `waiting` 且拷贝 `payload.job_type`；挂打断型 boundary 时再拷贝 `due_unix_ms` / `message_name` / `boundary_id`；`INTERMEDIATE_CATCH_EVENT` + `ACTIVATED` → `waiting` 且拷贝 `payload.due_unix_ms` / `payload.message_name`
-- `SEQUENCE_FLOW_TAKEN` 把位置写到 target
-- PROCESS COMPLETED/TERMINATED 清空 `Tokens`
-- 在线与 `Recover` 共用同一套规则
-
-M1 为单 token；Parallel 等多 token 时仍落在同一 map，由 gateway handler 分裂/汇合。`GetInstance` 返回投影拷贝。
-
-### 5.4 重启恢复
-
-```text
-Recover(ctx, eventLog, deploymentStore, runtimeStore)
-  → Store.LoadAll → Compile → deployments map
-  → EventLog.ReadAll
-  → 按序对每条 EVENT 调用 Instance.ApplyEvent（必要时先创建投影）
-  → runtimeStore.LoadLeases / LoadMessages（可选；校验后写入 Engine 内存）
-  → 未完成的 COMMAND 用同一 cmd.id 接着跑（幂等 emitter 不重复写已有 EVENT）
-  → 恢复等待点（如 UserTask waiting），可继续 Complete / Activate
-```
-
-`runtimeStore == nil` 时跳过加载；租约与缓冲仅进程内有效。
-
-**runtime 加载校验（防死信）**：
-
-- **Lease**：丢弃已过期、token 不在 waiting、或无 `job_type` 的条目
-- **Message buffer**：丢弃超过 TTL（默认 7 天）、绑定实例已结束/不存在的条目
-- **实例结束**：PROCESS `COMPLETED` / `TERMINATED` 时 sweep 该实例的 lease 与 buffer
-
-`Open(ctx, dataDir)` 只是文件实现的便捷封装。M1 采用全量重放；实例量大时再引入快照。COMMAND / REJECTION 不驱动投影（仅 EVENT）。文件日志读到不完整尾包时截断，不让 Recover 失败。
----
-
-## 6. M1 可执行语义
-
-### 6.1 支持的元素 Type
-
-| Type | Handler 文件 | 行为要点 |
-|------|--------------|----------|
-| `PROCESS` | `process.go` | 实例启动 / 正常完成 |
-| `START_EVENT` | `start_event.go` | 瞬时生命周期后沿出口流出 |
-| `USER_TASK` | `user_task.go` | ACTIVATING→ACTIVATED 后 `Wait`；Complete → COMPLETING→COMPLETED |
-| `SERVICE_TASK` | `service_task.go` | 同上等待；ACTIVATED 带 `ActivityPayload.job_type`；经 `Complete` 完成 |
-| `INTERMEDIATE_CATCH_EVENT` | `intermediate_catch_event.go` | Timer：`timeDuration` / `timeDate` / `timeCycle`（只算第一次到期），ACTIVATED 写 `due_unix_ms`，`FireDue` → `Complete`。Message：ACTIVATED 写 `message_name`，`PublishMessage` → `Complete`。Signal：ACTIVATED 写 `signal_name`，`PublishSignal` → `Complete`（迟到信号不缓冲）。均 `Wait`。 |
-| `INTERMEDIATE_THROW_EVENT` | `intermediate_throw_event.go` | None：瞬时生命周期后出边。Message / Signal：ACTIVATED 写 `message_name` / `signal_name`，Effect 挂起 `Publication`，Engine 在实例锁释放后 `PublishMessage` / `PublishSignal`，再沿出边继续。 |
-| `BOUNDARY_EVENT` | `boundary_event.go` | Timer 或 Message：活动 ACTIVATED 写 `ActivityPayload.boundary_id`（Timer 另写 due；Message 另写 `message_name`）。`FireDue` / `PublishMessage` → `Complete(boundary)`：打断型会 TERMINATE 活动并沿 boundary 出边；非打断型保持活动 waiting，并 mint 新 token 沿 boundary 出边。同一活动两个 boundary 仍拒绝。 |
-| `EXCLUSIVE_GATEWAY` | `exclusive_gateway.go` | 非 default 条件按序求值，否则 default；payload 带 `taken_sequence_flow_id` |
-| `PARALLEL_GATEWAY` | `parallel_gateway.go` | 多出口 fork（mint 新 token）；多入口 join（全部到达后一条 token 继续，peer TERMINATED 移出投影） |
-| `EVENT_BASED_GATEWAY` | `event_based_gateway.go` | Fork 到所有出边 catch。Exclusive（默认）：先完成的 catch 取消兄弟。Parallel：`eventGatewayType="Parallel"`，兄弟保持等待，各事件独立推进。instantiate 仍拒绝。 |
-| `SEQUENCE_FLOW` | `sequence_flow.go` | 经 transit 发 `SEQUENCE_FLOW_TAKEN`（不走 OnEnter） |
-| `END_EVENT` | `end_event.go` | 完成后 `TryCompleteProcess` |
-
-部署时 `validateM1` 拒绝尚未实现的元素（CallActivity、嵌套 Event Sub-Process、instantiate EventBasedGateway、同一活动多个同类 boundary、更多元素等）。ServiceTask、中间捕获（Timer + Message + Signal catch）、Intermediate Throw（none / message / signal / compensate）、打断型 / 非打断型 Timer / Message boundary、Compensation boundary、Parallel / Inclusive / Exclusive+Parallel Event-Based gateway、embedded SubProcess、流程级 Event Sub-Process 已纳入可执行子集。
-
-### Timer catch（timeDuration / timeDate）时序链（M2）
-
-以 `Start → IntermediateCatchEvent(timer) → End` 为例：
-
-1. `Engine.CreateInstance` 写启动 `COMMAND(PROCESS)`，并进入 `StartEvent`
-2. token 进入 `INTERMEDIATE_CATCH_EVENT` 后，`Executor.Enter` 调用
-   `IntermediateCatchEventHandler.OnEnter`
-3. `OnEnter` 从 `deploy.Deployment` 读取 timer 定义并写出到期时刻：
-   - `timeDuration`（`PTnHnMnS`）：`due_unix_ms = now + duration`
-   - `timeDate`（ISO-8601）：`due_unix_ms` 为该绝对时间
-   - `timeCycle`（`R[n]/PTnHnMnS`，可选 start/end）：第一次到期；中间捕获 **不重新武装**
-   - `EVENT(ACTIVATING)` + `EVENT(ACTIVATED, EventPayload{due_unix_ms, duration=原文})`
-   - `Wait=true`；投影 `Token.DueUnixMs`
-4. `gateway/cmd/sparrow` 循环 `Engine.FireDue`：`waiting && due_unix_ms <= now` → `Complete`
-5. `Complete` 后 `TakeOutgoing=true` 推进 `SEQUENCE_FLOW_TAKEN`
-
-重启恢复：回放 `ACTIVATED{due_unix_ms}` 还原 due，仍需 `FireDue` 或手动 Complete。
-
-### Timer / Message boundary（M2）
-
-以 `Start → UserTask`（附 timer 或 message boundary）→ `End_ok` / `End_timeout|msg` 为例：
-
-1. token 进入 UserTask（或 ServiceTask）后 `Wait`；ACTIVATED 的 `ActivityPayload` 带 `boundary_id`，以及 Timer 的 `due_unix_ms`/`duration` 或 Message 的 `message_name`
-2. 活动先 Complete：取消 boundary（`TERMINATED`），沿活动出边（`End_ok`）
-3. Timer 先到期 / Message 先到达：`Complete(boundary_id)`（命中的是挂接活动上的 waiting token）
-   - **打断型**：活动 `TERMINATING` → `TERMINATED`；boundary `COMPLETING` → `COMPLETED`；同一 token 沿 boundary 出边
-   - **非打断型**：活动保持 waiting，但清掉已触发的一次 boundary 等待；executor mint 新 token，写 boundary 生命周期后沿 boundary 出边
-4. 同一活动可同时挂 Timer + Message boundary（各最多一个）；非打断型 timer `timeCycle` 会在活动仍等待时按剩余周期重新武装
-
-### Message catch 时序链（M2）
-
-以 `Start → IntermediateCatchEvent(message) → End` 为例：
-
-1. 部署时解析 `messageEventDefinition.messageRef` → `Definitions/message@name`（无 name 则用 message id / messageRef / catch id）
-2. token 进入 catch 后 `OnEnter` 写出：
-   - `EVENT(INTERMEDIATE_CATCH_EVENT, ACTIVATING)`
-   - `EVENT(INTERMEDIATE_CATCH_EVENT, ACTIVATED, EventPayload{message_name})`
-   - `Wait=true`；投影 `Token.MessageName`
-3. 外部调用 `Engine.PublishMessage({name, optional instance_id, optional correlation_keys, vars})`
-   - 扫描 `waiting && Token.MessageName == name`（可限定实例）
-   - `correlation_keys` 与实例变量 JSON 值全等匹配（Camunda 7 风格；不写新 payload 字段）
-   - 对每个匹配 token 调用统一 `Engine.Complete`（变量走 `EventPayload.variables`）
-4. **无 waiter 则缓冲**（FIFO，一条消息唤醒一个 catch）；catch ACTIVATED 后由 Engine 再 `Complete`
-   - 缓冲不是 EventLog 记录；配置了 `runtime.Store` 时 `Open` 后保留
-5. `gateway` 通过 `engine.v1.PublishMessage` 暴露（`delivered` / `buffered`）；无独立 Message 账本主语
-
-重启后 `Recover` 从 `ACTIVATED{message_name}` 还原 `Token.MessageName`；缓冲从 `runtime.Store` 恢复（若有）。
-
-### Intermediate Throw（none / message / signal）（M3）
-
-以 `Start → IntermediateThrowEvent → End`，或并行分支上 Throw 唤醒 Catch 为例：
-
-1. 部署时解析 throw：无定义 → none；`messageEventDefinition` → message name；`signalEventDefinition` → signal name
-2. token 进入 throw 后瞬时 `ACTIVATING→ACTIVATED→COMPLETING→COMPLETED`（message/signal 的 ACTIVATED 带对应 name）
-3. Effect 携带 `Publication`；Executor 收集后由 Engine 在**实例锁释放后**调用 `PublishMessage` / `PublishSignal`（避免锁内重入 Complete）
-4. Message throw 走现有消息投递（含缓冲）；Signal throw / `PublishSignal` 只唤醒当前 waiter，迟到信号丢弃
-5. 随后 token 沿出边继续
-
-### Signal catch 时序链（M3）
-
-与 Message catch 相同等待故事：`ACTIVATED{signal_name}` → `PublishSignal` / signal throw → `Complete`。无缓冲。
-
-### Event Sub-Process（流程级）（M3）
-
-以 `Start → UserTask` 并行挂 `subProcess triggeredByEvent`（message / timer start）为例：
-
-1. 部署：`triggeredByEvent=true`，无进出边；恰好一个 startEvent（message / signal / timer）；禁止嵌套在 embedded SubProcess 内
-2. `CreateInstance` 在 PROCESS ACTIVATED 后武装 `Instance.EventSubProcesses`（非账本；`Recover` 后按部署重武装）
-3. `PublishMessage` / `PublishSignal` / `FireDue` 命中 arm：
-   - **打断型**：终止父 scope 内 token，进入 ESP；ESP 完成后丢弃 token 并尝试完成流程
-   - **非打断型**：父 token 继续；mint 新 token 跑 ESP；ESP 完成后丢弃该 token
-4. 迟到 message 可走现有缓冲，在 ESP arm 就绪后投递
-
-### Compensation（M3）
-
-1. 活动挂 `boundaryEvent` + `compensateEventDefinition`，经 `association` 指向 `isForCompensation` 的 UserTask/ServiceTask
-2. 活动 COMPLETED 后写 `BOUNDARY_EVENT ACTIVATED`（`EventPayload.compensation_handler_id`）形成订阅
-3. `intermediateThrowEvent` + `compensateEventDefinition`（可选 `activityRef`）：ACTIVATED 后 `Wait`，按订阅 Seq **逆序**进入 handler；handler 完成后丢弃 token 并推进；全部完成后 throw `Complete` 并出边
-
-### 6.2 (Type, Intent) 使用（M1）
-
-| 场景 | Type | Intent 序列（EVENT） |
-|------|------|----------------------|
-| 创建实例 | PROCESS | ACTIVATING → ACTIVATED |
-| 进入 Start | START_EVENT | ACTIVATING → ACTIVATED → COMPLETING → COMPLETED |
-| 走过流 | SEQUENCE_FLOW | SEQUENCE_FLOW_TAKEN |
-| 进入 UserTask | USER_TASK | ACTIVATING → ACTIVATED（等待；可带 boundary due 或 message_name） |
-| 完成 UserTask | USER_TASK | COMPLETING → COMPLETED（若有 boundary 则 boundary TERMINATED） |
-| 进入 ServiceTask | SERVICE_TASK | ACTIVATING → ACTIVATED（等待；payload.job_type；可带 boundary due 或 message_name） |
-| 完成 ServiceTask | SERVICE_TASK | COMPLETING → COMPLETED |
-| Timer / Message boundary 打断 | BOUNDARY_EVENT + 挂接活动 | 活动 TERMINATING → TERMINATED；boundary COMPLETING → COMPLETED |
-| 进入 Timer catch | INTERMEDIATE_CATCH_EVENT | ACTIVATING → ACTIVATED（等待；payload.due_unix_ms / 原文 duration 或 timeDate） |
-| 完成 Timer catch | INTERMEDIATE_CATCH_EVENT | COMPLETING → COMPLETED |
-| 进入 Message catch | INTERMEDIATE_CATCH_EVENT | ACTIVATING → ACTIVATED（等待；payload.message_name） |
-| 完成 Message catch | INTERMEDIATE_CATCH_EVENT | COMPLETING → COMPLETED（可选 payload.variables） |
-| Job 失败 | SERVICE_TASK | FAILED（仍 waiting；payload.error_message） |
-| XOR | EXCLUSIVE_GATEWAY | ACTIVATING → … → COMPLETED（payload 带 taken flow） |
-| End | END_EVENT | … → COMPLETED |
-| 实例结束 | PROCESS | COMPLETING → COMPLETED |
-
-**等待点（UserTask / ServiceTask / Intermediate catch（Timer/Message） ACTIVATED）** 与 **SEQUENCE_FLOW_TAKEN** 必须在日志中可见。打断型 boundary 不另占 token：到期或消息到达时 Complete 的是 `boundary_id`。
-
-### 6.3 变量
-
-- `ActivityPayload.variables` / `ProcessPayload.variables` / `EventPayload.variables`（`name` + `json_value`）
-- 语义为 **delta**：合并进实例变量表
-- CreateInstance 可带初始变量；Complete 可带提交变量
-- XOR：按 outgoing 顺序求值非 default 的条件（`expr.Eval` / expr-lang）；都不成立则走 default
-- 条件：剥掉 BPMN `${...}` 后交给 [expr-lang/expr](https://github.com/expr-lang/expr)；变量为实例 JSON 值。单引号字符串会先归一成双引号。
-
-### 6.4 拒绝示例
-
-| code | 场景 |
-|------|------|
-| `NOT_FOUND` | 实例、部署或元素不存在；PublishMessage 指定了不存在的 instance |
-| `INVALID_STATE` | UserTask 未处于 waiting 却 Complete |
-| `UNSUPPORTED_ELEMENT` | 定义含 M1 未支持元素，或无 handler |
-| `INVALID_CONDITION` | XOR 条件表达式无法解析 |
-| `INVALID_ARGUMENT` | Activate 缺少 `job_type`；PublishMessage 缺少 name 或 correlation_keys 无法编码 |
-| `INVALID_STATE` | Fail 作用于非 job（如 UserTask），或 Heartbeat 无锁 / worker 不匹配 |
-
----
-
-## 7. API 语义（M1）
-
-### Deploy
-
-- 输入：BPMN XML bytes  
-- 行为：`deploy.Compile` 解析、M1 校验，内存登记 `Deployment`  
-- 输出：`deployment_id`（UUIDv7）  
-- **不**生成平行可执行图；快照即 `element.Process`
-
-### CreateInstance
-
-- 输入：`deployment_id`，可选变量  
-- 行为：分配 instance/token id；写启动 COMMAND + PROCESS 启动 EVENT；Enter StartEvent  
-- 推进到第一个等待点（通常 UserTask）或直至结束  
-
-### Complete
-
-- 输入：`process_instance_id`，`element_id`，`token_id`，可选变量  
-- 行为：校验 token 在该元素 waiting；`Type` 从定义读取并写入 COMMAND；handler `OnComplete` 后继续自动步进  
-- 不按 BPMN 类型拆 API；UserTask / ServiceTask / Timer catch / 日后等待点都走同一入口  
-
-### FireDue
-
-- 输入：无（扫描投影）
-- 行为：收集 **waiting 且 `token.due_unix_ms` 已到** 的 Timer：中间捕获走 `Complete(catch)`；打断型 boundary 走 `Complete(boundary)`（打断挂接活动）
-- **不**把 Timer 写成与 Element 平级的账本主语；到期只是触发统一 Complete
-- `Recover` 从 `EventPayload.due_unix_ms` 还原 due；到期后仍需 `FireDue`（或手动 Complete）
-- `gateway/cmd/sparrow` 每 200ms 调用一次；无独立 Timer RPC
-
-### PublishMessage
-
-- 输入：`name`（必填），可选 `process_instance_id`，可选 `correlation_keys`，可选变量
-- 行为：收集 **waiting 且 `token.message_name` 匹配** 的 Message（中间捕获，或打断型 message boundary），逐个 `Complete`（boundary 目标是 `token.boundary_id`）
-- `correlation_keys`：与实例变量（JSON 文本）全等；未设则只按 name / instance 匹配（可广播）
-- **不**把 Message 写成与 Element 平级的账本主语；投递只是触发统一 Complete
-- 无 waiter：写入 **缓冲**（FIFO，一条消息对应一个后续 catch / message boundary）；进入 waiting 后 Engine 再 Complete
-- 缓冲不是账本事实；配置了 `runtime.Store` 时跨重启保留；实例结束或 TTL 过期则清扫
-- `Recover` 从 `EventPayload.message_name`（中间捕获）或 `ActivityPayload.message_name` + `boundary_id`（打断型 boundary）与实例变量还原；gateway 暴露 `engine.v1.PublishMessage`（`delivered` / `buffered`）
-
-### PublishSignal
-
-- 输入：`name`（必填），可选 `process_instance_id`，可选变量
-- 行为：收集 **waiting 且 `token.signal_name` 匹配** 的中间 Signal catch，逐个 `Complete`
-- **无缓冲**：无 waiter 则丢弃（与 Message 不同）
-- Intermediate signal throw 在锁释放后走同一路径；gateway 暴露 `engine.v1.PublishSignal`
-
-### Activate
-
-- 输入：`job_type`，可选 `max_jobs` / `wait` / `worker_id` / `lock_duration`  
-- 行为：从投影收集 **waiting 且 `token.job_type` 匹配** 的 ServiceTask；加上内存租约后返回 Job 快照（含 instance / element / token / variables）  
-- `wait=0` 立即返回（可为空）；否则长轮询，新的 `SERVICE_TASK ACTIVATED` 会唤醒  
-- **不写 EventLog**。租约不是账本事实；配置了 `runtime.Store` 时跨重启保留直至过期或释放
-- Worker 完成仍调用 `Complete(instance, element, token, vars)`；租约在成功 Complete 后释放  
-
-### Fail
-
-- 输入：`process_instance_id`，`element_id`，`token_id`，可选 `error_message`  
-- 行为：仅 waiting 且带 `job_type` 的活动（ServiceTask）；写 FAILED COMMAND + EVENT；token **保持 waiting**；释放租约并唤醒 `Activate`  
-- UserTask 等非 job 等待点 → `INVALID_STATE`  
-- 不推进流程；重试靠再次 Activate，完成仍走 `Complete`  
-
-### Heartbeat
-
-- 输入：`process_instance_id`，`token_id`，`worker_id`，可选 `lock_duration`  
-- 行为：延长内存租约；`worker_id` 必须与 Activate 持有者一致  
-- **不写 EventLog**  
-
-查询：
-
-- `GetInstance`：投影快照  
-- `ListEvents(process_instance_id)`：审计时间线  
-
----
-
-## 8. 与 protocol 的边界
-
-- processing **不**手写 `.pb.go`；只依赖 `protocol/gen/go/event/v1`
-- 缺字段时：先在 `protocol/proto` 增加，再 `buf generate`，再改 processing
-- 演进约定：
-  - 元素行为扩展 → `Intent` / `Type` / **payload 字段**
-  - 非元素事实（Job 租约、消息缓冲）→ `runtime.Store`；**不**默认塞进 Element / EventLog
-- Worker 线协议在 `protocol/proto/job/v1`（`JobService`）；进程客户端在 `engine/v1`（`EngineService`）。均由 `gateway` 适配，**不**进入 processing。进程入口：`gateway/cmd/sparrow`。
-
----
-
-## 9. 后续演进（不在 M1，设计预留）
-
-| 阶段 | 能力 | 落点 |
-|------|------|------|
-| M2 | 非打断 boundary；更多元素 | payload + 多 token |
-| M3 | Parallel/Inclusive、SubProcess、多 token | `Tokens` 多条目；gateway fork/join |
-| M4 | Boundary / 补偿 / Incident | 新 Intent + payload |
-
-单节点串行模型保持不变；分布式仅增加分区宿主，不改变 Handler 语义。
-
----
-
-## 10. 测试策略
-
-| 层级 | 内容 |
-|------|------|
-| 单元 | 各 handler：给定输入 → 期望 Effect（可逐步补） |
-| 日志 | Memory / File Append/Read；File 重启后可读 |
-| 端到端 | `testdata/m1_simple.bpmn`：Deploy → CreateInstance → Complete → PROCESS COMPLETED |
-| 回归 | 不支持元素部署失败；非法 Complete → REJECTION；XOR default / 条件选路 |
-| Job | Activate 领取 / Fail 释放重领 / Heartbeat 续租 / Recover 后仍可 Activate |
-| Timer | `PT0S` / 过去 `timeDate` / `R/PT0S` 后 `FireDue` 完成；`PT1H` / 未来 `timeDate` / `R/PT1H` 未到期仍 waiting；Recover 后 due 仍在；打断型 boundary `PT0S` 走超时出边，活动 Complete 则取消 boundary |
-| Message | `PublishMessage` 按 name 完成 catch 或 boundary；correlation keys 匹配；无 waiter 则缓冲；`Open` 后缓冲可恢复 |
-| Job | Activate 领取；Fail 释放；Heartbeat 续租；`Open` 后租约可恢复 |
-| 恢复 | `Open` 后仍在 UserTask waiting，Complete 可完成实例 |
-
----
-
-## 11. 实现进度
-
-| 步骤 | 内容 | 状态 |
-|------|------|------|
-| 1 | `log` 内存 EventLog | 已完成 |
-| 2 | `projection` + `ApplyEvent` | 已完成 |
-| 3 | `deploy` 持有 `element.Process` | 已完成 |
-| 4 | `handlers` 按文件拆分 + Registry | 已完成 |
-| 5 | `engine` + `executor` API | 已完成 |
-| 6 | 文件型 EventLog 与重启回放 | 已完成 |
-| 7 | XOR 条件表达式（M1 子集） | 已完成 |
-| 8 | ServiceTask + job_type | 已完成 |
-| 9 | Job Activate（拉模型 + 内存租约） | 已完成 |
-| 10 | Job Fail / Heartbeat | 已完成 |
-| 11 | Job gRPC（`protocol/job.v1` + `gateway`） | 已完成 |
-| 12 | Engine gRPC + `cmd/sparrow` | 已完成 |
-| 13 | COMMAND 幂等 / 半截链 Recover | 已完成 |
-| 14 | 中间捕获 Timer（duration / date / cycle）+ `FireDue` | 已完成 |
-| 15 | Message catch + `PublishMessage` | 已完成 |
-| 16 | Message correlation keys（按实例变量匹配） | 已完成 |
-| 17 | Message 缓冲（迟到消息；非账本；runtime.Store 可选持久化） | 已完成 |
-| 18 | 打断型 Timer boundary（UserTask/ServiceTask） | 已完成 |
-| 19 | 打断型 Message boundary（UserTask/ServiceTask） | 已完成 |
-| 20 | Parallel gateway fork/join（多 token） | 已完成 |
-| 21 | 非打断 boundary | 已完成（含 timer `timeCycle` 重复触发） |
-| 22 | Inclusive gateway（OR-split / OR-join，可达 token 防死锁） | 已完成 |
-| 23 | SubProcess + scope boundary | 已完成 |
-| 24 | runtime.Store（Job 租约 + 消息缓冲跨重启） | 已完成 |
-| 25 | Exclusive Event-Based gateway | 已完成 |
-| 26 | Intermediate Throw（none / message / signal）+ Signal catch + `PublishSignal` | 已完成 |
-| 27 | Event Sub-Process（流程级 message/timer，打断 / 非打断） | 已完成 |
-| 28 | Parallel Event-Based gateway（不取消兄弟 catch） | 已完成 |
-| 29 | Compensation（boundary + throw，逆序 handler） | 已完成 |
-| 30 | 版本管理；Signal boundary；嵌套 ESP | 未开始 |
-
----
-
-## 12. 代码对照
+### 包职责
 
 | 路径 | 职责 |
 |------|------|
-| `engine.go` | 薄门面：锁、COMMAND/REJECTION、emitter |
-| `timers.go` | `FireDue`：到期的 timer catch 走 `Complete` |
-| `messages.go` | `PublishMessage`：按 name + correlation keys 匹配；无 waiter 则缓冲（同步 runtime.Store） |
-| `signals.go` | `PublishSignal`：按 name 匹配 signal catch；无缓冲；`flushPublications` 投递 throw |
-| `jobs.go` | `Activate` / `Fail` / `Heartbeat`：Job 快照、长轮询、租约（同步 runtime.Store） |
-| `runtime_store.go` | load/persist/sweep runtime 状态；实例结束/TTL 防死信 |
-| `runtime/` | `Store` 接口（Memory / File `state.json`） |
-| `open.go` / `recover.go` | `Recover` 回放 EVENT；未完成 COMMAND 接着跑 |
-| `executor.go` | Enter/Complete、出边、流程完成判定 |
-| `handlers/*.go` | 每元素一类文件；语义只在此扩展 |
-| `expr/` | `${...}` → expr-lang 求值 |
-| `deploy/` | Compile、`Store`、XOR 选路；结构查 `Process`，缓存已解析 timer/message |
+| `engine.go` 等 | API、锁、写日志、FireDue / Publish* / Job |
+| `executor.go` | Enter / Complete、出边、流程完成判定 |
+| `handlers/` | 每元素一类；语义只在此扩展 |
+| `deploy/` | Compile、校验、结构查询与缓存 |
 | `projection/` | Instance / Token；EVENT → 投影 |
-| `log/` | `EventLog` 接口（Memory / File） |
-| `id.go` | UUIDv7 |
+| `log/` / `runtime/` | EventLog；非账本辅助状态 |
+| `open.go` / `recover.go` | 回放 EVENT；未完成 COMMAND 接着跑 |
+| `expr/` | `${...}` → expr-lang |
+
+扩展新元素：**新增 handler + 注册 Registry + 在 deploy 校验中放开**。
+
+---
+
+## 4. Effect 与处理循环
+
+### 4.1 Effect
+
+Handler 产出，由 Executor 应用：
+
+| 字段 | 含义 |
+|------|------|
+| `Records` | 写成 EVENT 的元素行为 |
+| `Wait` | 停止自动步进（等待点） |
+| `TakeOutgoing` / `OutgoingFlowID` | 出边推进（XOR 可指定 flow） |
+| `TryCompleteProcess` | End 后尝试 PROCESS 完成 |
+| `Publication` | 锁释放后投递 message/signal（避免重入） |
+
+瞬时元素可用完整 Intent 链一次写出。
+
+### 4.2 COMMAND 路径
+
+```text
+CreateInstance / Complete / …
+  取 deployment + instance → 加锁 → 校验投影
+  Append(COMMAND)
+  Executor.Enter | Complete → handler → Effect
+    → emitter(Records)  // Append EVENT + ApplyEvent
+    → 出边 / 等待 / 完成流程
+  失败：COMMAND + REJECTION
+```
+
+同一 COMMAND 可连写多条 EVENT，共享 `source_record_id`。
+
+### 4.3 幂等与半截链
+
+COMMAND 先入账再写 EVENT 链；崩溃可能只剩 COMMAND 或写了一半。
+
+`Recover` 回放 EVENT 后检查每条 COMMAND：
+
+- 已有 REJECTION → 跳过
+- 已有 EVENT 且投影稳定（waiting / completed / terminated）→ 跳过
+- 否则**接着执行同一 COMMAND**（不新写 COMMAND）；emitter 对已出现的 `(source, Type, Intent, id, token)` 不再追加
+
+客户端未带同一 `cmd.id` 的重试仍是新 COMMAND。
+
+### 4.4 投影与令牌
+
+令牌更新**只走** EVENT → `ApplyEvent`：
+
+- Executor 只决定步进，不直接改 `Tokens`
+- 等待点：活动 / catch 的 `ACTIVATED` 写入 `waiting` 及 due / message_name / signal_name / job_type / boundary_id 等
+- `SEQUENCE_FLOW_TAKEN` 更新位置；PROCESS 结束清空 Tokens
+- 在线与 `Recover` 共用同一套规则
+
+多 token（Parallel 等）落在同一 `Tokens` map，由 gateway handler 分裂/汇合。
+
+### 4.5 恢复
+
+```text
+Recover → 加载定义 → 回放 EVENT → 加载 runtime（可选）
+       → 重驱未完成 COMMAND → 等待点可继续 Complete / Activate / FireDue …
+```
+
+runtime 加载时丢弃过期/无效 lease 与过期/死实例消息缓冲；实例结束时 sweep。  
+`Open(dataDir)` 是文件实现的便捷封装。COMMAND / REJECTION 不驱动投影。
+
+---
+
+## 5. 可执行语义（契约）
+
+部署校验拒绝尚未支持的元素。下列为当前语义契约的要点（实现进度见 `STATUS.md`）。
+
+### 5.1 元素与行为
+
+| Type | 要点 |
+|------|------|
+| `PROCESS` | 实例启动 / 完成 |
+| `START_EVENT` | 瞬时生命周期后出边 |
+| `END_EVENT` | 完成后 `TryCompleteProcess` |
+| `USER_TASK` / `SERVICE_TASK` | ACTIVATED 后 Wait；统一 `Complete` 完成；ServiceTask 带 `job_type` |
+| `INTERMEDIATE_CATCH_EVENT` | Timer（due）/ Message / Signal → Wait；由 FireDue / Publish* / Complete 完成 |
+| `INTERMEDIATE_THROW_EVENT` | None 瞬时；Message/Signal 经 Publication 锁外投递；Compensate 逆序执行 handler |
+| `BOUNDARY_EVENT` | Timer / Message / Compensate；打断型 TERMINATE 活动；非打断型 mint 新 token；补偿在活动 COMPLETED 后订阅 |
+| `EXCLUSIVE_GATEWAY` | 条件顺序求值，否则 default |
+| `PARALLEL_GATEWAY` | fork / join |
+| `INCLUSIVE_GATEWAY` | OR-split / OR-join（可达 token 防死锁） |
+| `EVENT_BASED_GATEWAY` | 先到 cancel 兄弟，或 Parallel 保留兄弟；instantiate 不支持 |
+| `SUB_PROCESS` | 嵌入式子流程；流程级 Event Sub-Process（`triggeredByEvent`）另武装 |
+| `SEQUENCE_FLOW` | `SEQUENCE_FLOW_TAKEN`（经 transit，不走 OnEnter） |
+
+**统一完成入口**：等待点（UserTask / ServiceTask / catch / 部分 throw·compensate）都走 `Complete`；类型来自部署，不按类型拆 API。
+
+### 5.2 Intent 模式
+
+| 场景 | Intent（EVENT） |
+|------|-----------------|
+| 创建实例 | PROCESS ACTIVATING → ACTIVATED |
+| 瞬时元素 | ACTIVATING → ACTIVATED → COMPLETING → COMPLETED |
+| 等待进入 | … → ACTIVATED（Wait） |
+| 等待完成 | COMPLETING → COMPLETED |
+| 走过流 | SEQUENCE_FLOW_TAKEN |
+| 打断 boundary | 活动 TERMINATING → TERMINATED；boundary COMPLETING → COMPLETED |
+| Job 失败 | SERVICE_TASK FAILED（仍 waiting） |
+| 实例结束 | PROCESS COMPLETING → COMPLETED |
+
+等待点的 `ACTIVATED` 与 `SEQUENCE_FLOW_TAKEN` 必须在账本中可见。
+
+### 5.3 变量与条件
+
+- payload 中的 `variables` 为 **delta**，合并进实例变量表
+- XOR / Inclusive 条件：剥掉 `${...}` 后用 expr-lang；失败可走 default（若有）
+
+### 5.4 辅助触发（非账本主语）
+
+| API | 行为 |
+|-----|------|
+| `FireDue` | 到期 timer catch / timer boundary → `Complete` |
+| `PublishMessage` | 按 name（+ 可选 correlation_keys / instance）匹配 → `Complete`；无 waiter 则 FIFO 缓冲（可持久化到 runtime） |
+| `PublishSignal` | 按 name 匹配 → `Complete`；**无缓冲** |
+| `Activate` / `Fail` / `Heartbeat` | Job 拉模型与租约；**不写** EventLog（除 Fail 的 FAILED） |
+
+---
+
+## 6. API 契约
+
+| API | 语义 |
+|-----|------|
+| `Deploy` | Compile + 校验 → `deployment_id`；快照即 `element.Process` |
+| `CreateInstance` | 启动 COMMAND + PROCESS；Enter Start；步进至等待点或结束 |
+| `Complete` | 校验 waiting；handler OnComplete 后自动步进 |
+| `FireDue` / `PublishMessage` / `PublishSignal` | 见上；gateway 暴露对应 RPC |
+| `Activate` / `Fail` / `Heartbeat` | Job 租约生命周期 |
+| `GetInstance` / `ListEvents` | 投影快照 / 审计时间线 |
+
+拒绝码示例：`NOT_FOUND`、`INVALID_STATE`、`UNSUPPORTED_ELEMENT`、`INVALID_CONDITION`、`INVALID_ARGUMENT`。
+
+---
+
+## 7. 与 protocol / gateway 的边界
+
+- processing **不**手写 `.pb.go`；只依赖 `protocol/gen/go`
+- 元素行为扩展 → `Intent` / `Type` / **payload 字段**
+- 非元素事实（租约、消息缓冲）→ `runtime.Store`，不默认进 EventLog
+- `job.v1` / `engine.v1` 由 `gateway` 适配；**不**进入 processing
+- 进程入口：`gateway/cmd/sparrow`（含 `FireDue` 轮询）

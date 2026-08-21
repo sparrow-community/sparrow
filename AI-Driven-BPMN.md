@@ -1,6 +1,6 @@
 # AI Driven BPMN
 
-核心定义：Sparrow 为何存在、站在哪一层。实现与模块见 `AGENTS.md`、`processing/DESIGN.md`。
+核心定义：Sparrow 为何存在、站在哪一层。工作区见 `AGENTS.md`；规划与现状见 `STATUS.md`；运行时设计见 `processing/DESIGN.md`。
 
 ---
 

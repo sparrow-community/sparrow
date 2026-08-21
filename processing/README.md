@@ -11,36 +11,14 @@ Sparrow 运行时模块：单节点、事件驱动的 BPMN 执行引擎。
 
 本模块 **不负责** BPMN XML 解析细节（见 `bpmn`），**不负责** 事件序列化契约（见 `protocol`），也 **不负责** gRPC（见 `gateway`）。
 
-## 现状
+## 文档
 
-| 能力 | 状态 |
-|------|------|
-| UUIDv7 ID（`id.go`） | 已有 |
-| 内存 EventLog（`log`） | 已有 |
-| 实例投影与令牌（`projection`） | 已有 |
-| Deploy（`deploy`，直接持有 `element.Process`） | 已有 |
-| 元素 Handler（`handlers/`，按类型分文件） | 已有 |
-| Executor 令牌推进 | 已有 |
-| Engine：Deploy / CreateInstance / Complete / Activate / FireDue / PublishMessage / PublishSignal | 已有 |
-| XOR 条件选路（`expr`，default 回退） | 已有 |
-| ServiceTask 等待 + `job_type` | 已有 |
-| Job 拉取（`Activate` / `Fail` / `Heartbeat`，内存租约） | 已有 |
-| 文件 / 内存 EventLog + Store（可替换） | 已有 |
-| `Recover` 回放 / `Open` 文件便捷入口 | 已有 |
-| 中间捕获 Timer（`timeDuration` / `timeDate` / `timeCycle`）+ `FireDue` | 已有 |
-| 打断型 / 非打断型 Timer boundary（UserTask/ServiceTask） | 已有 |
-| 打断型 / 非打断型 Message boundary（UserTask/ServiceTask） | 已有 |
-| 同一活动 Timer + Message dual boundary | 已有 |
-| Embedded SubProcess（递归多层嵌套） | 已有 |
-| Parallel gateway fork/join（多 token） | 已有 |
-| 中间捕获 Message catch + `PublishMessage`（correlation keys + 内存缓冲） | 已有 |
-| Intermediate Throw（none / message / signal）+ Signal catch + `PublishSignal` | 已有 |
-| Event Sub-Process（流程级 message/timer，打断 / 非打断） | 已有 |
-| Compensation（boundary + throw，逆序 handler） | 已有 |
+- **设计**（模型、架构、语义契约）：[DESIGN.md](./DESIGN.md)
+- **规划与现状**（路线图、已实现、下一步）：[../STATUS.md](../STATUS.md)
 
-端到端夹具：`testdata/m1_simple.bpmn`（Start → UserTask → XOR → End）；`testdata/m2_service_task.bpmn`；`testdata/m2_timer_catch.bpmn`（Start → Timer catch `PT0S` → End）；`testdata/m2_timer_catch_date.bpmn`（`timeDate` 已过期）；`testdata/m2_timer_catch_cycle.bpmn`（`R/PT0S`）；`testdata/m2_timer_boundary.bpmn`（UserTask + interrupting `PT0S` boundary）；`testdata/m2_timer_boundary_non_interrupt.bpmn`（UserTask + non-interrupting `PT0S` boundary）；`testdata/m2_timer_boundary_non_interrupt_cycle.bpmn`（UserTask + non-interrupting `R2/PT0S` timer boundary）；`testdata/m2_message_catch.bpmn`（Start → Message catch → End）；`testdata/m2_message_after_task.bpmn`（UserTask 后再 Message catch）；`testdata/m2_message_boundary.bpmn`（UserTask + interrupting message boundary）；`testdata/m2_message_boundary_non_interrupt.bpmn`（UserTask + non-interrupting message boundary）；`testdata/m3_parallel_fork_join.bpmn`（Parallel fork → 两路 UserTask → join → End）；`testdata/m3_parallel_timer_boundary.bpmn` 与 `testdata/m3_parallel_message_boundary.bpmn`（Parallel fork + boundary 分支回归）；`testdata/m2_dual_boundary.bpmn`（UserTask + Timer + Message dual boundary）；`testdata/m2_subprocess.bpmn`（Start → SubProcess(Start → UserTask → End) → End）；`testdata/m3_none_throw.bpmn` / `m3_message_throw.bpmn` / `m3_signal_throw.bpmn`；`testdata/m3_signal_catch.bpmn`；`testdata/m3_parallel_message_throw_catch.bpmn`（并行分支 throw 唤醒 sibling catch）；`testdata/m3_event_subprocess_message.bpmn` / `m3_event_subprocess_message_ni.bpmn` / `m3_event_subprocess_timer.bpmn`；`testdata/m2_event_based_gateway.bpmn`（exclusive）；`testdata/m3_parallel_event_based_gateway.bpmn`（parallel，不取消兄弟）；`testdata/m3_compensation.bpmn`（compensation boundary + throw）。
+## 端到端夹具
 
-详细程序设计见 [DESIGN.md](./DESIGN.md)。
+`testdata/m1_simple.bpmn`（Start → UserTask → XOR → End）；`testdata/m2_service_task.bpmn`；`testdata/m2_timer_catch.bpmn`（Start → Timer catch `PT0S` → End）；`testdata/m2_timer_catch_date.bpmn`（`timeDate` 已过期）；`testdata/m2_timer_catch_cycle.bpmn`（`R/PT0S`）；`testdata/m2_timer_boundary.bpmn`（UserTask + interrupting `PT0S` boundary）；`testdata/m2_timer_boundary_non_interrupt.bpmn`（UserTask + non-interrupting `PT0S` boundary）；`testdata/m2_timer_boundary_non_interrupt_cycle.bpmn`（UserTask + non-interrupting `R2/PT0S` timer boundary）；`testdata/m2_message_catch.bpmn`（Start → Message catch → End）；`testdata/m2_message_after_task.bpmn`（UserTask 后再 Message catch）；`testdata/m2_message_boundary.bpmn`（UserTask + interrupting message boundary）；`testdata/m2_message_boundary_non_interrupt.bpmn`（UserTask + non-interrupting message boundary）；`testdata/m3_parallel_fork_join.bpmn`（Parallel fork → 两路 UserTask → join → End）；`testdata/m3_parallel_timer_boundary.bpmn` 与 `testdata/m3_parallel_message_boundary.bpmn`（Parallel fork + boundary 分支回归）；`testdata/m2_dual_boundary.bpmn`（UserTask + Timer + Message dual boundary）；`testdata/m2_subprocess.bpmn`（Start → SubProcess(Start → UserTask → End) → End）；`testdata/m3_none_throw.bpmn` / `m3_message_throw.bpmn` / `m3_signal_throw.bpmn`；`testdata/m3_signal_catch.bpmn`；`testdata/m3_parallel_message_throw_catch.bpmn`（并行分支 throw 唤醒 sibling catch）；`testdata/m3_event_subprocess_message.bpmn` / `m3_event_subprocess_message_ni.bpmn` / `m3_event_subprocess_timer.bpmn`；`testdata/m2_event_based_gateway.bpmn`（exclusive）；`testdata/m3_parallel_event_based_gateway.bpmn`（parallel，不取消兄弟）；`testdata/m3_compensation.bpmn`（compensation boundary + throw）。
 
 ## 包布局（摘要）
 
@@ -72,8 +50,7 @@ Go module: `github.com/sparrow-community/sparrow/processing`
 2. Job / Timer / Message 等机制细节放在 **Element.payload**，不与 Element 平级另起主语。
 3. 同一 `process_instance_id` **严格串行** 处理；单节点即单个（逻辑）分区。
 4. 状态可丢，只要 `EventLog` + `deploy.Store` 在，即可 `Recover` 重建。
-5. M1 可执行子集：`Start → UserTask → ExclusiveGateway → End`（含 SequenceFlow）。
-6. **少中间层**：部署直接复用 `bpmn/element.Process`。
+5. **少中间层**：部署直接复用 `bpmn/element.Process`；语义只加在 `handlers/`。
 
 持久化注入：
 
