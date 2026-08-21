@@ -16,21 +16,21 @@
 |------|------|
 | **M1** | 完成：Start → UserTask → XOR → End；文件日志 + `Recover` |
 | **M2** | 完成：ServiceTask + Job；Timer/Message catch；Timer/Message boundary（打断型 + 非打断型） |
-| **M3** | 进行中：网关 / SubProcess / Throw / **Event Sub-Process** |
+| **M3** | 进行中：网关 / SubProcess / Throw / Event Sub-Process / **Parallel Event-Based Gateway** |
 
 **`main` 最新提交**（更新时改这里）：
 
 ```text
+Support parallel event-based gateway (keep sibling catches)
+4f68052 Record event sub-process commit in STATUS.md
 ad765c9 Support process-level event sub-process (message/timer)
-072674c Record intermediate throw commit in STATUS.md
 aa2a936 Support intermediate throw (message/signal) and signal catch
-88cc79d Clarify STATUS: exclusive Event-Based gateway is done
 ```
 
 ## 已实现（运行时）
 
 - **核心**：`Deploy` / `CreateInstance` / `Complete`；`Recover` / `Open`；实例内串行锁
-- **网关**：Exclusive（条件 + default）；Inclusive（OR-split / OR-join，可达 token 防死锁）；Parallel（fork/join）；Event-Based（exclusive：先到的 catch 赢，取消兄弟）
+- **网关**：Exclusive（条件 + default）；Inclusive（OR-split / OR-join，可达 token 防死锁）；Parallel（fork/join）；Event-Based exclusive（先到的 catch 赢，取消兄弟）；Event-Based parallel（各 catch 独立完成，不取消兄弟）
 - **SubProcess**：嵌套子流程（递归支持多层），共享变量，scope completion
 - **Event Sub-Process**：流程级 `triggeredByEvent`（Message / Timer；打断型与非打断型）；Signal 同路径可扩展；迟到 message 可缓冲投递
 - **等待与完成**：UserTask、ServiceTask、中间 Timer / Message / Signal catch — 统一 `Complete`
@@ -47,15 +47,15 @@ aa2a936 Support intermediate throw (message/signal) and signal catch
 
 - 流程定义**版本管理与迁移**（每次 `Deploy` 新 `deployment_id`）
 - 同一活动上 **三个及以上 boundary**；Signal boundary
-- 补偿、Incident；嵌套在 embedded SubProcess 内的 Event Sub-Process；Parallel Event Gateway / instantiate EventBasedGateway
+- 补偿、Incident；嵌套在 embedded SubProcess 内的 Event Sub-Process；instantiate EventBasedGateway
 - 集群 / 多活
 - 复制 Camunda 产品广度（建模器、Cockpit 等）
 
 ## 下一步候选（按优先级）
 
 1. 补偿（Compensation）
-2. Parallel Event Gateway
-3. 流程定义版本管理与迁移
+2. 流程定义版本管理与迁移
+3. Signal boundary / 嵌套 Event Sub-Process
 
 ## 新会话开场模板
 

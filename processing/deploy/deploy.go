@@ -673,9 +673,7 @@ func validateEventBasedGateways(fe *element.FlowElements) error {
 		if g.Instantiate {
 			return fmt.Errorf("UNSUPPORTED_ELEMENT: eventBasedGateway %q instantiate is not supported", g.ID)
 		}
-		if g.EventGatewayType == element.EventGatewayTypeParallel {
-			return fmt.Errorf("UNSUPPORTED_ELEMENT: eventBasedGateway %q parallel type is not supported", g.ID)
-		}
+		// Exclusive (default) and Parallel intermediate event-based gateways are supported.
 		outs := g.Outgoing
 		if len(outs) == 0 {
 			for _, f := range fe.SequenceFlows {
@@ -712,7 +710,8 @@ func validateEventBasedGateways(fe *element.FlowElements) error {
 }
 
 // EventBasedSiblings returns sibling catch element IDs when catchID is a target
-// of an exclusive event-based gateway. The gateway id is returned as the first value.
+// of an exclusive event-based gateway. Parallel event-based gateways do not
+// cancel siblings (returns empty). The gateway id is returned as the first value.
 func (d *Deployment) EventBasedSiblings(catchID string) (gatewayID string, siblings []string) {
 	if d == nil {
 		return "", nil
@@ -727,6 +726,9 @@ func (d *Deployment) EventBasedSiblings(catchID string) (gatewayID string, sibli
 			continue
 		}
 		gatewayID = sf.SourceRef
+		if d.IsParallelEventBasedGateway(gatewayID) {
+			return gatewayID, nil
+		}
 		for _, outID := range d.Outgoing(gatewayID) {
 			out, err := d.SequenceFlow(outID)
 			if err != nil || out.TargetRef == catchID {
@@ -737,4 +739,28 @@ func (d *Deployment) EventBasedSiblings(catchID string) (gatewayID string, sibli
 		return gatewayID, siblings
 	}
 	return "", nil
+}
+
+// IsParallelEventBasedGateway reports eventGatewayType="Parallel".
+// Absent / empty / Exclusive means exclusive (BPMN default).
+func (d *Deployment) IsParallelEventBasedGateway(id string) bool {
+	if d == nil {
+		return false
+	}
+	return isParallelEventBasedGatewayIn(&d.Process.FlowElements, id)
+}
+
+func isParallelEventBasedGatewayIn(fe *element.FlowElements, id string) bool {
+	for _, g := range fe.EventBasedGatewaies {
+		if g.ID != id {
+			continue
+		}
+		return g.EventGatewayType == element.EventGatewayTypeParallel
+	}
+	for i := range fe.SubProcesses {
+		if isParallelEventBasedGatewayIn(&fe.SubProcesses[i].FlowElements, id) {
+			return true
+		}
+	}
+	return false
 }

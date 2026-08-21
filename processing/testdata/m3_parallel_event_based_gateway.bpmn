@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             id="Definitions_pebg"
+             targetNamespace="http://sparrow.example/pebg">
+  <message id="Msg_a" name="event.a"/>
+  <message id="Msg_b" name="event.b"/>
+  <process id="Process_pebg" name="Parallel Event Based Gateway" isExecutable="true">
+    <startEvent id="Start_1">
+      <outgoing>Flow_start_to_ebg</outgoing>
+    </startEvent>
+    <eventBasedGateway id="PEBG_1" eventGatewayType="Parallel">
+      <incoming>Flow_start_to_ebg</incoming>
+      <outgoing>Flow_ebg_to_a</outgoing>
+      <outgoing>Flow_ebg_to_b</outgoing>
+    </eventBasedGateway>
+    <intermediateCatchEvent id="MessageCatch_A">
+      <incoming>Flow_ebg_to_a</incoming>
+      <outgoing>Flow_a_to_end</outgoing>
+      <messageEventDefinition messageRef="Msg_a"/>
+    </intermediateCatchEvent>
+    <intermediateCatchEvent id="MessageCatch_B">
+      <incoming>Flow_ebg_to_b</incoming>
+      <outgoing>Flow_b_to_end</outgoing>
+      <messageEventDefinition messageRef="Msg_b"/>
+    </intermediateCatchEvent>
+    <endEvent id="End_A">
+      <incoming>Flow_a_to_end</incoming>
+    </endEvent>
+    <endEvent id="End_B">
+      <incoming>Flow_b_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_ebg" sourceRef="Start_1" targetRef="PEBG_1"/>
+    <sequenceFlow id="Flow_ebg_to_a" sourceRef="PEBG_1" targetRef="MessageCatch_A"/>
+    <sequenceFlow id="Flow_ebg_to_b" sourceRef="PEBG_1" targetRef="MessageCatch_B"/>
+    <sequenceFlow id="Flow_a_to_end" sourceRef="MessageCatch_A" targetRef="End_A"/>
+    <sequenceFlow id="Flow_b_to_end" sourceRef="MessageCatch_B" targetRef="End_B"/>
+  </process>
+</definitions>

@@ -131,3 +131,58 @@ func TestEventBasedGatewayRecoverThenMessageWins(t *testing.T) {
 		t.Fatalf("status=%s want completed", inst.Status)
 	}
 }
+
+func TestParallelEventBasedGatewayKeepsSiblings(t *testing.T) {
+	xml := readTestdata(t, "m3_parallel_event_based_gateway.bpmn")
+	eng := processing.NewEngine(eventlog.NewMemory())
+	ctx := context.Background()
+	dep, err := eng.Deploy(ctx, xml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instanceID, err := eng.CreateInstance(ctx, dep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inst, _ := eng.GetInstance(instanceID)
+	waiting := allWaiting(inst)
+	if len(waiting) != 2 {
+		t.Fatalf("expected 2 waiting catches, got %v", waiting)
+	}
+
+	n, err := eng.PublishMessage(ctx, processing.PublishMessageRequest{Name: "event.a"})
+	if err != nil || n != 1 {
+		t.Fatalf("PublishMessage A n=%d err=%v", n, err)
+	}
+	inst, _ = eng.GetInstance(instanceID)
+	if inst.Status != projection.StatusActive {
+		t.Fatalf("status=%s want active after first event", inst.Status)
+	}
+	waiting = allWaiting(inst)
+	if len(waiting) != 1 || waiting[0] != "MessageCatch_B" {
+		t.Fatalf("expected only MessageCatch_B waiting, got %v", waiting)
+	}
+	events, _ := eng.ListEvents(ctx, instanceID)
+	if sawElementIntent(events, eventv1.Element_TYPE_INTERMEDIATE_CATCH_EVENT, "MessageCatch_B", eventv1.Element_INTENT_TERMINATED) {
+		t.Fatal("parallel EBG must not terminate sibling catch")
+	}
+	if !sawElementIntent(events, eventv1.Element_TYPE_END_EVENT, "End_A", eventv1.Element_INTENT_COMPLETED) {
+		t.Fatal("expected End_A after event.a")
+	}
+
+	n, err = eng.PublishMessage(ctx, processing.PublishMessageRequest{Name: "event.b"})
+	if err != nil || n != 1 {
+		t.Fatalf("PublishMessage B n=%d err=%v", n, err)
+	}
+	inst, _ = eng.GetInstance(instanceID)
+	if inst.Status != projection.StatusCompleted {
+		t.Fatalf("status=%s want completed after both events", inst.Status)
+	}
+	events, _ = eng.ListEvents(ctx, instanceID)
+	if !sawElementIntent(events, eventv1.Element_TYPE_INTERMEDIATE_CATCH_EVENT, "MessageCatch_B", eventv1.Element_INTENT_COMPLETED) {
+		t.Fatal("expected MessageCatch_B COMPLETED")
+	}
+	if !sawElementIntent(events, eventv1.Element_TYPE_END_EVENT, "End_B", eventv1.Element_INTENT_COMPLETED) {
+		t.Fatal("expected End_B")
+	}
+}

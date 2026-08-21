@@ -6,9 +6,10 @@ import (
 	eventv1 "github.com/sparrow-community/sparrow/protocol/gen/go/event/v1"
 )
 
-// EventBasedGatewayHandler implements exclusive event-based gateway:
-// fork tokens to all outgoing intermediate catches; the first catch to complete
-// cancels the sibling waiting catches.
+// EventBasedGatewayHandler implements event-based gateway:
+// fork tokens to all outgoing intermediate catches.
+// Exclusive (default): the first catch to complete cancels sibling waiting catches.
+// Parallel: siblings stay armed; each catch continues on its own path when its event arrives.
 type EventBasedGatewayHandler struct{}
 
 func (EventBasedGatewayHandler) Type() eventv1.Element_Type {

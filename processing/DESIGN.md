@@ -308,10 +308,11 @@ Recover(ctx, eventLog, deploymentStore, runtimeStore)
 | `BOUNDARY_EVENT` | `boundary_event.go` | Timer 或 Message：活动 ACTIVATED 写 `ActivityPayload.boundary_id`（Timer 另写 due；Message 另写 `message_name`）。`FireDue` / `PublishMessage` → `Complete(boundary)`：打断型会 TERMINATE 活动并沿 boundary 出边；非打断型保持活动 waiting，并 mint 新 token 沿 boundary 出边。同一活动两个 boundary 仍拒绝。 |
 | `EXCLUSIVE_GATEWAY` | `exclusive_gateway.go` | 非 default 条件按序求值，否则 default；payload 带 `taken_sequence_flow_id` |
 | `PARALLEL_GATEWAY` | `parallel_gateway.go` | 多出口 fork（mint 新 token）；多入口 join（全部到达后一条 token 继续，peer TERMINATED 移出投影） |
+| `EVENT_BASED_GATEWAY` | `event_based_gateway.go` | Fork 到所有出边 catch。Exclusive（默认）：先完成的 catch 取消兄弟。Parallel：`eventGatewayType="Parallel"`，兄弟保持等待，各事件独立推进。instantiate 仍拒绝。 |
 | `SEQUENCE_FLOW` | `sequence_flow.go` | 经 transit 发 `SEQUENCE_FLOW_TAKEN`（不走 OnEnter） |
 | `END_EVENT` | `end_event.go` | 完成后 `TryCompleteProcess` |
 
-部署时 `validateM1` 拒绝尚未实现的元素（CallActivity、补偿 throw、嵌套 Event Sub-Process、同一活动多个同类 boundary、更多元素等）。ServiceTask、中间捕获（Timer + Message + Signal catch）、Intermediate Throw（none / message / signal）、打断型 / 非打断型 Timer / Message boundary、Parallel / Inclusive / Exclusive Event-Based gateway、embedded SubProcess、流程级 Event Sub-Process 已纳入可执行子集。
+部署时 `validateM1` 拒绝尚未实现的元素（CallActivity、补偿 throw、嵌套 Event Sub-Process、instantiate EventBasedGateway、同一活动多个同类 boundary、更多元素等）。ServiceTask、中间捕获（Timer + Message + Signal catch）、Intermediate Throw（none / message / signal）、打断型 / 非打断型 Timer / Message boundary、Parallel / Inclusive / Exclusive+Parallel Event-Based gateway、embedded SubProcess、流程级 Event Sub-Process 已纳入可执行子集。
 
 ### Timer catch（timeDuration / timeDate）时序链（M2）
 
@@ -574,7 +575,8 @@ Recover(ctx, eventLog, deploymentStore, runtimeStore)
 | 25 | Exclusive Event-Based gateway | 已完成 |
 | 26 | Intermediate Throw（none / message / signal）+ Signal catch + `PublishSignal` | 已完成 |
 | 27 | Event Sub-Process（流程级 message/timer，打断 / 非打断） | 已完成 |
-| 28 | 补偿；Parallel Event Gateway | 未开始 |
+| 28 | Parallel Event-Based gateway（不取消兄弟 catch） | 已完成 |
+| 29 | 补偿 | 未开始 |
 
 ---
 
