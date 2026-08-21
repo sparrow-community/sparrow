@@ -1,8 +1,8 @@
 # Sparrow
 
-Apache-2.0 Go workspace for a lightweight BPMN workflow engine.
+Apache-2.0 Go workspace for a lightweight, functionally complete BPMN workflow engine.
 
-Sparrow is a single-node execution engine in early development. The intended core is an append-only event log (Protocol Buffers) as the source of truth for process execution and audit. BPMN coverage grows from a small executable subset; the runtime is not a Camunda product clone.
+Sparrow is a single-node execution engine in early development. The intended core is an append-only event log (Protocol Buffers) as the source of truth for process execution and audit. The aim is a lean runtime with full executable BPMN semantics—not a Camunda-style product suite (modeler, ops UI, etc.). Coverage lands milestone by milestone; the end state is engine completeness, not a permanent minimal subset.
 
 Why this project exists in an AI-first world: see [`AI-Driven-BPMN.md`](./AI-Driven-BPMN.md).
 

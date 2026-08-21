@@ -8,7 +8,7 @@
 
 ## 一句话
 
-单节点、事件账本为真相源的轻量 BPMN 引擎；**Event = 行为，Element = 主语**；对外 API 薄（Deploy / CreateInstance / Complete / FireDue / PublishMessage / PublishSignal / Job Activate），语义在 `processing/handlers/` 扩展。
+单节点、事件账本为真相源的**轻量级且功能完备**的 BPMN 引擎（目标是可执行语义完备，不是 Camunda 类产品套件）；**Event = 行为，Element = 主语**；对外 API 薄（Deploy / CreateInstance / Complete / FireDue / PublishMessage / PublishSignal / Job Activate），语义在 `processing/handlers/` 扩展。
 
 ## 当前里程碑
 
@@ -50,7 +50,7 @@ ad765c9 Support process-level event sub-process (message/timer)
 - 同一活动上 **三个及以上 boundary**；Signal boundary
 - Incident；嵌套在 embedded SubProcess 内的 Event Sub-Process；instantiate EventBasedGateway；补偿传播进未完成的 SubProcess
 - 集群 / 多活
-- 复制 Camunda 产品广度（建模器、Cockpit 等）
+- Camunda 类产品套件（建模器、Cockpit / 运维 UI 等）；与「引擎功能完备」正交
 
 ## 下一步候选（按优先级）
 
