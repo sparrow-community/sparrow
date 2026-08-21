@@ -303,14 +303,15 @@ Recover(ctx, eventLog, deploymentStore, runtimeStore)
 | `START_EVENT` | `start_event.go` | 瞬时生命周期后沿出口流出 |
 | `USER_TASK` | `user_task.go` | ACTIVATING→ACTIVATED 后 `Wait`；Complete → COMPLETING→COMPLETED |
 | `SERVICE_TASK` | `service_task.go` | 同上等待；ACTIVATED 带 `ActivityPayload.job_type`；经 `Complete` 完成 |
-| `INTERMEDIATE_CATCH_EVENT` | `intermediate_catch_event.go` | Timer：`timeDuration` / `timeDate` / `timeCycle`（只算第一次到期），ACTIVATED 写 `due_unix_ms`，`FireDue` → `Complete`。Message：ACTIVATED 写 `message_name`，`PublishMessage` → `Complete`。均 `Wait`。 |
+| `INTERMEDIATE_CATCH_EVENT` | `intermediate_catch_event.go` | Timer：`timeDuration` / `timeDate` / `timeCycle`（只算第一次到期），ACTIVATED 写 `due_unix_ms`，`FireDue` → `Complete`。Message：ACTIVATED 写 `message_name`，`PublishMessage` → `Complete`。Signal：ACTIVATED 写 `signal_name`，`PublishSignal` → `Complete`（迟到信号不缓冲）。均 `Wait`。 |
+| `INTERMEDIATE_THROW_EVENT` | `intermediate_throw_event.go` | None：瞬时生命周期后出边。Message / Signal：ACTIVATED 写 `message_name` / `signal_name`，Effect 挂起 `Publication`，Engine 在实例锁释放后 `PublishMessage` / `PublishSignal`，再沿出边继续。 |
 | `BOUNDARY_EVENT` | `boundary_event.go` | Timer 或 Message：活动 ACTIVATED 写 `ActivityPayload.boundary_id`（Timer 另写 due；Message 另写 `message_name`）。`FireDue` / `PublishMessage` → `Complete(boundary)`：打断型会 TERMINATE 活动并沿 boundary 出边；非打断型保持活动 waiting，并 mint 新 token 沿 boundary 出边。同一活动两个 boundary 仍拒绝。 |
 | `EXCLUSIVE_GATEWAY` | `exclusive_gateway.go` | 非 default 条件按序求值，否则 default；payload 带 `taken_sequence_flow_id` |
 | `PARALLEL_GATEWAY` | `parallel_gateway.go` | 多出口 fork（mint 新 token）；多入口 join（全部到达后一条 token 继续，peer TERMINATED 移出投影） |
 | `SEQUENCE_FLOW` | `sequence_flow.go` | 经 transit 发 `SEQUENCE_FLOW_TAKEN`（不走 OnEnter） |
 | `END_EVENT` | `end_event.go` | 完成后 `TryCompleteProcess` |
 
-部署时 `validateM1` 拒绝尚未实现的元素（Inclusive/EventBased gateway、SubProcess、throw、同一活动多个 boundary、更多元素等）。ServiceTask、中间捕获（Timer + Message catch）、打断型 / 非打断型 Timer / Message boundary 与 Parallel gateway 已纳入可执行子集。
+部署时 `validateM1` 拒绝尚未实现的元素（CallActivity、补偿 throw、同一活动多个同类 boundary、更多元素等）。ServiceTask、中间捕获（Timer + Message + Signal catch）、Intermediate Throw（none / message / signal）、打断型 / 非打断型 Timer / Message boundary、Parallel / Inclusive / Exclusive Event-Based gateway、SubProcess 已纳入可执行子集。
 
 ### Timer catch（timeDuration / timeDate）时序链（M2）
 
@@ -359,6 +360,20 @@ Recover(ctx, eventLog, deploymentStore, runtimeStore)
 5. `gateway` 通过 `engine.v1.PublishMessage` 暴露（`delivered` / `buffered`）；无独立 Message 账本主语
 
 重启后 `Recover` 从 `ACTIVATED{message_name}` 还原 `Token.MessageName`；缓冲从 `runtime.Store` 恢复（若有）。
+
+### Intermediate Throw（none / message / signal）（M3）
+
+以 `Start → IntermediateThrowEvent → End`，或并行分支上 Throw 唤醒 Catch 为例：
+
+1. 部署时解析 throw：无定义 → none；`messageEventDefinition` → message name；`signalEventDefinition` → signal name
+2. token 进入 throw 后瞬时 `ACTIVATING→ACTIVATED→COMPLETING→COMPLETED`（message/signal 的 ACTIVATED 带对应 name）
+3. Effect 携带 `Publication`；Executor 收集后由 Engine 在**实例锁释放后**调用 `PublishMessage` / `PublishSignal`（避免锁内重入 Complete）
+4. Message throw 走现有消息投递（含缓冲）；Signal throw / `PublishSignal` 只唤醒当前 waiter，迟到信号丢弃
+5. 随后 token 沿出边继续
+
+### Signal catch 时序链（M3）
+
+与 Message catch 相同等待故事：`ACTIVATED{signal_name}` → `PublishSignal` / signal throw → `Complete`。无缓冲。
 
 ### 6.2 (Type, Intent) 使用（M1）
 
@@ -442,6 +457,13 @@ Recover(ctx, eventLog, deploymentStore, runtimeStore)
 - 无 waiter：写入 **缓冲**（FIFO，一条消息对应一个后续 catch / message boundary）；进入 waiting 后 Engine 再 Complete
 - 缓冲不是账本事实；配置了 `runtime.Store` 时跨重启保留；实例结束或 TTL 过期则清扫
 - `Recover` 从 `EventPayload.message_name`（中间捕获）或 `ActivityPayload.message_name` + `boundary_id`（打断型 boundary）与实例变量还原；gateway 暴露 `engine.v1.PublishMessage`（`delivered` / `buffered`）
+
+### PublishSignal
+
+- 输入：`name`（必填），可选 `process_instance_id`，可选变量
+- 行为：收集 **waiting 且 `token.signal_name` 匹配** 的中间 Signal catch，逐个 `Complete`
+- **无缓冲**：无 waiter 则丢弃（与 Message 不同）
+- Intermediate signal throw 在锁释放后走同一路径；gateway 暴露 `engine.v1.PublishSignal`
 
 ### Activate
 
@@ -539,7 +561,8 @@ Recover(ctx, eventLog, deploymentStore, runtimeStore)
 | 23 | SubProcess + scope boundary | 已完成 |
 | 24 | runtime.Store（Job 租约 + 消息缓冲跨重启） | 已完成 |
 | 25 | Exclusive Event-Based gateway | 已完成 |
-| 26 | Intermediate Throw；补偿；Parallel Event Gateway | 未开始 |
+| 26 | Intermediate Throw（none / message / signal）+ Signal catch + `PublishSignal` | 已完成 |
+| 27 | 补偿；Event Sub-Process；Parallel Event Gateway | 未开始 |
 
 ---
 
@@ -550,6 +573,7 @@ Recover(ctx, eventLog, deploymentStore, runtimeStore)
 | `engine.go` | 薄门面：锁、COMMAND/REJECTION、emitter |
 | `timers.go` | `FireDue`：到期的 timer catch 走 `Complete` |
 | `messages.go` | `PublishMessage`：按 name + correlation keys 匹配；无 waiter 则缓冲（同步 runtime.Store） |
+| `signals.go` | `PublishSignal`：按 name 匹配 signal catch；无缓冲；`flushPublications` 投递 throw |
 | `jobs.go` | `Activate` / `Fail` / `Heartbeat`：Job 快照、长轮询、租约（同步 runtime.Store） |
 | `runtime_store.go` | load/persist/sweep runtime 状态；实例结束/TTL 防死信 |
 | `runtime/` | `Store` 接口（Memory / File `state.json`） |

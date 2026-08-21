@@ -95,6 +95,25 @@ func (s *EngineServer) PublishMessage(ctx context.Context, req *enginev1.Publish
 	return out, nil
 }
 
+func (s *EngineServer) PublishSignal(ctx context.Context, req *enginev1.PublishSignalRequest) (*enginev1.PublishSignalResponse, error) {
+	if s.engine == nil {
+		return nil, status.Error(codes.FailedPrecondition, "engine is required")
+	}
+	vars, err := variablesFromJSONMap(req.GetVariables())
+	if err != nil {
+		return nil, statusFromEngine(err)
+	}
+	n, err := s.engine.PublishSignal(ctx, processing.PublishSignalRequest{
+		Name:              req.GetName(),
+		ProcessInstanceID: req.GetProcessInstanceId(),
+		Variables:         vars,
+	})
+	if err != nil {
+		return nil, statusFromEngine(err)
+	}
+	return &enginev1.PublishSignalResponse{Delivered: int32(n)}, nil
+}
+
 func (s *EngineServer) GetInstance(_ context.Context, req *enginev1.GetInstanceRequest) (*enginev1.GetInstanceResponse, error) {
 	if s.engine == nil {
 		return nil, status.Error(codes.FailedPrecondition, "engine is required")
@@ -147,6 +166,7 @@ func instanceToProto(inst *projection.Instance) *enginev1.Instance {
 			MessageName: tok.MessageName,
 			DueUnixMs:   tok.DueUnixMs,
 			BoundaryId:  tok.BoundaryID,
+			SignalName:  tok.SignalName,
 		})
 	}
 	return out

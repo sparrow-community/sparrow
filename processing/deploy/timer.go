@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/sparrow-community/sparrow/bpmn/element"
+	eventv1 "github.com/sparrow-community/sparrow/protocol/gen/go/event/v1"
 )
 
 // CatchKind classifies an intermediateCatchEvent for runtime handlers.
@@ -14,6 +15,7 @@ type CatchKind string
 const (
 	CatchKindTimer   CatchKind = "timer"
 	CatchKindMessage CatchKind = "message"
+	CatchKindSignal  CatchKind = "signal"
 )
 
 type timerCatch struct {
@@ -243,14 +245,18 @@ func (d *Deployment) MessageName(id string) (string, error) {
 }
 
 func (d *Deployment) CatchKind(id string) (CatchKind, error) {
-	for _, e := range d.Process.IntermediateCatchEvents {
-		if e.ID != id {
-			continue
-		}
-		if _, err := timerCatchSpec(e); err == nil {
-			return CatchKindTimer, nil
-		}
+	typ, err := d.TypeOf(id)
+	if err != nil || typ != eventv1.Element_TYPE_INTERMEDIATE_CATCH_EVENT {
+		return "", fmt.Errorf("NOT_FOUND: intermediate catch %q", id)
+	}
+	if _, ok := d.timerCatch[id]; ok {
+		return CatchKindTimer, nil
+	}
+	if _, ok := d.messageCatch[id]; ok {
 		return CatchKindMessage, nil
+	}
+	if _, ok := d.signalCatch[id]; ok {
+		return CatchKindSignal, nil
 	}
 	return "", fmt.Errorf("NOT_FOUND: intermediate catch %q", id)
 }

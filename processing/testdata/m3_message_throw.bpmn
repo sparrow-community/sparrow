@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             id="Definitions_message_throw"
+             targetNamespace="http://sparrow.example/message-throw">
+  <message id="message_1" name="order.confirmed"/>
+  <process id="Process_message_throw" name="M3 Message Throw" isExecutable="true">
+    <startEvent id="StartEvent_1">
+      <outgoing>Flow_start_to_throw</outgoing>
+    </startEvent>
+    <intermediateThrowEvent id="MessageThrow_1" name="Notify">
+      <incoming>Flow_start_to_throw</incoming>
+      <outgoing>Flow_throw_to_end</outgoing>
+      <messageEventDefinition id="MsgDef_1" messageRef="message_1"/>
+    </intermediateThrowEvent>
+    <endEvent id="EndEvent_1">
+      <incoming>Flow_throw_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_throw" sourceRef="StartEvent_1" targetRef="MessageThrow_1"/>
+    <sequenceFlow id="Flow_throw_to_end" sourceRef="MessageThrow_1" targetRef="EndEvent_1"/>
+  </process>
+</definitions>

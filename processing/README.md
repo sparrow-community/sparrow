@@ -21,7 +21,7 @@ Sparrow 运行时模块：单节点、事件驱动的 BPMN 执行引擎。
 | Deploy（`deploy`，直接持有 `element.Process`） | 已有 |
 | 元素 Handler（`handlers/`，按类型分文件） | 已有 |
 | Executor 令牌推进 | 已有 |
-| Engine：Deploy / CreateInstance / Complete / Activate / FireDue / PublishMessage | 已有 |
+| Engine：Deploy / CreateInstance / Complete / Activate / FireDue / PublishMessage / PublishSignal | 已有 |
 | XOR 条件选路（`expr`，default 回退） | 已有 |
 | ServiceTask 等待 + `job_type` | 已有 |
 | Job 拉取（`Activate` / `Fail` / `Heartbeat`，内存租约） | 已有 |
@@ -34,8 +34,9 @@ Sparrow 运行时模块：单节点、事件驱动的 BPMN 执行引擎。
 | Embedded SubProcess（递归多层嵌套） | 已有 |
 | Parallel gateway fork/join（多 token） | 已有 |
 | 中间捕获 Message catch + `PublishMessage`（correlation keys + 内存缓冲） | 已有 |
+| Intermediate Throw（none / message / signal）+ Signal catch + `PublishSignal` | 已有 |
 
-端到端夹具：`testdata/m1_simple.bpmn`（Start → UserTask → XOR → End）；`testdata/m2_service_task.bpmn`；`testdata/m2_timer_catch.bpmn`（Start → Timer catch `PT0S` → End）；`testdata/m2_timer_catch_date.bpmn`（`timeDate` 已过期）；`testdata/m2_timer_catch_cycle.bpmn`（`R/PT0S`）；`testdata/m2_timer_boundary.bpmn`（UserTask + interrupting `PT0S` boundary）；`testdata/m2_timer_boundary_non_interrupt.bpmn`（UserTask + non-interrupting `PT0S` boundary）；`testdata/m2_timer_boundary_non_interrupt_cycle.bpmn`（UserTask + non-interrupting `R2/PT0S` timer boundary）；`testdata/m2_message_catch.bpmn`（Start → Message catch → End）；`testdata/m2_message_after_task.bpmn`（UserTask 后再 Message catch）；`testdata/m2_message_boundary.bpmn`（UserTask + interrupting message boundary）；`testdata/m2_message_boundary_non_interrupt.bpmn`（UserTask + non-interrupting message boundary）；`testdata/m3_parallel_fork_join.bpmn`（Parallel fork → 两路 UserTask → join → End）；`testdata/m3_parallel_timer_boundary.bpmn` 与 `testdata/m3_parallel_message_boundary.bpmn`（Parallel fork + boundary 分支回归）；`testdata/m2_dual_boundary.bpmn`（UserTask + Timer + Message dual boundary）；`testdata/m2_subprocess.bpmn`（Start → SubProcess(Start → UserTask → End) → End）。
+端到端夹具：`testdata/m1_simple.bpmn`（Start → UserTask → XOR → End）；`testdata/m2_service_task.bpmn`；`testdata/m2_timer_catch.bpmn`（Start → Timer catch `PT0S` → End）；`testdata/m2_timer_catch_date.bpmn`（`timeDate` 已过期）；`testdata/m2_timer_catch_cycle.bpmn`（`R/PT0S`）；`testdata/m2_timer_boundary.bpmn`（UserTask + interrupting `PT0S` boundary）；`testdata/m2_timer_boundary_non_interrupt.bpmn`（UserTask + non-interrupting `PT0S` boundary）；`testdata/m2_timer_boundary_non_interrupt_cycle.bpmn`（UserTask + non-interrupting `R2/PT0S` timer boundary）；`testdata/m2_message_catch.bpmn`（Start → Message catch → End）；`testdata/m2_message_after_task.bpmn`（UserTask 后再 Message catch）；`testdata/m2_message_boundary.bpmn`（UserTask + interrupting message boundary）；`testdata/m2_message_boundary_non_interrupt.bpmn`（UserTask + non-interrupting message boundary）；`testdata/m3_parallel_fork_join.bpmn`（Parallel fork → 两路 UserTask → join → End）；`testdata/m3_parallel_timer_boundary.bpmn` 与 `testdata/m3_parallel_message_boundary.bpmn`（Parallel fork + boundary 分支回归）；`testdata/m2_dual_boundary.bpmn`（UserTask + Timer + Message dual boundary）；`testdata/m2_subprocess.bpmn`（Start → SubProcess(Start → UserTask → End) → End）；`testdata/m3_none_throw.bpmn` / `m3_message_throw.bpmn` / `m3_signal_throw.bpmn`；`testdata/m3_signal_catch.bpmn`；`testdata/m3_parallel_message_throw_catch.bpmn`（并行分支 throw 唤醒 sibling catch）。
 
 详细程序设计见 [DESIGN.md](./DESIGN.md)。
 

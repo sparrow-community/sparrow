@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             id="Definitions_parallel_throw_catch"
+             targetNamespace="http://sparrow.example/parallel-throw-catch">
+  <message id="message_1" name="order.confirmed"/>
+  <process id="Process_parallel_throw_catch" name="M3 Parallel Message Throw Catch" isExecutable="true">
+    <startEvent id="StartEvent_1">
+      <outgoing>Flow_start_to_fork</outgoing>
+    </startEvent>
+    <parallelGateway id="Fork_1">
+      <incoming>Flow_start_to_fork</incoming>
+      <outgoing>Flow_fork_to_catch</outgoing>
+      <outgoing>Flow_fork_to_task</outgoing>
+    </parallelGateway>
+    <intermediateCatchEvent id="MessageCatch_1" name="Wait">
+      <incoming>Flow_fork_to_catch</incoming>
+      <outgoing>Flow_catch_to_join</outgoing>
+      <messageEventDefinition id="MsgDef_1" messageRef="message_1"/>
+    </intermediateCatchEvent>
+    <userTask id="UserTask_1" name="Prepare">
+      <incoming>Flow_fork_to_task</incoming>
+      <outgoing>Flow_task_to_throw</outgoing>
+    </userTask>
+    <intermediateThrowEvent id="MessageThrow_1" name="Notify">
+      <incoming>Flow_task_to_throw</incoming>
+      <outgoing>Flow_throw_to_join</outgoing>
+      <messageEventDefinition id="MsgDef_2" messageRef="message_1"/>
+    </intermediateThrowEvent>
+    <parallelGateway id="Join_1">
+      <incoming>Flow_catch_to_join</incoming>
+      <incoming>Flow_throw_to_join</incoming>
+      <outgoing>Flow_join_to_end</outgoing>
+    </parallelGateway>
+    <endEvent id="EndEvent_1">
+      <incoming>Flow_join_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_fork" sourceRef="StartEvent_1" targetRef="Fork_1"/>
+    <sequenceFlow id="Flow_fork_to_catch" sourceRef="Fork_1" targetRef="MessageCatch_1"/>
+    <sequenceFlow id="Flow_fork_to_task" sourceRef="Fork_1" targetRef="UserTask_1"/>
+    <sequenceFlow id="Flow_task_to_throw" sourceRef="UserTask_1" targetRef="MessageThrow_1"/>
+    <sequenceFlow id="Flow_catch_to_join" sourceRef="MessageCatch_1" targetRef="Join_1"/>
+    <sequenceFlow id="Flow_throw_to_join" sourceRef="MessageThrow_1" targetRef="Join_1"/>
+    <sequenceFlow id="Flow_join_to_end" sourceRef="Join_1" targetRef="EndEvent_1"/>
+  </process>
+</definitions>

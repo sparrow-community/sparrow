@@ -19,10 +19,12 @@ message EventPayload {
   int64 due_unix_ms = 1;
   // Original timer expression text (timeDuration or timeDate). Empty if unused.
   string duration = 2;
-  // BPMN message name for a message catch. Set on ACTIVATED; empty for timers.
+  // BPMN message name for a message catch or message throw. Empty when unused.
   string message_name = 3;
   // Variable deltas typically set on COMPLETING (e.g. PublishMessage payload).
   repeated Variable variables = 4;
+  // BPMN signal name for a signal catch or signal throw. Empty when unused.
+  string signal_name = 5;
 }
 
 // Shared payload for BPMN activities (tasks, subProcess, callActivity, …).

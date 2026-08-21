@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             id="Definitions_signal_catch"
+             targetNamespace="http://sparrow.example/signal-catch">
+  <signal id="signal_1" name="go.ahead"/>
+  <process id="Process_signal_catch" name="M3 Signal Catch" isExecutable="true">
+    <startEvent id="StartEvent_1">
+      <outgoing>Flow_start_to_sig</outgoing>
+    </startEvent>
+    <intermediateCatchEvent id="SignalCatch_1" name="Wait">
+      <incoming>Flow_start_to_sig</incoming>
+      <outgoing>Flow_sig_to_end</outgoing>
+      <signalEventDefinition id="SigDef_1" signalRef="signal_1"/>
+    </intermediateCatchEvent>
+    <endEvent id="EndEvent_1">
+      <incoming>Flow_sig_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_sig" sourceRef="StartEvent_1" targetRef="SignalCatch_1"/>
+    <sequenceFlow id="Flow_sig_to_end" sourceRef="SignalCatch_1" targetRef="EndEvent_1"/>
+  </process>
+</definitions>

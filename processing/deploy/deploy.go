@@ -18,6 +18,8 @@ type Deployment struct {
 
 	timerCatch   map[string]timerCatch // catch or interrupting timer boundary id
 	messageCatch map[string]string     // intermediate catch or interrupting message boundary id -> name
+	signalCatch  map[string]string     // intermediate signal catch id -> name
+	throwEvents  map[string]throwSpec  // intermediate throw id -> spec
 	elements     map[string]*elemEntry // flat index of all elements (recursive into subprocesses)
 	seqFlows     map[string]*seqFlowEntry
 }
@@ -66,22 +68,24 @@ func Compile(bpmnXML []byte) (*Deployment, error) {
 	}
 
 	d := &Deployment{Version: 1, Process: *proc}
-	d.compile(model.Definitions.Messages)
+	d.compile(model.Definitions.Messages, model.Definitions.Signals)
 	return d, nil
 }
 
-func (d *Deployment) compile(messages []element.Message) {
+func (d *Deployment) compile(messages []element.Message, signals []element.Signal) {
 	p := &d.Process
 	d.timerCatch = make(map[string]timerCatch, len(p.IntermediateCatchEvents)+len(p.BoundaryEvents))
 	d.messageCatch = make(map[string]string, len(p.IntermediateCatchEvents)+len(p.BoundaryEvents))
+	d.signalCatch = make(map[string]string, len(p.IntermediateCatchEvents))
+	d.throwEvents = make(map[string]throwSpec, len(p.IntermediateThrowEvents))
 	d.elements = make(map[string]*elemEntry)
 	d.seqFlows = make(map[string]*seqFlowEntry)
 
-	d.indexScope(&p.FlowElements, p.ID, messages)
+	d.indexScope(&p.FlowElements, p.ID, messages, signals)
 	d.elements[p.ID] = &elemEntry{Type: eventv1.Element_TYPE_PROCESS, ScopeID: ""}
 }
 
-func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messages []element.Message) {
+func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messages []element.Message, signals []element.Signal) {
 	reg := func(id string, typ eventv1.Element_Type, outgoing, incoming []string) {
 		d.elements[id] = &elemEntry{Type: typ, ScopeID: scopeID, Outgoing: outgoing, Incoming: incoming}
 	}
@@ -115,6 +119,14 @@ func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messag
 			d.timerCatch[e.ID] = spec
 		} else if spec, err := messageCatchSpec(e, messages); err == nil {
 			d.messageCatch[e.ID] = spec.Name
+		} else if name, err := signalCatchSpec(e, signals); err == nil {
+			d.signalCatch[e.ID] = name
+		}
+	}
+	for _, e := range fe.IntermediateThrowEvents {
+		reg(e.ID, eventv1.Element_TYPE_INTERMEDIATE_THROW_EVENT, e.Outgoing, e.Incoming)
+		if spec, err := throwEventSpec(e, messages, signals); err == nil {
+			d.throwEvents[e.ID] = spec
 		}
 	}
 	for _, e := range fe.BoundaryEvents {
@@ -132,7 +144,7 @@ func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messag
 	for i := range fe.SubProcesses {
 		sp := &fe.SubProcesses[i]
 		reg(sp.ID, eventv1.Element_TYPE_SUB_PROCESS, sp.Outgoing, sp.Incoming)
-		d.indexScope(&sp.FlowElements, sp.ID, messages)
+		d.indexScope(&sp.FlowElements, sp.ID, messages, signals)
 	}
 }
 
@@ -141,7 +153,6 @@ func validateM1(proc *element.Process) error {
 	unsupported += len(proc.Tasks) + len(proc.ManualTasks)
 	unsupported += len(proc.SendTasks) + len(proc.ReceiveTasks) + len(proc.BusinessRuleTasks)
 	unsupported += len(proc.CallActivities)
-	unsupported += len(proc.IntermediateThrowEvents)
 	if unsupported > 0 {
 		return fmt.Errorf("UNSUPPORTED_ELEMENT: process contains elements outside M1 subset")
 	}
@@ -151,16 +162,8 @@ func validateM1(proc *element.Process) error {
 	if err := validateEventBasedGateways(&proc.FlowElements); err != nil {
 		return err
 	}
-	for _, e := range proc.IntermediateCatchEvents {
-		if len(e.TimerEventDefinitions) > 0 {
-			if _, err := timerCatchSpec(e); err != nil {
-				return err
-			}
-			continue
-		}
-		if _, err := messageCatchSpec(e, nil); err != nil {
-			return fmt.Errorf("UNSUPPORTED_ELEMENT: intermediateCatchEvent %q must be either timer catch or message catch", e.ID)
-		}
+	if err := validateCatchAndThrow(&proc.FlowElements); err != nil {
+		return err
 	}
 	type seenKey struct {
 		activity string
@@ -199,6 +202,35 @@ func validateM1(proc *element.Process) error {
 	}
 	if len(proc.StartEvents) == 0 {
 		return fmt.Errorf("no startEvent in process")
+	}
+	return nil
+}
+
+func validateCatchAndThrow(fe *element.FlowElements) error {
+	for _, e := range fe.IntermediateCatchEvents {
+		if len(e.TimerEventDefinitions) > 0 {
+			if _, err := timerCatchSpec(e); err != nil {
+				return err
+			}
+			continue
+		}
+		if _, err := messageCatchSpec(e, nil); err == nil {
+			continue
+		}
+		if _, err := signalCatchSpec(e, nil); err == nil {
+			continue
+		}
+		return fmt.Errorf("UNSUPPORTED_ELEMENT: intermediateCatchEvent %q must be timer, message, or signal catch", e.ID)
+	}
+	for _, e := range fe.IntermediateThrowEvents {
+		if _, err := throwEventSpec(e, nil, nil); err != nil {
+			return err
+		}
+	}
+	for i := range fe.SubProcesses {
+		if err := validateCatchAndThrow(&fe.SubProcesses[i].FlowElements); err != nil {
+			return err
+		}
 	}
 	return nil
 }

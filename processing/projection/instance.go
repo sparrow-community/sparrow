@@ -38,6 +38,9 @@ type Token struct {
 	// or a message boundary on a waiting activity.
 	// Empty when the token is not waiting on a message.
 	MessageName string
+	// SignalName is the BPMN signal name copied from a signal catch ACTIVATED.
+	// Empty when the token is not waiting on a signal.
+	SignalName string
 	// BoundaryID is the timer boundary armed on a waiting activity.
 	// Empty when no timer boundary is armed.
 	BoundaryID string
@@ -205,6 +208,7 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 		tok.DueUnixMs = 0
 		tok.TimerText = ""
 		tok.MessageName = ""
+		tok.SignalName = ""
 		tok.BoundaryID = ""
 		tok.MessageBoundaryID = ""
 		if p := el.GetActivityPayload(); p != nil {
@@ -229,6 +233,9 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 			if p.GetMessageName() != "" {
 				tok.MessageName = p.GetMessageName()
 			}
+			if p.GetSignalName() != "" {
+				tok.SignalName = p.GetSignalName()
+			}
 		}
 	case eventv1.Element_INTENT_COMPLETED, eventv1.Element_INTENT_TERMINATED:
 		if el.GetIntent() == eventv1.Element_INTENT_TERMINATED &&
@@ -242,6 +249,7 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 		tok.DueUnixMs = 0
 		tok.TimerText = ""
 		tok.MessageName = ""
+		tok.SignalName = ""
 		tok.BoundaryID = ""
 		tok.MessageBoundaryID = ""
 	case eventv1.Element_INTENT_FAILED:
@@ -256,6 +264,7 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 		tok.DueUnixMs = 0
 		tok.TimerText = ""
 		tok.MessageName = ""
+		tok.SignalName = ""
 		tok.BoundaryID = ""
 		tok.MessageBoundaryID = ""
 		if sp := el.GetSequenceFlowPayload(); sp != nil && sp.GetTargetId() != "" {

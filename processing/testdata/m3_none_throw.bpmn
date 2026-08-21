@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             id="Definitions_none_throw"
+             targetNamespace="http://sparrow.example/none-throw">
+  <process id="Process_none_throw" name="M3 None Throw" isExecutable="true">
+    <startEvent id="StartEvent_1">
+      <outgoing>Flow_start_to_throw</outgoing>
+    </startEvent>
+    <intermediateThrowEvent id="NoneThrow_1" name="Milestone">
+      <incoming>Flow_start_to_throw</incoming>
+      <outgoing>Flow_throw_to_end</outgoing>
+    </intermediateThrowEvent>
+    <endEvent id="EndEvent_1">
+      <incoming>Flow_throw_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_throw" sourceRef="StartEvent_1" targetRef="NoneThrow_1"/>
+    <sequenceFlow id="Flow_throw_to_end" sourceRef="NoneThrow_1" targetRef="EndEvent_1"/>
+  </process>
+</definitions>

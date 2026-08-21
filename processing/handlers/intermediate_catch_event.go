@@ -41,6 +41,12 @@ func (IntermediateCatchEventHandler) OnEnter(in EnterInput) (*Effect, error) {
 			return nil, err
 		}
 		payload = &eventv1.EventPayload{MessageName: name}
+	case deploy.CatchKindSignal:
+		name, err := in.Deployment.SignalName(in.ElementID)
+		if err != nil {
+			return nil, err
+		}
+		payload = &eventv1.EventPayload{SignalName: name}
 	default:
 		return nil, fmt.Errorf("UNSUPPORTED_ELEMENT: intermediateCatchEvent %q has unsupported kind %q", in.ElementID, string(kind))
 	}

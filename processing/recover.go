@@ -71,11 +71,19 @@ func (e *Engine) maybeRedrive(ctx context.Context, cmd *eventv1.Event, hasEvent 
 	}
 
 	lock.Lock()
-	defer lock.Unlock()
 	if hasEvent && instanceStable(inst) && !completeCommandUnfinished(inst, cmd) {
+		lock.Unlock()
 		return nil
 	}
-	return e.redriveCommand(ctx, dep, inst, cmd)
+	pubs, err := e.redriveCommand(ctx, dep, inst, cmd)
+	lock.Unlock()
+	if err != nil {
+		return err
+	}
+	if err := e.flushPublications(ctx, pubs); err != nil {
+		return err
+	}
+	return e.tryDeliverBuffered(ctx, iid)
 }
 
 func completeCommandUnfinished(inst *projection.Instance, cmd *eventv1.Event) bool {
@@ -102,31 +110,31 @@ func instanceStable(inst *projection.Instance) bool {
 	return false
 }
 
-func (e *Engine) redriveCommand(ctx context.Context, dep *deploy.Deployment, inst *projection.Instance, cmd *eventv1.Event) error {
+func (e *Engine) redriveCommand(ctx context.Context, dep *deploy.Deployment, inst *projection.Instance, cmd *eventv1.Event) ([]handlers.Publication, error) {
 	el := cmd.GetElement()
 	if el == nil {
-		return fmt.Errorf("command %s has no element", cmd.GetId())
+		return nil, fmt.Errorf("command %s has no element", cmd.GetId())
 	}
 	emit := e.emitter(ctx, inst, cmd.GetId())
 	switch el.GetIntent() {
 	case eventv1.Element_INTENT_ACTIVATING:
 		if el.GetType() != eventv1.Element_TYPE_PROCESS {
-			return fmt.Errorf("unsupported activating command type %v", el.GetType())
+			return nil, fmt.Errorf("unsupported activating command type %v", el.GetType())
 		}
 		return e.redriveCreateInstance(ctx, dep, inst, cmd, emit)
 	case eventv1.Element_INTENT_COMPLETING:
 		return e.redriveComplete(ctx, dep, inst, cmd, emit)
 	case eventv1.Element_INTENT_FAILED:
-		return e.redriveFail(inst, cmd, emit)
+		return nil, e.redriveFail(inst, cmd, emit)
 	default:
-		return fmt.Errorf("unsupported command intent %v", el.GetIntent())
+		return nil, fmt.Errorf("unsupported command intent %v", el.GetIntent())
 	}
 }
 
-func (e *Engine) redriveCreateInstance(ctx context.Context, dep *deploy.Deployment, inst *projection.Instance, cmd *eventv1.Event, emit Emitter) error {
+func (e *Engine) redriveCreateInstance(ctx context.Context, dep *deploy.Deployment, inst *projection.Instance, cmd *eventv1.Event, emit Emitter) ([]handlers.Publication, error) {
 	startID, err := dep.StartEventID()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	tokenID := cmd.GetElement().GetTokenId()
 	if tokenID == "" {
@@ -140,7 +148,7 @@ func (e *Engine) redriveCreateInstance(ctx context.Context, dep *deploy.Deployme
 	if tokenID == "" {
 		tokenID, err = NextID()
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 	var pv []*eventv1.Variable
@@ -149,23 +157,24 @@ func (e *Engine) redriveCreateInstance(ctx context.Context, dep *deploy.Deployme
 	}
 	for _, rec := range handlers.ProcessStartRecords(dep.ProcessID(), pv) {
 		if err := emit(rec); err != nil {
-			return err
+			return nil, err
 		}
 	}
 	return e.executor.Enter(ctx, dep, inst, tokenID, startID, emit)
 }
 
-func (e *Engine) redriveComplete(ctx context.Context, dep *deploy.Deployment, inst *projection.Instance, cmd *eventv1.Event, emit Emitter) error {
+func (e *Engine) redriveComplete(ctx context.Context, dep *deploy.Deployment, inst *projection.Instance, cmd *eventv1.Event, emit Emitter) ([]handlers.Publication, error) {
 	el := cmd.GetElement()
 	var pv []*eventv1.Variable
 	if p := el.GetActivityPayload(); p != nil {
 		pv = p.GetVariables()
 	}
-	if err := e.executor.Complete(ctx, dep, inst, el.GetTokenId(), el.GetId(), pv, emit); err != nil {
-		return err
+	pubs, err := e.executor.Complete(ctx, dep, inst, el.GetTokenId(), el.GetId(), pv, emit)
+	if err != nil {
+		return pubs, err
 	}
 	e.releaseLease(inst.ID, el.GetTokenId())
-	return nil
+	return pubs, nil
 }
 
 func (e *Engine) redriveFail(inst *projection.Instance, cmd *eventv1.Event, emit Emitter) error {

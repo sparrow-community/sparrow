@@ -126,10 +126,12 @@ type EventPayload struct {
 	DueUnixMs int64 `protobuf:"varint,1,opt,name=due_unix_ms,json=dueUnixMs,proto3" json:"due_unix_ms,omitempty"`
 	// Original timer expression text (timeDuration or timeDate). Empty if unused.
 	Duration string `protobuf:"bytes,2,opt,name=duration,proto3" json:"duration,omitempty"`
-	// BPMN message name for a message catch. Set on ACTIVATED; empty for timers.
+	// BPMN message name for a message catch or message throw. Empty when unused.
 	MessageName string `protobuf:"bytes,3,opt,name=message_name,json=messageName,proto3" json:"message_name,omitempty"`
 	// Variable deltas typically set on COMPLETING (e.g. PublishMessage payload).
-	Variables     []*Variable `protobuf:"bytes,4,rep,name=variables,proto3" json:"variables,omitempty"`
+	Variables []*Variable `protobuf:"bytes,4,rep,name=variables,proto3" json:"variables,omitempty"`
+	// BPMN signal name for a signal catch or signal throw. Empty when unused.
+	SignalName    string `protobuf:"bytes,5,opt,name=signal_name,json=signalName,proto3" json:"signal_name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -190,6 +192,13 @@ func (x *EventPayload) GetVariables() []*Variable {
 		return x.Variables
 	}
 	return nil
+}
+
+func (x *EventPayload) GetSignalName() string {
+	if x != nil {
+		return x.SignalName
+	}
+	return ""
 }
 
 // Shared payload for BPMN activities (tasks, subProcess, callActivity, …).
@@ -449,12 +458,14 @@ const file_event_v1_payloads_proto_rawDesc = "" +
 	"\n" +
 	"json_value\x18\x02 \x01(\tR\tjsonValue\"B\n" +
 	"\x0eProcessPayload\x120\n" +
-	"\tvariables\x18\x01 \x03(\v2\x12.event.v1.VariableR\tvariables\"\x9f\x01\n" +
+	"\tvariables\x18\x01 \x03(\v2\x12.event.v1.VariableR\tvariables\"\xc0\x01\n" +
 	"\fEventPayload\x12\x1e\n" +
 	"\vdue_unix_ms\x18\x01 \x01(\x03R\tdueUnixMs\x12\x1a\n" +
 	"\bduration\x18\x02 \x01(\tR\bduration\x12!\n" +
 	"\fmessage_name\x18\x03 \x01(\tR\vmessageName\x120\n" +
-	"\tvariables\x18\x04 \x03(\v2\x12.event.v1.VariableR\tvariables\"\xb3\x02\n" +
+	"\tvariables\x18\x04 \x03(\v2\x12.event.v1.VariableR\tvariables\x12\x1f\n" +
+	"\vsignal_name\x18\x05 \x01(\tR\n" +
+	"signalName\"\xb3\x02\n" +
 	"\x0fActivityPayload\x120\n" +
 	"\tvariables\x18\x01 \x03(\v2\x12.event.v1.VariableR\tvariables\x12\x19\n" +
 	"\bjob_type\x18\x02 \x01(\tR\ajobType\x12#\n" +

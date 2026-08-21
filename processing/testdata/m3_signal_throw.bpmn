@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             id="Definitions_signal_throw"
+             targetNamespace="http://sparrow.example/signal-throw">
+  <signal id="signal_1" name="go.ahead"/>
+  <process id="Process_signal_throw" name="M3 Signal Throw" isExecutable="true">
+    <startEvent id="StartEvent_1">
+      <outgoing>Flow_start_to_throw</outgoing>
+    </startEvent>
+    <intermediateThrowEvent id="SignalThrow_1" name="Broadcast">
+      <incoming>Flow_start_to_throw</incoming>
+      <outgoing>Flow_throw_to_end</outgoing>
+      <signalEventDefinition id="SigDef_1" signalRef="signal_1"/>
+    </intermediateThrowEvent>
+    <endEvent id="EndEvent_1">
+      <incoming>Flow_throw_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_throw" sourceRef="StartEvent_1" targetRef="SignalThrow_1"/>
+    <sequenceFlow id="Flow_throw_to_end" sourceRef="SignalThrow_1" targetRef="EndEvent_1"/>
+  </process>
+</definitions>

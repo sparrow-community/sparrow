@@ -40,16 +40,17 @@ func (x *Executor) Enter(
 	inst *projection.Instance,
 	tokenID, elementID string,
 	emit Emitter,
-) error {
+) ([]handlers.Publication, error) {
+	var pubs []handlers.Publication
 	for {
 		typ, err := dep.TypeOf(elementID)
 		if err != nil {
-			return fmt.Errorf("UNSUPPORTED_ELEMENT: %v", err)
+			return pubs, fmt.Errorf("UNSUPPORTED_ELEMENT: %v", err)
 		}
 
 		h, err := x.Handlers.Get(typ)
 		if err != nil {
-			return err
+			return pubs, err
 		}
 		effect, err := h.OnEnter(handlers.EnterInput{
 			Deployment: dep,
@@ -60,12 +61,15 @@ func (x *Executor) Enter(
 			Now:        x.now(),
 		})
 		if err != nil {
-			return err
+			return pubs, err
 		}
 		for _, rec := range effect.Records {
 			if err := emit(rec); err != nil {
-				return err
+				return pubs, err
 			}
+		}
+		if effect.Publish != nil {
+			pubs = append(pubs, *effect.Publish)
 		}
 		if effect.EnterChild != "" {
 			elementID = effect.EnterChild
@@ -78,37 +82,41 @@ func (x *Executor) Enter(
 					var err error
 					tid, err = NextID()
 					if err != nil {
-						return err
+						return pubs, err
 					}
 				}
 				next, err := x.takeOutgoing(dep, tid, elementID, flowID, emit)
 				if err != nil {
-					return err
+					return pubs, err
 				}
-				if err := x.Enter(ctx, dep, inst, tid, next, emit); err != nil {
-					return err
+				more, err := x.Enter(ctx, dep, inst, tid, next, emit)
+				pubs = append(pubs, more...)
+				if err != nil {
+					return pubs, err
 				}
 			}
-			return nil
+			return pubs, nil
 		}
 		if effect.Wait {
-			return nil
+			return pubs, nil
 		}
 		if effect.TryCompleteProcess {
-			return x.tryCompleteScope(ctx, dep, inst, tokenID, elementID, emit)
+			more, err := x.tryCompleteScope(ctx, dep, inst, tokenID, elementID, emit)
+			pubs = append(pubs, more...)
+			return pubs, err
 		}
 		if !effect.TakeOutgoing {
-			return nil
+			return pubs, nil
 		}
 		if effect.TerminateJoinPeers != "" {
 			if err := x.terminateJoinPeers(inst, tokenID, effect.TerminateJoinPeers, emit); err != nil {
-				return err
+				return pubs, err
 			}
 		}
 
 		next, err := x.takeOutgoing(dep, tokenID, elementID, effect.OutgoingFlowID, emit)
 		if err != nil {
-			return err
+			return pubs, err
 		}
 		elementID = next
 	}
@@ -121,14 +129,14 @@ func (x *Executor) Complete(
 	tokenID, elementID string,
 	vars []*eventv1.Variable,
 	emit Emitter,
-) error {
+) ([]handlers.Publication, error) {
 	typ, err := dep.TypeOf(elementID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	h, err := x.Handlers.Get(typ)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	effect, err := h.OnComplete(handlers.CompleteInput{
 		Deployment: dep,
@@ -140,47 +148,57 @@ func (x *Executor) Complete(
 		Variables:  vars,
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
+	var pubs []handlers.Publication
 	for _, rec := range effect.Records {
 		if err := emit(rec); err != nil {
-			return err
+			return pubs, err
 		}
+	}
+	if effect.Publish != nil {
+		pubs = append(pubs, *effect.Publish)
 	}
 	if len(effect.TerminateWaitingAt) > 0 {
 		if err := x.terminateWaitingAt(inst, tokenID, effect.TerminateWaitingAt, emit); err != nil {
-			return err
+			return pubs, err
 		}
 	}
 	if effect.SpawnOutgoing != nil {
 		spawn := effect.SpawnOutgoing
 		spawnID, err := NextID()
 		if err != nil {
-			return err
+			return pubs, err
 		}
 		for _, rec := range handlers.InstantLifecycle(spawn.Type, spawn.ElementID, spawnID, nil) {
 			if err := emit(rec); err != nil {
-				return err
+				return pubs, err
 			}
 		}
 		next, err := x.takeOutgoing(dep, spawnID, spawn.ElementID, spawn.OutgoingFlowID, emit)
 		if err != nil {
-			return err
+			return pubs, err
 		}
-		if err := x.Enter(ctx, dep, inst, spawnID, next, emit); err != nil {
-			return err
+		more, err := x.Enter(ctx, dep, inst, spawnID, next, emit)
+		pubs = append(pubs, more...)
+		if err != nil {
+			return pubs, err
 		}
-		return x.tryCompleteProcessScope(dep, inst, emit)
+		more, err = x.tryCompleteProcessScope(dep, inst, emit)
+		pubs = append(pubs, more...)
+		return pubs, err
 	}
 	if effect.Wait || !effect.TakeOutgoing {
-		return nil
+		return pubs, nil
 	}
 
 	next, err := x.takeOutgoing(dep, tokenID, elementID, effect.OutgoingFlowID, emit)
 	if err != nil {
-		return err
+		return pubs, err
 	}
-	return x.Enter(ctx, dep, inst, tokenID, next, emit)
+	more, err := x.Enter(ctx, dep, inst, tokenID, next, emit)
+	pubs = append(pubs, more...)
+	return pubs, err
 }
 
 func (x *Executor) terminateJoinPeers(inst *projection.Instance, survivorTokenID, joinElementID string, emit Emitter) error {
@@ -265,7 +283,7 @@ func (x *Executor) takeOutgoing(
 // tryCompleteScope checks if the scope containing elementID can be completed.
 // If elementID is inside a SubProcess, tries to complete that SubProcess.
 // If at process level, tries to complete the Process.
-func (x *Executor) tryCompleteScope(ctx context.Context, dep *deploy.Deployment, inst *projection.Instance, tokenID, elementID string, emit Emitter) error {
+func (x *Executor) tryCompleteScope(ctx context.Context, dep *deploy.Deployment, inst *projection.Instance, tokenID, elementID string, emit Emitter) ([]handlers.Publication, error) {
 	scopeID, _ := dep.ScopeOf(elementID)
 	if scopeID == "" || scopeID == dep.ProcessID() {
 		return x.tryCompleteProcessScope(dep, inst, emit)
@@ -275,7 +293,7 @@ func (x *Executor) tryCompleteScope(ctx context.Context, dep *deploy.Deployment,
 		if tok.Status == projection.TokenWaiting {
 			tokScope, _ := dep.ScopeOf(tok.ElementID)
 			if tokScope == scopeID {
-				return nil
+				return nil, nil
 			}
 			continue
 		}
@@ -283,7 +301,7 @@ func (x *Executor) tryCompleteScope(ctx context.Context, dep *deploy.Deployment,
 		if tokScope == scopeID {
 			typ, err := dep.TypeOf(tok.ElementID)
 			if err != nil || typ != eventv1.Element_TYPE_END_EVENT {
-				return nil
+				return nil, nil
 			}
 		}
 	}
@@ -291,7 +309,7 @@ func (x *Executor) tryCompleteScope(ctx context.Context, dep *deploy.Deployment,
 	inst.RemoveScopeBoundariesForScope(scopeID)
 	h, err := x.Handlers.Get(eventv1.Element_TYPE_SUB_PROCESS)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	effect, err := h.OnComplete(handlers.CompleteInput{
 		Deployment: dep,
@@ -301,51 +319,61 @@ func (x *Executor) tryCompleteScope(ctx context.Context, dep *deploy.Deployment,
 		TokenID:    tokenID,
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
+	var pubs []handlers.Publication
 	for _, rec := range effect.Records {
 		if err := emit(rec); err != nil {
-			return err
+			return pubs, err
 		}
+	}
+	if effect.Publish != nil {
+		pubs = append(pubs, *effect.Publish)
 	}
 	if effect.TakeOutgoing {
 		next, err := x.takeOutgoing(dep, tokenID, scopeID, effect.OutgoingFlowID, emit)
 		if err != nil {
-			return err
+			return pubs, err
 		}
-		return x.Enter(ctx, dep, inst, tokenID, next, emit)
+		more, err := x.Enter(ctx, dep, inst, tokenID, next, emit)
+		pubs = append(pubs, more...)
+		return pubs, err
 	}
-	return nil
+	return pubs, nil
 }
 
 // tryCompleteProcessScope checks if all tokens are at process-level EndEvents.
-func (x *Executor) tryCompleteProcessScope(dep *deploy.Deployment, inst *projection.Instance, emit Emitter) error {
+func (x *Executor) tryCompleteProcessScope(dep *deploy.Deployment, inst *projection.Instance, emit Emitter) ([]handlers.Publication, error) {
 	processID := dep.ProcessID()
 	for _, tok := range inst.Tokens {
 		if tok.Status == projection.TokenWaiting {
-			return nil
+			return nil, nil
 		}
 		tokScope, _ := dep.ScopeOf(tok.ElementID)
 		if tokScope != processID {
-			return nil
+			return nil, nil
 		}
 		typ, err := dep.TypeOf(tok.ElementID)
 		if err != nil || typ != eventv1.Element_TYPE_END_EVENT {
-			return nil
+			return nil, nil
 		}
 	}
 	h, err := x.Handlers.Get(eventv1.Element_TYPE_PROCESS)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	effect, err := h.OnComplete(handlers.CompleteInput{Deployment: dep, Instance: inst})
 	if err != nil {
-		return err
+		return nil, err
 	}
+	var pubs []handlers.Publication
 	for _, rec := range effect.Records {
 		if err := emit(rec); err != nil {
-			return err
+			return pubs, err
 		}
 	}
-	return nil
+	if effect.Publish != nil {
+		pubs = append(pubs, *effect.Publish)
+	}
+	return pubs, nil
 }

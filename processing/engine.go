@@ -147,9 +147,12 @@ func (e *Engine) CreateInstance(ctx context.Context, deploymentID string, vars m
 			return "", err
 		}
 	}
-	err = e.executor.Enter(ctx, dep, inst, tokenID, startID, emit)
+	pubs, err := e.executor.Enter(ctx, dep, inst, tokenID, startID, emit)
 	lock.Unlock()
 	if err != nil {
+		return "", err
+	}
+	if err := e.flushPublications(ctx, pubs); err != nil {
 		return "", err
 	}
 	if err := e.tryDeliverBuffered(ctx, instanceID); err != nil {
@@ -172,15 +175,18 @@ func (e *Engine) Complete(ctx context.Context, instanceID, elementID, tokenID st
 	}
 
 	lock.Lock()
-	err := e.completeLocked(ctx, dep, inst, instanceID, elementID, tokenID, vars)
+	pubs, err := e.completeLocked(ctx, dep, inst, instanceID, elementID, tokenID, vars)
 	lock.Unlock()
 	if err != nil {
+		return err
+	}
+	if err := e.flushPublications(ctx, pubs); err != nil {
 		return err
 	}
 	return e.tryDeliverBuffered(ctx, instanceID)
 }
 
-func (e *Engine) completeLocked(ctx context.Context, dep *deploy.Deployment, inst *projection.Instance, instanceID, elementID, tokenID string, vars map[string]any) error {
+func (e *Engine) completeLocked(ctx context.Context, dep *deploy.Deployment, inst *projection.Instance, instanceID, elementID, tokenID string, vars map[string]any) ([]handlers.Publication, error) {
 	typ, typeErr := dep.TypeOf(elementID)
 	if typeErr != nil {
 		typ = eventv1.Element_TYPE_UNSPECIFIED
@@ -195,19 +201,19 @@ func (e *Engine) completeLocked(ctx context.Context, dep *deploy.Deployment, ins
 		waiting = tok.ElementID == elementID
 	}
 	if tok == nil || !waiting {
-		return e.reject(ctx, inst, elementID, tokenID, typ, eventv1.Element_INTENT_COMPLETING, "INVALID_STATE", "element is not waiting for completion")
+		return nil, e.reject(ctx, inst, elementID, tokenID, typ, eventv1.Element_INTENT_COMPLETING, "INVALID_STATE", "element is not waiting for completion")
 	}
 	if typeErr != nil {
-		return e.reject(ctx, inst, elementID, tokenID, typ, eventv1.Element_INTENT_COMPLETING, "NOT_FOUND", "element not found")
+		return nil, e.reject(ctx, inst, elementID, tokenID, typ, eventv1.Element_INTENT_COMPLETING, "NOT_FOUND", "element not found")
 	}
 
 	cmdID, err := NextID()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	pv, err := projection.VariablesFromMap(vars)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	cmd := &eventv1.Event{
@@ -228,14 +234,15 @@ func (e *Engine) completeLocked(ctx context.Context, dep *deploy.Deployment, ins
 		},
 	}
 	if _, err := e.log.Append(ctx, cmd); err != nil {
-		return err
+		return nil, err
 	}
 
-	if err := e.executor.Complete(ctx, dep, inst, tokenID, elementID, pv, e.emitter(ctx, inst, cmdID)); err != nil {
-		return err
+	pubs, err := e.executor.Complete(ctx, dep, inst, tokenID, elementID, pv, e.emitter(ctx, inst, cmdID))
+	if err != nil {
+		return pubs, err
 	}
 	e.releaseLease(instanceID, tokenID)
-	return nil
+	return pubs, nil
 }
 
 func (e *Engine) GetInstance(instanceID string) (*projection.Instance, bool) {
@@ -394,18 +401,28 @@ func (e *Engine) completeScopeBoundary(ctx context.Context, instanceID, boundary
 	}
 
 	lock.Lock()
-	defer lock.Unlock()
+	pubs, err := e.completeScopeBoundaryLocked(ctx, dep, inst, instanceID, boundaryID)
+	lock.Unlock()
+	if err != nil {
+		return err
+	}
+	if err := e.flushPublications(ctx, pubs); err != nil {
+		return err
+	}
+	return e.tryDeliverBuffered(ctx, instanceID)
+}
 
+func (e *Engine) completeScopeBoundaryLocked(ctx context.Context, dep *deploy.Deployment, inst *projection.Instance, instanceID, boundaryID string) ([]handlers.Publication, error) {
 	sb, ok := inst.ScopeBoundaries[boundaryID]
 	if !ok {
-		return nil // already disarmed
+		return nil, nil // already disarmed
 	}
 	scopeID := sb.ScopeID
 	tokenID := sb.TokenID
 
 	cmdID, err := NextID()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	cmd := &eventv1.Event{
 		Id:                cmdID,
@@ -422,7 +439,7 @@ func (e *Engine) completeScopeBoundary(ctx context.Context, instanceID, boundary
 		},
 	}
 	if _, err := e.log.Append(ctx, cmd); err != nil {
-		return err
+		return nil, err
 	}
 
 	emit := e.emitter(ctx, inst, cmdID)
@@ -447,7 +464,7 @@ func (e *Engine) completeScopeBoundary(ctx context.Context, instanceID, boundary
 				Id:      tok.ElementID,
 				TokenId: tid,
 			}); err != nil {
-				return err
+				return nil, err
 			}
 		}
 	}
@@ -459,7 +476,7 @@ func (e *Engine) completeScopeBoundary(ctx context.Context, instanceID, boundary
 		Id:      scopeID,
 		TokenId: tokenID,
 	}); err != nil {
-		return err
+		return nil, err
 	}
 	if err := emit(&eventv1.Element{
 		Intent:  eventv1.Element_INTENT_TERMINATED,
@@ -467,7 +484,7 @@ func (e *Engine) completeScopeBoundary(ctx context.Context, instanceID, boundary
 		Id:      scopeID,
 		TokenId: tokenID,
 	}); err != nil {
-		return err
+		return nil, err
 	}
 
 	// Remove scope boundaries
@@ -480,7 +497,7 @@ func (e *Engine) completeScopeBoundary(ctx context.Context, instanceID, boundary
 		Id:      boundaryID,
 		TokenId: tokenID,
 	}); err != nil {
-		return err
+		return nil, err
 	}
 	if err := emit(&eventv1.Element{
 		Intent:  eventv1.Element_INTENT_COMPLETED,
@@ -488,13 +505,13 @@ func (e *Engine) completeScopeBoundary(ctx context.Context, instanceID, boundary
 		Id:      boundaryID,
 		TokenId: tokenID,
 	}); err != nil {
-		return err
+		return nil, err
 	}
 
 	// Take boundary outgoing flow
 	next, err := e.executor.takeOutgoing(dep, tokenID, boundaryID, "", emit)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	return e.executor.Enter(ctx, dep, inst, tokenID, next, emit)
 }

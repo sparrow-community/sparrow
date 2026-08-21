@@ -20,6 +20,8 @@ message Token {
   int64 due_unix_ms = 6;
   // Attached interrupting timer boundary id; empty otherwise.
   string boundary_id = 7;
+  // BPMN signal name when waiting on a signal catch; empty otherwise.
+  string signal_name = 8;
 }
 
 // Instance is a read-only projection snapshot. It is not an EventLog record.
@@ -115,6 +117,23 @@ message PublishMessageResponse {
   int32 buffered = 2;
 }
 
+// PublishSignalRequest broadcasts a BPMN signal to waiting signal catches.
+// Late signals with no waiter are dropped (not buffered).
+message PublishSignalRequest {
+  // BPMN signal name (Definitions/signal@name, else signal id / signalRef).
+  string name = 1;
+  // Optional process instance id. Empty means all matching waiters.
+  string process_instance_id = 2;
+  // Variable deltas applied via Complete: name -> JSON text.
+  map<string, string> variables = 3;
+}
+
+// PublishSignalResponse reports how many waiting signal catches were completed.
+message PublishSignalResponse {
+  // Number of waiting tokens completed.
+  int32 delivered = 1;
+}
+
 // ListEventsRequest reads the audit timeline for one instance.
 message ListEventsRequest {
   // Process instance id (UUIDv7).
@@ -138,6 +157,8 @@ service EngineService {
   rpc Complete(CompleteRequest) returns (CompleteResponse);
   // PublishMessage completes waiting message catches whose name (and optional correlation keys) match.
   rpc PublishMessage(PublishMessageRequest) returns (PublishMessageResponse);
+  // PublishSignal completes waiting signal catches whose name matches (no buffer).
+  rpc PublishSignal(PublishSignalRequest) returns (PublishSignalResponse);
   // GetInstance returns a projection snapshot.
   rpc GetInstance(GetInstanceRequest) returns (GetInstanceResponse);
   // ListEvents returns the instance audit timeline.

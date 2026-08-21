@@ -30,6 +30,23 @@ type Effect struct {
 	// EnterChild tells the executor to enter the given element on the same token
 	// (used by SubProcess to enter the internal start event after ACTIVATED).
 	EnterChild string
+	// Publish is a deferred message/signal throw. The engine delivers it after
+	// the instance lock is released (avoids re-entrant Complete under the same lock).
+	Publish *Publication
+}
+
+// PublicationKind is message or signal broadcast from an intermediate throw.
+type PublicationKind string
+
+const (
+	PublicationMessage PublicationKind = "message"
+	PublicationSignal  PublicationKind = "signal"
+)
+
+// Publication is delivered by the engine after Enter/Complete unlocks the instance.
+type Publication struct {
+	Kind PublicationKind
+	Name string
 }
 
 // SpawnOutgoingEffect describes a boundary path taken on a newly minted token.
@@ -95,6 +112,7 @@ func DefaultRegistry() *Registry {
 		SubProcessHandler{},
 		InclusiveGatewayHandler{},
 		EventBasedGatewayHandler{},
+		IntermediateThrowEventHandler{},
 	)
 }
 
