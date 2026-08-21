@@ -21,7 +21,7 @@
 **`main` 最新提交**（更新时改这里）：
 
 ```text
-Support activity compensation (boundary + throw)
+41bc9e9 Support activity compensation (boundary + throw)
 60f5fba Record parallel event-based gateway commit in STATUS.md
 664fc85 Support parallel event-based gateway (keep sibling catches)
 ad765c9 Support process-level event sub-process (message/timer)
