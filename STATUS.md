@@ -21,7 +21,7 @@
 **`main` 最新提交**（更新时改这里）：
 
 ```text
-Support process-level event sub-process (message/timer)
+ad765c9 Support process-level event sub-process (message/timer)
 072674c Record intermediate throw commit in STATUS.md
 aa2a936 Support intermediate throw (message/signal) and signal catch
 88cc79d Clarify STATUS: exclusive Event-Based gateway is done
