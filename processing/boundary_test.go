@@ -841,3 +841,11 @@ func TestDualBoundaryRecoverThenMessageFires(t *testing.T) {
 		t.Fatal("expected timer boundary TERMINATED")
 	}
 }
+
+func TestDeployAcceptsSignalBoundary(t *testing.T) {
+	xml := readTestdata(t, "m3_signal_boundary.bpmn")
+	eng := processing.NewEngine(eventlog.NewMemory())
+	if _, err := eng.Deploy(context.Background(), xml); err != nil {
+		t.Fatalf("Deploy: %v", err)
+	}
+}

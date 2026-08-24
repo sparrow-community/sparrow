@@ -34,8 +34,9 @@ func (e *Engine) PublishSignal(ctx context.Context, req PublishSignalRequest) (i
 		}
 	}
 	waiters := e.collectSignalWaiters(name, instanceID)
+	scopeWaiters := e.collectScopeSignalWaiters(name, instanceID)
 	espWaiters := e.collectESPSignalArms(name, instanceID)
-	if len(waiters) == 0 && len(espWaiters) == 0 {
+	if len(waiters) == 0 && len(scopeWaiters) == 0 && len(espWaiters) == 0 {
 		return 0, nil
 	}
 	delivered := 0
@@ -48,6 +49,18 @@ func (e *Engine) PublishSignal(ctx context.Context, req PublishSignalRequest) (i
 			if strings.HasPrefix(err.Error(), "INVALID_STATE:") {
 				continue
 			}
+			if first == nil {
+				first = err
+			}
+			continue
+		}
+		delivered++
+	}
+	for _, sw := range scopeWaiters {
+		if err := ctx.Err(); err != nil {
+			return delivered, err
+		}
+		if err := e.completeScopeBoundary(ctx, sw.instanceID, sw.boundaryID); err != nil {
 			if first == nil {
 				first = err
 			}
@@ -102,7 +115,41 @@ func (e *Engine) collectSignalWaiters(name, instanceID string) []dueWait {
 				continue
 			}
 			if tok.SignalName != "" && tok.SignalName == name {
-				waiters = append(waiters, dueWait{instanceID: iid, elementID: tok.ElementID, tokenID: tok.ID})
+				waiters = append(waiters, dueWait{instanceID: iid, elementID: signalWaiterElementID(tok), tokenID: tok.ID})
+			}
+		}
+		lock.Unlock()
+	}
+	return waiters
+}
+
+func (e *Engine) collectScopeSignalWaiters(name, instanceID string) []scopeDueWait {
+	e.mu.Lock()
+	ids := make([]string, 0, len(e.instances))
+	if instanceID != "" {
+		if _, ok := e.instances[instanceID]; ok {
+			ids = append(ids, instanceID)
+		}
+	} else {
+		for id := range e.instances {
+			ids = append(ids, id)
+		}
+	}
+	e.mu.Unlock()
+
+	var waiters []scopeDueWait
+	for _, iid := range ids {
+		e.mu.Lock()
+		inst := e.instances[iid]
+		lock := e.instMu[iid]
+		e.mu.Unlock()
+		if inst == nil || lock == nil {
+			continue
+		}
+		lock.Lock()
+		for _, sb := range inst.ScopeBoundaries {
+			if sb.SignalName != "" && sb.SignalName == name {
+				waiters = append(waiters, scopeDueWait{instanceID: iid, boundaryID: sb.BoundaryID})
 			}
 		}
 		lock.Unlock()

@@ -80,6 +80,26 @@ func messageBoundarySpec(ev element.BoundaryEvent, messages []element.Message) (
 	return messageBoundary{Name: spec.Name, AttachedTo: ev.AttachedToRef, Interrupting: ev.CancelActivity}, nil
 }
 
+type signalBoundary struct {
+	Name         string
+	AttachedTo   string
+	Interrupting bool
+}
+
+func signalBoundarySpec(ev element.BoundaryEvent, signals []element.Signal) (signalBoundary, error) {
+	if err := requireBoundaryAttach(ev); err != nil {
+		return signalBoundary{}, err
+	}
+	if len(ev.TimerEventDefinitions) > 0 {
+		return signalBoundary{}, fmt.Errorf("UNSUPPORTED_ELEMENT: boundaryEvent %q must be a signal boundary", ev.ID)
+	}
+	name, err := signalCatchFromDefs(ev.ID, ev.EventDefinitions, signals, strings.TrimSpace(ev.Name))
+	if err != nil {
+		return signalBoundary{}, err
+	}
+	return signalBoundary{Name: name, AttachedTo: ev.AttachedToRef, Interrupting: ev.CancelActivity}, nil
+}
+
 func timerCatchFromDefs(id string, defs element.EventDefinitions) (timerCatch, error) {
 	if extraCatchDefinitions(defs) > 0 {
 		return timerCatch{}, fmt.Errorf("UNSUPPORTED_ELEMENT: intermediateCatchEvent %q is not a timer catch", id)
@@ -293,7 +313,23 @@ func (d *Deployment) AttachedBoundary(activityID string) (string, bool) {
 	if id, ok := d.TimerBoundary(activityID); ok {
 		return id, true
 	}
-	return d.MessageBoundary(activityID)
+	if id, ok := d.MessageBoundary(activityID); ok {
+		return id, true
+	}
+	return d.SignalBoundary(activityID)
+}
+
+// SignalBoundary returns the signal boundary attached to an activity.
+func (d *Deployment) SignalBoundary(activityID string) (string, bool) {
+	for _, e := range d.Process.BoundaryEvents {
+		if e.AttachedToRef != activityID {
+			continue
+		}
+		if _, ok := d.signalCatch[e.ID]; ok {
+			return e.ID, true
+		}
+	}
+	return "", false
 }
 
 // InterruptingBoundary returns the attached boundary when it is interrupting.

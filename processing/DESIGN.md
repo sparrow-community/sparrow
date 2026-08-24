@@ -197,7 +197,7 @@ runtime 加载时丢弃过期/无效 lease 与过期/死实例消息缓冲；实
 | `USER_TASK` / `SERVICE_TASK` | ACTIVATED 后 Wait；统一 `Complete` 完成；ServiceTask 带 `job_type` |
 | `INTERMEDIATE_CATCH_EVENT` | Timer（due）/ Message / Signal → Wait；由 FireDue / Publish* / Complete 完成 |
 | `INTERMEDIATE_THROW_EVENT` | None 瞬时；Message/Signal 经 Publication 锁外投递；Compensate 逆序执行 handler |
-| `BOUNDARY_EVENT` | Timer / Message / Compensate；打断型 TERMINATE 活动；非打断型 mint 新 token；补偿在活动 COMPLETED 后订阅 |
+| `BOUNDARY_EVENT` | Timer / Message / Signal / Compensate；打断型 TERMINATE 活动；非打断型 mint 新 token；补偿在活动 COMPLETED 后订阅 |
 | `EXCLUSIVE_GATEWAY` | 条件顺序求值，否则 default |
 | `PARALLEL_GATEWAY` | fork / join |
 | `INCLUSIVE_GATEWAY` | OR-split / OR-join（可达 token 防死锁） |
@@ -233,7 +233,7 @@ runtime 加载时丢弃过期/无效 lease 与过期/死实例消息缓冲；实
 |-----|------|
 | `FireDue` | 到期 timer catch / timer boundary → `Complete` |
 | `PublishMessage` | 按 name（+ 可选 correlation_keys / instance）匹配 → `Complete`；无 waiter 则 FIFO 缓冲（可持久化到 runtime） |
-| `PublishSignal` | 按 name 匹配 → `Complete`；**无缓冲** |
+| `PublishSignal` | 按 name 匹配 catch / signal boundary → `Complete`；**无缓冲** |
 | `Activate` / `Fail` / `Heartbeat` | Job 拉模型与租约；**不写** EventLog（除 Fail 的 FAILED） |
 
 ---

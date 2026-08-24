@@ -38,16 +38,20 @@ type Token struct {
 	// or a message boundary on a waiting activity.
 	// Empty when the token is not waiting on a message.
 	MessageName string
-	// SignalName is the BPMN signal name copied from a signal catch ACTIVATED.
+	// SignalName is the BPMN signal name copied from a signal catch ACTIVATED
+	// or a signal boundary on a waiting activity.
 	// Empty when the token is not waiting on a signal.
 	SignalName string
-	// BoundaryID is the timer boundary armed on a waiting activity.
-	// Empty when no timer boundary is armed.
+	// BoundaryID is the first armed waiting boundary on a waiting activity
+	// (timer, or message/signal when that is the only waiting boundary).
 	BoundaryID string
 	// MessageBoundaryID is the message boundary armed on a waiting activity.
 	// Empty when no message boundary is armed. When both timer and message
 	// boundaries exist, BoundaryID holds the timer and MessageBoundaryID holds the message.
 	MessageBoundaryID string
+	// SignalBoundaryID is the signal boundary when another waiting boundary already
+	// occupies BoundaryID. Empty when only a signal boundary is armed (then BoundaryID holds it).
+	SignalBoundaryID string
 }
 
 // ScopeBoundary tracks a boundary armed on a SubProcess scope.
@@ -55,9 +59,10 @@ type ScopeBoundary struct {
 	BoundaryID  string
 	ScopeID     string // the SubProcess element ID
 	TokenID     string // the token that entered the SubProcess
-	DueUnixMs   int64  // timer due (zero if message boundary)
+	DueUnixMs   int64  // timer due (zero if message/signal boundary)
 	TimerText   string // original timer expression
-	MessageName string // message name (empty if timer boundary)
+	MessageName string // message name (empty if timer/signal boundary)
+	SignalName  string // signal name (empty if timer/message boundary)
 }
 
 // EventSubProcessArm is a process-scoped subscription for a triggeredByEvent subProcess.
@@ -235,6 +240,10 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 				tok.MessageName = ""
 				tok.MessageBoundaryID = ""
 			}
+			if bid == tok.SignalBoundaryID || (tok.SignalBoundaryID == "" && tok.SignalName != "" && bid != tok.MessageBoundaryID) {
+				tok.SignalName = ""
+				tok.SignalBoundaryID = ""
+			}
 		}
 		return
 	}
@@ -248,6 +257,12 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 			}
 			if p.GetMessageBoundaryId() != "" {
 				tok.MessageBoundaryID = p.GetMessageBoundaryId()
+			}
+			if p.GetSignalName() != "" {
+				tok.SignalName = p.GetSignalName()
+			}
+			if p.GetSignalBoundaryId() != "" {
+				tok.SignalBoundaryID = p.GetSignalBoundaryId()
 			}
 		}
 		return
@@ -288,6 +303,7 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 		tok.SignalName = ""
 		tok.BoundaryID = ""
 		tok.MessageBoundaryID = ""
+		tok.SignalBoundaryID = ""
 		if p := el.GetActivityPayload(); p != nil {
 			if el.GetType() == eventv1.Element_TYPE_SUB_PROCESS {
 				inst.applyScopeBoundary(el.GetId(), tokenID, p)
@@ -298,6 +314,8 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 				tok.BoundaryID = p.GetBoundaryId()
 				tok.MessageName = p.GetMessageName()
 				tok.MessageBoundaryID = p.GetMessageBoundaryId()
+				tok.SignalName = p.GetSignalName()
+				tok.SignalBoundaryID = p.GetSignalBoundaryId()
 			}
 		}
 		if p := el.GetEventPayload(); p != nil {
@@ -329,6 +347,7 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 		tok.SignalName = ""
 		tok.BoundaryID = ""
 		tok.MessageBoundaryID = ""
+		tok.SignalBoundaryID = ""
 	case eventv1.Element_INTENT_FAILED:
 		// Job failure does not complete the activity; worker may retry.
 		tok.Status = TokenWaiting
@@ -344,6 +363,7 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 		tok.SignalName = ""
 		tok.BoundaryID = ""
 		tok.MessageBoundaryID = ""
+		tok.SignalBoundaryID = ""
 		if sp := el.GetSequenceFlowPayload(); sp != nil && sp.GetTargetId() != "" {
 			tok.ElementID = sp.GetTargetId()
 		}
@@ -423,6 +443,7 @@ func (inst *Instance) applyScopeBoundary(scopeID, tokenID string, p *eventv1.Act
 			DueUnixMs:   p.GetDueUnixMs(),
 			TimerText:   p.GetDuration(),
 			MessageName: p.GetMessageName(),
+			SignalName:  p.GetSignalName(),
 		}
 	}
 	if p.GetMessageBoundaryId() != "" {
@@ -431,6 +452,14 @@ func (inst *Instance) applyScopeBoundary(scopeID, tokenID string, p *eventv1.Act
 			ScopeID:     scopeID,
 			TokenID:     tokenID,
 			MessageName: p.GetMessageName(),
+		}
+	}
+	if p.GetSignalBoundaryId() != "" {
+		inst.ScopeBoundaries[p.GetSignalBoundaryId()] = &ScopeBoundary{
+			BoundaryID:  p.GetSignalBoundaryId(),
+			ScopeID:     scopeID,
+			TokenID:     tokenID,
+			SignalName:  p.GetSignalName(),
 		}
 	}
 }

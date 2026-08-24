@@ -226,16 +226,21 @@ type ActivityPayload struct {
 	DueUnixMs int64 `protobuf:"varint,4,opt,name=due_unix_ms,json=dueUnixMs,proto3" json:"due_unix_ms,omitempty"`
 	// Original timer expression text for the attached interrupting timer. Empty if unused.
 	Duration string `protobuf:"bytes,5,opt,name=duration,proto3" json:"duration,omitempty"`
-	// BPMN id of the interrupting timer or message boundary. Empty if unused.
+	// BPMN id of a waiting boundary when it is the first armed catch (timer, message, or signal).
+	// Empty if unused.
 	BoundaryId string `protobuf:"bytes,6,opt,name=boundary_id,json=boundaryId,proto3" json:"boundary_id,omitempty"`
 	// BPMN message name when a message boundary is armed. Empty if unused.
 	MessageName string `protobuf:"bytes,7,opt,name=message_name,json=messageName,proto3" json:"message_name,omitempty"`
-	// BPMN id of the message boundary when both timer and message boundaries are armed.
-	// When only one boundary exists, boundary_id carries it. When both exist,
-	// boundary_id carries the timer and message_boundary_id carries the message.
+	// BPMN id of the message boundary when another waiting boundary already occupies boundary_id.
+	// When only a message boundary exists, boundary_id carries it.
 	MessageBoundaryId string `protobuf:"bytes,8,opt,name=message_boundary_id,json=messageBoundaryId,proto3" json:"message_boundary_id,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// BPMN signal name when a signal boundary is armed. Empty if unused.
+	SignalName string `protobuf:"bytes,9,opt,name=signal_name,json=signalName,proto3" json:"signal_name,omitempty"`
+	// BPMN id of the signal boundary when another waiting boundary already occupies boundary_id.
+	// When only a signal boundary exists, boundary_id carries it.
+	SignalBoundaryId string `protobuf:"bytes,10,opt,name=signal_boundary_id,json=signalBoundaryId,proto3" json:"signal_boundary_id,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *ActivityPayload) Reset() {
@@ -320,6 +325,20 @@ func (x *ActivityPayload) GetMessageName() string {
 func (x *ActivityPayload) GetMessageBoundaryId() string {
 	if x != nil {
 		return x.MessageBoundaryId
+	}
+	return ""
+}
+
+func (x *ActivityPayload) GetSignalName() string {
+	if x != nil {
+		return x.SignalName
+	}
+	return ""
+}
+
+func (x *ActivityPayload) GetSignalBoundaryId() string {
+	if x != nil {
+		return x.SignalBoundaryId
 	}
 	return ""
 }
@@ -476,7 +495,7 @@ const file_event_v1_payloads_proto_rawDesc = "" +
 	"\tvariables\x18\x04 \x03(\v2\x12.event.v1.VariableR\tvariables\x12\x1f\n" +
 	"\vsignal_name\x18\x05 \x01(\tR\n" +
 	"signalName\x126\n" +
-	"\x17compensation_handler_id\x18\x06 \x01(\tR\x15compensationHandlerId\"\xb3\x02\n" +
+	"\x17compensation_handler_id\x18\x06 \x01(\tR\x15compensationHandlerId\"\x82\x03\n" +
 	"\x0fActivityPayload\x120\n" +
 	"\tvariables\x18\x01 \x03(\v2\x12.event.v1.VariableR\tvariables\x12\x19\n" +
 	"\bjob_type\x18\x02 \x01(\tR\ajobType\x12#\n" +
@@ -486,7 +505,11 @@ const file_event_v1_payloads_proto_rawDesc = "" +
 	"\vboundary_id\x18\x06 \x01(\tR\n" +
 	"boundaryId\x12!\n" +
 	"\fmessage_name\x18\a \x01(\tR\vmessageName\x12.\n" +
-	"\x13message_boundary_id\x18\b \x01(\tR\x11messageBoundaryId\"E\n" +
+	"\x13message_boundary_id\x18\b \x01(\tR\x11messageBoundaryId\x12\x1f\n" +
+	"\vsignal_name\x18\t \x01(\tR\n" +
+	"signalName\x12,\n" +
+	"\x12signal_boundary_id\x18\n" +
+	" \x01(\tR\x10signalBoundaryId\"E\n" +
 	"\x0eGatewayPayload\x123\n" +
 	"\x16taken_sequence_flow_id\x18\x01 \x01(\tR\x13takenSequenceFlowId\"O\n" +
 	"\x13SequenceFlowPayload\x12\x1b\n" +

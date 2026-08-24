@@ -67,6 +67,21 @@ func attachScopeBoundary(dep *deploy.Deployment, subProcessID string, now time.T
 			p.MessageBoundaryId = bid
 		}
 	}
+	if bid, ok := dep.SignalBoundary(subProcessID); ok {
+		name, err := dep.SignalName(bid)
+		if err != nil {
+			return nil, err
+		}
+		if p == nil {
+			p = &eventv1.ActivityPayload{}
+		}
+		p.SignalName = name
+		if p.BoundaryId == "" {
+			p.BoundaryId = bid
+		} else {
+			p.SignalBoundaryId = bid
+		}
+	}
 	return p, nil
 }
 

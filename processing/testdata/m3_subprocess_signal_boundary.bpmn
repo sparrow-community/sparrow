@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             id="Definitions_sp_signal_boundary"
+             targetNamespace="http://sparrow.example/sp-signal-boundary">
+  <signal id="signal_1" name="go.ahead"/>
+  <process id="Process_sp_signal_boundary" name="SubProcess Signal Boundary" isExecutable="true">
+    <startEvent id="StartEvent_1">
+      <outgoing>Flow_start_to_sub</outgoing>
+    </startEvent>
+    <subProcess id="SubProcess_1" name="Long Work">
+      <incoming>Flow_start_to_sub</incoming>
+      <outgoing>Flow_sub_to_ok</outgoing>
+      <startEvent id="Sub_Start">
+        <outgoing>Flow_sub_start_to_task</outgoing>
+      </startEvent>
+      <userTask id="Sub_Task" name="Inner Task">
+        <incoming>Flow_sub_start_to_task</incoming>
+        <outgoing>Flow_sub_task_to_end</outgoing>
+      </userTask>
+      <endEvent id="Sub_End">
+        <incoming>Flow_sub_task_to_end</incoming>
+      </endEvent>
+      <sequenceFlow id="Flow_sub_start_to_task" sourceRef="Sub_Start" targetRef="Sub_Task"/>
+      <sequenceFlow id="Flow_sub_task_to_end" sourceRef="Sub_Task" targetRef="Sub_End"/>
+    </subProcess>
+    <boundaryEvent id="SignalBoundary_1" attachedToRef="SubProcess_1" cancelActivity="true">
+      <outgoing>Flow_boundary_to_sig</outgoing>
+      <signalEventDefinition id="SigDef_1" signalRef="signal_1"/>
+    </boundaryEvent>
+    <endEvent id="EndEvent_ok">
+      <incoming>Flow_sub_to_ok</incoming>
+    </endEvent>
+    <endEvent id="EndEvent_sig">
+      <incoming>Flow_boundary_to_sig</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_sub" sourceRef="StartEvent_1" targetRef="SubProcess_1"/>
+    <sequenceFlow id="Flow_sub_to_ok" sourceRef="SubProcess_1" targetRef="EndEvent_ok"/>
+    <sequenceFlow id="Flow_boundary_to_sig" sourceRef="SignalBoundary_1" targetRef="EndEvent_sig"/>
+  </process>
+</definitions>

@@ -78,7 +78,7 @@ func (d *Deployment) compile(messages []element.Message, signals []element.Signa
 	p := &d.Process
 	d.timerCatch = make(map[string]timerCatch, len(p.IntermediateCatchEvents)+len(p.BoundaryEvents))
 	d.messageCatch = make(map[string]string, len(p.IntermediateCatchEvents)+len(p.BoundaryEvents))
-	d.signalCatch = make(map[string]string, len(p.IntermediateCatchEvents))
+	d.signalCatch = make(map[string]string, len(p.IntermediateCatchEvents)+len(p.BoundaryEvents))
 	d.throwEvents = make(map[string]throwSpec, len(p.IntermediateThrowEvents))
 	d.eventSubProcesses = make(map[string]EventSubProcess)
 	d.compensations = make(map[string]Compensation)
@@ -153,6 +153,8 @@ func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messag
 			d.timerCatch[e.ID] = spec.Catch
 		} else if spec, err := messageBoundarySpec(e, messages); err == nil {
 			d.messageCatch[e.ID] = spec.Name
+		} else if spec, err := signalBoundarySpec(e, signals); err == nil {
+			d.signalCatch[e.ID] = spec.Name
 		} else if spec, err := compensationBoundarySpec(e, associations); err == nil {
 			d.compensations[spec.ActivityID] = spec
 		}
@@ -204,7 +206,7 @@ func validateM1(proc *element.Process) error {
 	}
 	type seenKey struct {
 		activity string
-		kind     string // "timer", "message", or "compensate"
+		kind     string // "timer", "message", "signal", or "compensate"
 	}
 	seenAttach := make(map[seenKey]string, len(proc.BoundaryEvents))
 	assocs := collectAssociations(proc)
@@ -226,6 +228,13 @@ func validateM1(proc *element.Process) error {
 			}
 			attached = spec.AttachedTo
 			kind = "message"
+		case len(e.SignalEventDefinitions) > 0:
+			spec, err := signalBoundarySpec(e, nil)
+			if err != nil {
+				return err
+			}
+			attached = spec.AttachedTo
+			kind = "signal"
 		case len(e.CompensateEventDefinitions) > 0:
 			spec, err := compensationBoundarySpec(e, assocs)
 			if err != nil {
@@ -237,7 +246,7 @@ func validateM1(proc *element.Process) error {
 			attached = spec.ActivityID
 			kind = "compensate"
 		default:
-			return fmt.Errorf("UNSUPPORTED_ELEMENT: boundaryEvent %q must be a timer, message, or compensation boundary", e.ID)
+			return fmt.Errorf("UNSUPPORTED_ELEMENT: boundaryEvent %q must be a timer, message, signal, or compensation boundary", e.ID)
 		}
 		key := seenKey{attached, kind}
 		if prev, ok := seenAttach[key]; ok {

@@ -44,14 +44,19 @@ message ActivityPayload {
   int64 due_unix_ms = 4;
   // Original timer expression text for the attached interrupting timer. Empty if unused.
   string duration = 5;
-  // BPMN id of the interrupting timer or message boundary. Empty if unused.
+  // BPMN id of a waiting boundary when it is the first armed catch (timer, message, or signal).
+  // Empty if unused.
   string boundary_id = 6;
   // BPMN message name when a message boundary is armed. Empty if unused.
   string message_name = 7;
-  // BPMN id of the message boundary when both timer and message boundaries are armed.
-  // When only one boundary exists, boundary_id carries it. When both exist,
-  // boundary_id carries the timer and message_boundary_id carries the message.
+  // BPMN id of the message boundary when another waiting boundary already occupies boundary_id.
+  // When only a message boundary exists, boundary_id carries it.
   string message_boundary_id = 8;
+  // BPMN signal name when a signal boundary is armed. Empty if unused.
+  string signal_name = 9;
+  // BPMN id of the signal boundary when another waiting boundary already occupies boundary_id.
+  // When only a signal boundary exists, boundary_id carries it.
+  string signal_boundary_id = 10;
 }
 
 message GatewayPayload {

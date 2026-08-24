@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             id="Definitions_signal_boundary"
+             targetNamespace="http://sparrow.example/signal-boundary">
+  <signal id="signal_1" name="go.ahead"/>
+  <process id="Process_signal_boundary" name="M3 Signal Boundary" isExecutable="true">
+    <startEvent id="StartEvent_1">
+      <outgoing>Flow_start_to_task</outgoing>
+    </startEvent>
+    <userTask id="UserTask_1" name="Work">
+      <incoming>Flow_start_to_task</incoming>
+      <outgoing>Flow_task_to_ok</outgoing>
+    </userTask>
+    <boundaryEvent id="SignalBoundary_1" attachedToRef="UserTask_1" cancelActivity="true">
+      <outgoing>Flow_boundary_to_sig</outgoing>
+      <signalEventDefinition id="SigDef_1" signalRef="signal_1"/>
+    </boundaryEvent>
+    <endEvent id="EndEvent_ok">
+      <incoming>Flow_task_to_ok</incoming>
+    </endEvent>
+    <endEvent id="EndEvent_sig">
+      <incoming>Flow_boundary_to_sig</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_task" sourceRef="StartEvent_1" targetRef="UserTask_1"/>
+    <sequenceFlow id="Flow_task_to_ok" sourceRef="UserTask_1" targetRef="EndEvent_ok"/>
+    <sequenceFlow id="Flow_boundary_to_sig" sourceRef="SignalBoundary_1" targetRef="EndEvent_sig"/>
+  </process>
+</definitions>

@@ -43,6 +43,21 @@ func attachBoundary(dep *deploy.Deployment, activityID string, now time.Time, p 
 			p.MessageBoundaryId = bid
 		}
 	}
+	if bid, ok := dep.SignalBoundary(activityID); ok {
+		name, err := dep.SignalName(bid)
+		if err != nil {
+			return nil, err
+		}
+		if p == nil {
+			p = &eventv1.ActivityPayload{}
+		}
+		p.SignalName = name
+		if p.BoundaryId == "" {
+			p.BoundaryId = bid
+		} else {
+			p.SignalBoundaryId = bid
+		}
+	}
 	return p, nil
 }
 
@@ -58,6 +73,12 @@ func cancelAttachedBoundary(dep *deploy.Deployment, activityID, tokenID string) 
 		)
 	}
 	if bid, ok := dep.MessageBoundary(activityID); ok {
+		records = append(records,
+			&eventv1.Element{Intent: eventv1.Element_INTENT_TERMINATING, Type: eventv1.Element_TYPE_BOUNDARY_EVENT, Id: bid, TokenId: tokenID},
+			&eventv1.Element{Intent: eventv1.Element_INTENT_TERMINATED, Type: eventv1.Element_TYPE_BOUNDARY_EVENT, Id: bid, TokenId: tokenID},
+		)
+	}
+	if bid, ok := dep.SignalBoundary(activityID); ok {
 		records = append(records,
 			&eventv1.Element{Intent: eventv1.Element_INTENT_TERMINATING, Type: eventv1.Element_TYPE_BOUNDARY_EVENT, Id: bid, TokenId: tokenID},
 			&eventv1.Element{Intent: eventv1.Element_INTENT_TERMINATED, Type: eventv1.Element_TYPE_BOUNDARY_EVENT, Id: bid, TokenId: tokenID},
@@ -166,6 +187,12 @@ func (BoundaryEventHandler) OnComplete(in CompleteInput) (*Effect, error) {
 		)
 	}
 	if bid, ok := in.Deployment.MessageBoundary(attached); ok && bid != in.ElementID {
+		records = append(records,
+			&eventv1.Element{Intent: eventv1.Element_INTENT_TERMINATING, Type: eventv1.Element_TYPE_BOUNDARY_EVENT, Id: bid, TokenId: in.TokenID},
+			&eventv1.Element{Intent: eventv1.Element_INTENT_TERMINATED, Type: eventv1.Element_TYPE_BOUNDARY_EVENT, Id: bid, TokenId: in.TokenID},
+		)
+	}
+	if bid, ok := in.Deployment.SignalBoundary(attached); ok && bid != in.ElementID {
 		records = append(records,
 			&eventv1.Element{Intent: eventv1.Element_INTENT_TERMINATING, Type: eventv1.Element_TYPE_BOUNDARY_EVENT, Id: bid, TokenId: in.TokenID},
 			&eventv1.Element{Intent: eventv1.Element_INTENT_TERMINATED, Type: eventv1.Element_TYPE_BOUNDARY_EVENT, Id: bid, TokenId: in.TokenID},

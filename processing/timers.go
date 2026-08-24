@@ -138,3 +138,13 @@ func messageWaiterElementID(tok *projection.Token) string {
 	}
 	return tok.ElementID
 }
+
+func signalWaiterElementID(tok *projection.Token) string {
+	if tok.SignalBoundaryID != "" {
+		return tok.SignalBoundaryID
+	}
+	if tok.BoundaryID != "" && tok.SignalName != "" {
+		return tok.BoundaryID
+	}
+	return tok.ElementID
+}

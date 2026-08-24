@@ -12,12 +12,13 @@
 |------|------|------|
 | M1 | Start → UserTask → XOR → End；EventLog + Recover | 完成 |
 | M2 | ServiceTask/Job；Timer/Message catch + boundary | 完成 |
-| M3 | 网关 / SubProcess / Throw / ESP / Compensation | 基本完成 |
-| 其后 | Signal boundary → Error → 补偿收尾 → CallActivity / 版本 | 规划中 |
+| M3 | 网关 / SubProcess / Throw / ESP / Compensation / Signal boundary | 完成 |
+| 其后 | Error → 补偿收尾 → CallActivity / 版本 | 规划中 |
 
-**下一步（按序）**：① Signal boundary → ② Error 事件 → ③ 补偿收尾（End / 嵌套 scope）→ ④ 嵌套 ESP / CallActivity → ⑤ 版本管理与迁移
+**下一步（按序）**：① Error 事件 → ② 补偿收尾（End / 嵌套 scope）→ ③ 嵌套 ESP / CallActivity → ④ 版本管理与迁移
 
-**暂缓**：≥3 boundary / 活动；Incident；嵌套 ESP；instantiate EBG；补偿进未完成 SubProcess；集群；产品套件
+**暂缓**：同一活动 ≥3 个 **同类** waiting boundary；Incident；嵌套 ESP；instantiate EBG；补偿进未完成 SubProcess；集群；产品套件
+（同类各一：timer + message + signal 可共存）
 
 ---
 
@@ -39,10 +40,10 @@
 | Event Sub-Process | 流程级；message / timer start；打断 / 非打断 |
 | IntermediateCatchEvent | timer / message / signal |
 | IntermediateThrowEvent | none / message / signal / compensate |
-| BoundaryEvent | timer / message（打断 / 非打断）；compensate |
+| BoundaryEvent | timer / message / signal（打断 / 非打断）；compensate |
 | Association | 补偿 handler 关联 |
 
-**未实现（常见）**：Signal boundary；Error / Escalation / Link / Conditional / Terminate；CallActivity；Send/Receive/Manual/BusinessRule Task；Multi-instance；嵌套 ESP
+**未实现（常见）**：Error / Escalation / Link / Conditional / Terminate；CallActivity；Send/Receive/Manual/BusinessRule Task；Multi-instance；嵌套 ESP
 
 ---
 
