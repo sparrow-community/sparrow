@@ -445,51 +445,19 @@ func (e *Engine) completeScopeBoundaryLocked(ctx context.Context, dep *deploy.De
 
 	emit := e.emitter(ctx, inst, cmdID)
 
-	// Terminate all tokens inside the scope (and nested sub-scopes)
-	for tid, tok := range inst.Tokens {
-		if tok == nil {
-			continue
-		}
-		tokScope, _ := dep.ScopeOf(tok.ElementID)
-		if !isInScope(dep, tokScope, scopeID) {
-			continue
-		}
-		tokType, _ := dep.TypeOf(tok.ElementID)
-		for _, intent := range []eventv1.Element_Intent{
-			eventv1.Element_INTENT_TERMINATING,
-			eventv1.Element_INTENT_TERMINATED,
-		} {
-			if err := emit(&eventv1.Element{
-				Intent:  intent,
-				Type:    tokType,
-				Id:      tok.ElementID,
-				TokenId: tid,
-			}); err != nil {
-				return nil, err
-			}
-		}
-	}
-
-	// Terminate the SubProcess itself
-	if err := emit(&eventv1.Element{
-		Intent:  eventv1.Element_INTENT_TERMINATING,
-		Type:    eventv1.Element_TYPE_SUB_PROCESS,
-		Id:      scopeID,
-		TokenId: tokenID,
+	if err := terminateScopeTokens(dep, inst, scopeID, emit, scopeTerminateOpts{
+		IncludeHost: false,
+		DropTokens:  true,
 	}); err != nil {
 		return nil, err
 	}
-	if err := emit(&eventv1.Element{
-		Intent:  eventv1.Element_INTENT_TERMINATED,
-		Type:    eventv1.Element_TYPE_SUB_PROCESS,
-		Id:      scopeID,
-		TokenId: tokenID,
-	}); err != nil {
+	if err := terminateEmbeddedScope(scopeID, tokenID, emit); err != nil {
 		return nil, err
 	}
 
 	// Remove scope boundaries
 	inst.RemoveScopeBoundariesForScope(scopeID)
+	inst.RemoveEventSubProcessesInScope(scopeID)
 
 	// Complete the boundary and take outgoing
 	if err := emit(&eventv1.Element{

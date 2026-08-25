@@ -66,10 +66,10 @@ func TestSubProcessInternalParallel(t *testing.T) {
 		t.Fatal(err)
 	}
 	inst, _ := eng.GetInstance(instanceID)
-	// Should have 2 waiting tokens (TaskA and TaskB)
+	// Should have 2 waiting activity tokens (TaskA and TaskB), plus SubProcess host.
 	var waitingTokens []struct{ elem, token string }
 	for tid, tok := range inst.Tokens {
-		if tok.Status == projection.TokenWaiting {
+		if tok.Status == projection.TokenWaiting && !tok.ScopeHost {
 			waitingTokens = append(waitingTokens, struct{ elem, token string }{tok.ElementID, tid})
 		}
 	}

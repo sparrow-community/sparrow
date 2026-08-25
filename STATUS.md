@@ -60,9 +60,9 @@
 **最新提交**
 
 ```text
-（本轮）清理 DESIGN §8 已还清项；打断 scope 的 SubProcess TERMINATED 可无 token_id（审计）以免复活投影 token。
-（设计还债）Unify terminateScopeTokens; EventPayload.token_wait for compensate end.
-3451012 Support CallActivity for called processes in the same definitions.
+（本轮）嵌入式 SubProcess / CallActivity host token（child 进内部）；清掉 DESIGN §8 host-token 债。
+c72c6d9 Drop paid DESIGN debt notes; audit-only SubProcess TERMINATED.
+791333a Pay down scope-terminate and END_EVENT waiting design debt.
 ```
 
 ---

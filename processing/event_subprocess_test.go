@@ -157,6 +157,18 @@ func TestNestedEventSubProcessMessageInterrupting(t *testing.T) {
 	if waitingElement(inst) != "UserTask_sp" {
 		t.Fatalf("expected UserTask_sp, got %s tokens=%#v", waitingElement(inst), inst.Tokens)
 	}
+	hostCount := 0
+	for _, tok := range inst.Tokens {
+		if tok != nil && tok.ScopeHost {
+			hostCount++
+			if tok.ElementID != "SubProcess_1" {
+				t.Fatalf("scope host on %s, want SubProcess_1", tok.ElementID)
+			}
+		}
+	}
+	if hostCount != 1 {
+		t.Fatalf("expected one SubProcess host token, got %d tokens=%#v", hostCount, inst.Tokens)
+	}
 	if _, ok := inst.EventSubProcesses["Event_SubProcess_nested"]; !ok {
 		t.Fatalf("expected nested ESP armed while inside SubProcess, arms=%#v", inst.EventSubProcesses)
 	}
@@ -176,8 +188,8 @@ func TestNestedEventSubProcessMessageInterrupting(t *testing.T) {
 	if !sawElementIntent(events, eventv1.Element_TYPE_SUB_PROCESS, "SubProcess_1", eventv1.Element_INTENT_TERMINATED) {
 		t.Fatal("expected embedding SubProcess TERMINATED by interrupting nested ESP")
 	}
-	if tid := elementTokenID(events, eventv1.Element_TYPE_SUB_PROCESS, "SubProcess_1", eventv1.Element_INTENT_TERMINATED); tid != "" {
-		t.Fatalf("audit-only SubProcess TERMINATED must have empty token_id, got %q", tid)
+	if tid := elementTokenID(events, eventv1.Element_TYPE_SUB_PROCESS, "SubProcess_1", eventv1.Element_INTENT_TERMINATED); tid == "" {
+		t.Fatal("expected host token_id on SubProcess TERMINATED")
 	}
 	if !sawElementIntent(events, eventv1.Element_TYPE_SUB_PROCESS, "Event_SubProcess_nested", eventv1.Element_INTENT_COMPLETED) {
 		t.Fatal("expected nested ESP COMPLETED")

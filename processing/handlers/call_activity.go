@@ -18,7 +18,8 @@ func (CallActivityHandler) OnEnter(in EnterInput) (*Effect, error) {
 			{Intent: eventv1.Element_INTENT_ACTIVATING, Type: in.Type, Id: in.ElementID, TokenId: in.TokenID},
 			{Intent: eventv1.Element_INTENT_ACTIVATED, Type: in.Type, Id: in.ElementID, TokenId: in.TokenID},
 		},
-		EnterChild: startID,
+		EnterChild:      startID,
+		SpawnChildToken: true,
 	}, nil
 }
 

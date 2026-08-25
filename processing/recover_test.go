@@ -354,12 +354,20 @@ func readM1(t *testing.T) []byte {
 }
 
 func waitingAt(inst *projection.Instance) (elementID, tokenID string) {
+	var hostElem, hostTok string
 	for _, tok := range inst.Tokens {
-		if tok.Status == projection.TokenWaiting {
-			return tok.ElementID, tok.ID
+		if tok.Status != projection.TokenWaiting {
+			continue
 		}
+		if tok.ScopeHost {
+			if hostTok == "" {
+				hostElem, hostTok = tok.ElementID, tok.ID
+			}
+			continue
+		}
+		return tok.ElementID, tok.ID
 	}
-	return "", ""
+	return hostElem, hostTok
 }
 
 func waitingElement(inst *projection.Instance) string {

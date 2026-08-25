@@ -270,10 +270,7 @@ runtime 加载时丢弃过期/无效 lease 与过期/死实例消息缓冲；实
 下列不是阻塞缺陷，但是当前模型下需要注意的不合理点 / 技术债；后续可重构时优先处理。已还清的条目直接删除，不保留「已还清」坟场。
 
 1. **Event Sub-Process 武装不在账本中**  
-   `EventSubProcessArm` 是投影侧订阅（与 Job 租约、消息缓冲同类），不是 EventLog 主语。`Recover` / `Open` 依赖「当前活跃 scope + 部署定义」重装武装。嵌套 ESP 后，活跃嵌入式 SubProcess 的判定必须正确，否则恢复后会丢订阅或误武装。约定用回归测试锁住（见 `TestRecoverRearmsNestedEventSubProcess`），进账本属更大协议变更。
+   `EventSubProcessArm` 是投影侧订阅（与 Job 租约、消息缓冲同类），不是 EventLog 主语。`Recover` / `Open` 依赖「当前活跃 scope + 部署定义」重装武装。嵌入式 SubProcess / CallActivity 现以 **host token** 停在宿主元素上，`activeEmbeddedScopes` 更易判定；约定用回归测试锁住（见 `TestRecoverRearmsNestedEventSubProcess`）。进账本属更大协议变更。
 
-2. **嵌入式 SubProcess 没有常驻 host token**  
-   进入 SubProcess 后，同一 token 进入内部 Start，投影上不再停在 `SUB_PROCESS` 元素。打断取消该 scope 时，账本仍可记 `SUB_PROCESS TERMINATED`；若**不需要**继续用该 token 出边，应发**无 `token_id` 的审计记录**，避免 `ApplyEvent` 把已 drop 的 token 复活。若需要出边（如 error boundary），则保留 `token_id` 并接受投影更新。更干净的长期模型：host token 停在 SubProcess 上 waiting、内部用 child token。
-
-3. **CallActivity v1 = 同实例内联，不是子 process instance**  
-   当前 CallActivity 在**同一** `process_instance_id` 上把 token 送入同一定义文件中的被调 process（类似嵌入式 SubProcess）。这与 BPMN「独立 called process instance」不完全一致。限制：同一被调 process 仅允许一个 CallActivity、禁止递归 CallActivity、元素 id 必须在 Definitions 内全局唯一、尚无 IO 映射 / 跨部署 calledElement / 版本选择。独立子实例与版本管理应作为后续功能里程碑。
+2. **CallActivity v1 = 同实例内联，不是子 process instance**  
+   当前 CallActivity 在**同一** `process_instance_id` 上把 token 送入同一定义文件中的被调 process；host token 停在 CallActivity，内部用 child token（与嵌入式 SubProcess 同构）。这与 BPMN「独立 called process instance」不完全一致。限制：同一被调 process 仅允许一个 CallActivity、禁止递归 CallActivity、元素 id 必须在 Definitions 内全局唯一、尚无 IO 映射 / 跨部署 calledElement / 版本选择。独立子实例与版本管理应作为后续功能里程碑。

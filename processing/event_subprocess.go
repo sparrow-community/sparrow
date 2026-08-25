@@ -192,12 +192,6 @@ func (e *Engine) triggerEventSubProcessLocked(
 		}); err != nil {
 			return nil, err
 		}
-		// Audit-only: no token_id so projection does not revive a dropped token.
-		if arm.ParentScopeID != dep.ProcessID() {
-			if err := terminateEmbeddedScope(arm.ParentScopeID, "", emit); err != nil {
-				return nil, err
-			}
-		}
 		inst.RemoveScopeBoundariesForScope(arm.ParentScopeID)
 		inst.RemoveEventSubProcessesInScope(arm.ParentScopeID)
 	} else {

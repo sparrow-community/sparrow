@@ -24,13 +24,19 @@ func (SubProcessHandler) OnEnter(in EnterInput) (*Effect, error) {
 	if p != nil {
 		activated.Payload = &eventv1.Element_ActivityPayload{ActivityPayload: p}
 	}
-	return &Effect{
+	effect := &Effect{
 		Records: []*eventv1.Element{
 			{Intent: eventv1.Element_INTENT_ACTIVATING, Type: in.Type, Id: in.ElementID, TokenId: in.TokenID},
 			activated,
 		},
 		EnterChild: startID,
-	}, nil
+	}
+	// Embedded SubProcess: park host token; mint a child for the internal start.
+	// Event Sub-Process keeps the trigger token (no outgoing host).
+	if in.Deployment == nil || !in.Deployment.IsEventSubProcess(in.ElementID) {
+		effect.SpawnChildToken = true
+	}
+	return effect, nil
 }
 
 func attachScopeBoundary(dep *deploy.Deployment, subProcessID string, now time.Time) (*eventv1.ActivityPayload, error) {

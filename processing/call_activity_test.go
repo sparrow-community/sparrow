@@ -30,6 +30,16 @@ func TestCallActivityCompletesChildThenCaller(t *testing.T) {
 	if elemID != "Task_called" {
 		t.Fatalf("expected Task_called inside called process, got %s tokens=%#v", elemID, inst.Tokens)
 	}
+	hostOK := false
+	for _, tok := range inst.Tokens {
+		if tok != nil && tok.ScopeHost && tok.ElementID == "CallActivity_1" {
+			hostOK = true
+			break
+		}
+	}
+	if !hostOK {
+		t.Fatalf("expected CallActivity host token, tokens=%#v", inst.Tokens)
+	}
 	if err := eng.Complete(ctx, instanceID, elemID, tokenID, nil); err != nil {
 		t.Fatal(err)
 	}

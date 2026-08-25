@@ -27,9 +27,12 @@ type Effect struct {
 	// SpawnOutgoing mints a new token to follow the boundary outgoing flow while the
 	// activity token keeps waiting (non-interrupting boundary).
 	SpawnOutgoing *SpawnOutgoingEffect
-	// EnterChild tells the executor to enter the given element on the same token
-	// (used by SubProcess to enter the internal start event after ACTIVATED).
+	// EnterChild tells the executor to enter the given element after ACTIVATED.
+	// Used by SubProcess / CallActivity to enter the internal start event.
 	EnterChild string
+	// SpawnChildToken mints a new token for EnterChild, leaving the current token
+	// parked on the host element (embedded SubProcess host token).
+	SpawnChildToken bool
 	// Publish is a deferred message/signal throw. The engine delivers it after
 	// the instance lock is released (avoids re-entrant Complete under the same lock).
 	Publish *Publication

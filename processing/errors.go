@@ -137,13 +137,16 @@ func (x *Executor) propagateError(
 }
 
 func findScopeHostToken(dep *deploy.Deployment, inst *projection.Instance, scopeID string) (string, bool) {
+	for tid, tok := range inst.Tokens {
+		if tok != nil && tok.ElementID == scopeID {
+			return tid, true
+		}
+	}
+	// Fallback: pre-host-token ledgers / CallActivity-style inline scopes.
 	var fallback string
 	for tid, tok := range inst.Tokens {
 		if tok == nil {
 			continue
-		}
-		if tok.ElementID == scopeID {
-			return tid, true
 		}
 		tokScope, ok := dep.ScopeOf(tok.ElementID)
 		if !ok {
@@ -233,15 +236,24 @@ func (x *Executor) fireScopeErrorBoundary(
 }
 
 func (x *Executor) terminateScope(ctx context.Context, dep *deploy.Deployment, inst *projection.Instance, scopeID string, emit Emitter) error {
+	hadHost := false
+	for _, tok := range inst.Tokens {
+		if tok != nil && tok.ElementID == scopeID {
+			hadHost = true
+			break
+		}
+	}
 	if err := terminateScopeTokens(dep, inst, scopeID, emit, scopeTerminateOpts{
-		IncludeHost: false,
+		IncludeHost: true,
 		DropTokens:  true,
 	}); err != nil {
 		return err
 	}
-	// Audit-only while bubbling: do not revive a host token onto the SubProcess.
-	if err := terminateEmbeddedScope(scopeID, "", emit); err != nil {
-		return err
+	// Pre-host ledgers: no token parked on the SubProcess — audit without revival.
+	if !hadHost {
+		if err := terminateEmbeddedScope(scopeID, "", emit); err != nil {
+			return err
+		}
 	}
 	inst.RemoveScopeBoundariesForScope(scopeID)
 	inst.RemoveEventSubProcessesInScope(scopeID)

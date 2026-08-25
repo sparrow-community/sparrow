@@ -72,10 +72,19 @@ func (x *Executor) Enter(
 			pubs = append(pubs, *effect.Publish)
 		}
 		if effect.EnterChild != "" {
+			childTokenID := tokenID
+			if effect.SpawnChildToken {
+				var err error
+				childTokenID, err = NextID()
+				if err != nil {
+					return pubs, err
+				}
+			}
 			if typ == eventv1.Element_TYPE_SUB_PROCESS && !dep.IsEventSubProcess(elementID) {
 				armEventSubProcessesInScope(dep, inst, elementID, x.now())
 			}
 			elementID = effect.EnterChild
+			tokenID = childTokenID
 			continue
 		}
 		if len(effect.Fork) > 0 {
@@ -329,21 +338,49 @@ func (x *Executor) tryCompleteScope(ctx context.Context, dep *deploy.Deployment,
 	if scopeID == "" || scopeID == dep.ProcessID() {
 		return x.tryCompleteProcessScope(dep, inst, emit)
 	}
-	// SubProcess scope: check all tokens in this scope are at EndEvents
-	for _, tok := range inst.Tokens {
-		if tok.Status == projection.TokenWaiting {
-			tokScope, _ := dep.ScopeOf(tok.ElementID)
-			if tokScope == scopeID {
-				return nil, nil
-			}
+	// SubProcess / called-process scope: ignore parked host; require children at EndEvents.
+	hostTokenID := ""
+	callHostElementID := ""
+	if call, ok := dep.CallActivityForCalledProcess(scopeID); ok {
+		callHostElementID = call.ID
+	}
+	for tid, tok := range inst.Tokens {
+		if tok == nil {
+			continue
+		}
+		if tok.ElementID == scopeID || (callHostElementID != "" && tok.ElementID == callHostElementID) {
+			hostTokenID = tid
 			continue
 		}
 		tokScope, _ := dep.ScopeOf(tok.ElementID)
-		if tokScope == scopeID {
-			typ, err := dep.TypeOf(tok.ElementID)
-			if err != nil || typ != eventv1.Element_TYPE_END_EVENT {
-				return nil, nil
-			}
+		inScope := tokScope == scopeID || isInScope(dep, tokScope, scopeID)
+		if !inScope {
+			continue
+		}
+		if tok.Status == projection.TokenWaiting {
+			return nil, nil
+		}
+		typ, err := dep.TypeOf(tok.ElementID)
+		if err != nil || typ != eventv1.Element_TYPE_END_EVENT {
+			return nil, nil
+		}
+	}
+	completeTokenID := hostTokenID
+	if completeTokenID == "" {
+		// Legacy inline without host: completing token is the end-event token.
+		completeTokenID = tokenID
+	}
+	// Drop finished child tokens; host (if any) continues via OnComplete.
+	for tid, tok := range inst.Tokens {
+		if tok == nil || tid == completeTokenID {
+			continue
+		}
+		if tok.ElementID == scopeID || (callHostElementID != "" && tok.ElementID == callHostElementID) {
+			continue
+		}
+		tokScope, _ := dep.ScopeOf(tok.ElementID)
+		if tokScope == scopeID || isInScope(dep, tokScope, scopeID) {
+			delete(inst.Tokens, tid)
 		}
 	}
 	// All tokens in this scope are at EndEvents; disarm scope boundaries and complete
@@ -368,7 +405,7 @@ func (x *Executor) tryCompleteScope(ctx context.Context, dep *deploy.Deployment,
 		Instance:   inst,
 		ElementID:  completeID,
 		Type:       completeType,
-		TokenID:    tokenID,
+		TokenID:    completeTokenID,
 	})
 	if err != nil {
 		return nil, err
@@ -383,7 +420,7 @@ func (x *Executor) tryCompleteScope(ctx context.Context, dep *deploy.Deployment,
 		pubs = append(pubs, *effect.Publish)
 	}
 	if effect.DiscardToken {
-		delete(inst.Tokens, tokenID)
+		delete(inst.Tokens, completeTokenID)
 	}
 	if effect.TryCompleteProcess {
 		more, err := x.tryCompleteProcessScope(dep, inst, emit)
@@ -391,11 +428,11 @@ func (x *Executor) tryCompleteScope(ctx context.Context, dep *deploy.Deployment,
 		return pubs, err
 	}
 	if effect.TakeOutgoing {
-		next, err := x.takeOutgoing(dep, tokenID, outgoingFrom, effect.OutgoingFlowID, emit)
+		next, err := x.takeOutgoing(dep, completeTokenID, outgoingFrom, effect.OutgoingFlowID, emit)
 		if err != nil {
 			return pubs, err
 		}
-		more, err := x.Enter(ctx, dep, inst, tokenID, next, emit)
+		more, err := x.Enter(ctx, dep, inst, completeTokenID, next, emit)
 		pubs = append(pubs, more...)
 		return pubs, err
 	}
