@@ -139,6 +139,81 @@ func TestEventSubProcessBufferedMessage(t *testing.T) {
 	}
 }
 
+func TestNestedEventSubProcessMessageInterrupting(t *testing.T) {
+	xml := readTestdataESP(t, "m4_nested_esp.bpmn")
+	eng := processing.NewEngine(eventlog.NewMemory())
+	ctx := context.Background()
+
+	dep, err := eng.Deploy(ctx, xml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instanceID, err := eng.CreateInstance(ctx, dep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inst := mustInstance(t, eng, instanceID)
+	if waitingElement(inst) != "UserTask_sp" {
+		t.Fatalf("expected UserTask_sp, got %s tokens=%#v", waitingElement(inst), inst.Tokens)
+	}
+	if _, ok := inst.EventSubProcesses["Event_SubProcess_nested"]; !ok {
+		t.Fatalf("expected nested ESP armed while inside SubProcess, arms=%#v", inst.EventSubProcesses)
+	}
+
+	n, err := eng.PublishMessage(ctx, processing.PublishMessageRequest{Name: "cancel.inner"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("delivered=%d", n)
+	}
+	inst = mustInstance(t, eng, instanceID)
+	if inst.Status != projection.StatusCompleted {
+		t.Fatalf("status=%s tokens=%#v", inst.Status, inst.Tokens)
+	}
+	events, _ := eng.ListEvents(ctx, instanceID)
+	if !sawElementIntent(events, eventv1.Element_TYPE_SUB_PROCESS, "SubProcess_1", eventv1.Element_INTENT_TERMINATED) {
+		t.Fatal("expected embedding SubProcess TERMINATED by interrupting nested ESP")
+	}
+	if !sawElementIntent(events, eventv1.Element_TYPE_SUB_PROCESS, "Event_SubProcess_nested", eventv1.Element_INTENT_COMPLETED) {
+		t.Fatal("expected nested ESP COMPLETED")
+	}
+	if sawElementIntent(events, eventv1.Element_TYPE_END_EVENT, "EndEvent_ok", eventv1.Element_INTENT_COMPLETED) {
+		t.Fatal("happy-path end must not complete after interrupting nested ESP")
+	}
+}
+
+func TestNestedEventSubProcessDisarmedAfterComplete(t *testing.T) {
+	xml := readTestdataESP(t, "m4_nested_esp.bpmn")
+	eng := processing.NewEngine(eventlog.NewMemory())
+	ctx := context.Background()
+
+	dep, err := eng.Deploy(ctx, xml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instanceID, err := eng.CreateInstance(ctx, dep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inst := mustInstance(t, eng, instanceID)
+	elemID, tokenID := waitingAt(inst)
+	if err := eng.Complete(ctx, instanceID, elemID, tokenID, nil); err != nil {
+		t.Fatal(err)
+	}
+	inst = mustInstance(t, eng, instanceID)
+	if inst.Status != projection.StatusCompleted {
+		t.Fatalf("status=%s", inst.Status)
+	}
+	if _, ok := inst.EventSubProcesses["Event_SubProcess_nested"]; ok {
+		t.Fatalf("nested ESP should be disarmed after SubProcess completes, arms=%#v", inst.EventSubProcesses)
+	}
+	events, _ := eng.ListEvents(ctx, instanceID)
+	if !sawElementIntent(events, eventv1.Element_TYPE_END_EVENT, "EndEvent_ok", eventv1.Element_INTENT_COMPLETED) {
+		t.Fatal("expected EndEvent_ok COMPLETED")
+	}
+}
+
 func readTestdataESP(t *testing.T, name string) []byte {
 	t.Helper()
 	xml, err := os.ReadFile(filepath.Join("testdata", name))

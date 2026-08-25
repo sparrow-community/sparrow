@@ -692,15 +692,15 @@ func validateBoundaryHost(proc *element.Process, activityID string) error {
 }
 
 func validateSubProcesses(fe *element.FlowElements) error {
-	return validateSubProcessesAt(fe, false)
+	return validateSubProcessesAt(fe, false, false)
 }
 
-func validateSubProcessesAt(fe *element.FlowElements, insideEmbedded bool) error {
+func validateSubProcessesAt(fe *element.FlowElements, insideEmbedded, insideEventSubProcess bool) error {
 	for i := range fe.SubProcesses {
 		sp := &fe.SubProcesses[i]
 		if sp.TriggeredByEvent {
-			if insideEmbedded {
-				return fmt.Errorf("UNSUPPORTED_ELEMENT: event subProcess %q nested in embedded subProcess is not supported yet", sp.ID)
+			if insideEventSubProcess {
+				return fmt.Errorf("UNSUPPORTED_ELEMENT: event subProcess %q nested in event subProcess is not supported", sp.ID)
 			}
 			if err := validateEventSubProcess(sp, nil, nil); err != nil {
 				return err
@@ -710,7 +710,7 @@ func validateSubProcessesAt(fe *element.FlowElements, insideEmbedded bool) error
 					return fmt.Errorf("UNSUPPORTED_ELEMENT: event subProcess %q must not have sequence flow connections", sp.ID)
 				}
 			}
-			if err := validateSubProcessesAt(&sp.FlowElements, false); err != nil {
+			if err := validateSubProcessesAt(&sp.FlowElements, false, true); err != nil {
 				return err
 			}
 			continue
@@ -718,7 +718,7 @@ func validateSubProcessesAt(fe *element.FlowElements, insideEmbedded bool) error
 		if len(sp.StartEvents) == 0 {
 			return fmt.Errorf("UNSUPPORTED_ELEMENT: subProcess %q must have a startEvent", sp.ID)
 		}
-		if err := validateSubProcessesAt(&sp.FlowElements, true); err != nil {
+		if err := validateSubProcessesAt(&sp.FlowElements, true, insideEventSubProcess); err != nil {
 			return err
 		}
 	}

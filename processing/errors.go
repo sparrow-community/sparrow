@@ -217,6 +217,7 @@ func (x *Executor) fireScopeErrorBoundary(
 		return nil, err
 	}
 	inst.RemoveScopeBoundariesForScope(scopeID)
+	inst.RemoveEventSubProcessesInScope(scopeID)
 	if err := emit(&eventv1.Element{
 		Intent:  eventv1.Element_INTENT_COMPLETING,
 		Type:    eventv1.Element_TYPE_BOUNDARY_EVENT,
@@ -247,6 +248,7 @@ func (x *Executor) terminateScope(ctx context.Context, dep *deploy.Deployment, i
 	hostTokenID, ok := findScopeHostToken(dep, inst, scopeID)
 	if !ok {
 		inst.RemoveScopeBoundariesForScope(scopeID)
+		inst.RemoveEventSubProcessesInScope(scopeID)
 		return nil
 	}
 	if err := emit(&eventv1.Element{
@@ -266,6 +268,7 @@ func (x *Executor) terminateScope(ctx context.Context, dep *deploy.Deployment, i
 		return err
 	}
 	inst.RemoveScopeBoundariesForScope(scopeID)
+	inst.RemoveEventSubProcessesInScope(scopeID)
 	return nil
 }
 

@@ -202,7 +202,7 @@ runtime 加载时丢弃过期/无效 lease 与过期/死实例消息缓冲；实
 | `PARALLEL_GATEWAY` | fork / join |
 | `INCLUSIVE_GATEWAY` | OR-split / OR-join（可达 token 防死锁） |
 | `EVENT_BASED_GATEWAY` | 先到 cancel 兄弟，或 Parallel 保留兄弟；instantiate 不支持 |
-| `SUB_PROCESS` | 嵌入式子流程；流程级 Event Sub-Process（`triggeredByEvent`）另武装 |
+| `SUB_PROCESS` | 嵌入式子流程；Event Sub-Process（`triggeredByEvent`）可挂在流程或嵌入式子流程上 |
 | `SEQUENCE_FLOW` | `SEQUENCE_FLOW_TAKEN`（经 transit，不走 OnEnter） |
 
 **统一完成入口**：等待点（UserTask / ServiceTask / catch / 部分 throw·compensate）都走 `Complete`；类型来自部署，不按类型拆 API。
@@ -246,6 +246,7 @@ runtime 加载时丢弃过期/无效 lease 与过期/死实例消息缓冲；实
 | `CreateInstance` | 启动 COMMAND + PROCESS；Enter Start；步进至等待点或结束 |
 | `Complete` | 校验 waiting；handler OnComplete 后自动步进 |
 | `FireDue` / `PublishMessage` / `PublishSignal` | 见上；gateway 暴露对应 RPC |
+| `ThrowError` | 等待中的 UserTask/ServiceTask 抛 BPMN error；gateway `engine.v1` 暴露 |
 | `Activate` / `Fail` / `Heartbeat` | Job 租约生命周期 |
 | `GetInstance` / `ListEvents` | 投影快照 / 审计时间线 |
 
@@ -260,3 +261,21 @@ runtime 加载时丢弃过期/无效 lease 与过期/死实例消息缓冲；实
 - 非元素事实（租约、消息缓冲）→ `runtime.Store`，不默认进 EventLog
 - `job.v1` / `engine.v1` 由 `gateway` 适配；**不**进入 processing
 - 进程入口：`gateway/cmd/sparrow`（含 `FireDue` 轮询）
+
+---
+
+## 8. 已知设计张力（实现中标记）
+
+下列不是阻塞缺陷，但是当前模型下需要注意的不合理点 / 技术债；后续可重构时优先处理。
+
+1. **Event Sub-Process 武装不在账本中**  
+   `EventSubProcessArm` 是投影侧订阅（与 Job 租约、消息缓冲同类），不是 EventLog 主语。`Recover` / `Open` 依赖「当前活跃 scope + 部署定义」重装武装。嵌套 ESP 后，活跃嵌入式 SubProcess 的判定必须正确，否则恢复后会丢订阅或误武装。
+
+2. **嵌入式 SubProcess 没有常驻 host token**  
+   进入 SubProcess 后，同一 token 进入内部 Start，投影上不再停在 `SUB_PROCESS` 元素。打断型嵌套 ESP 取消父 scope 时，需要**补记** `SUB_PROCESS TERMINATED` 审计，并在 `ApplyEvent` 之后再次 `delete` token——因为 `TERMINATED` 会把已删除的 token 复活为 active。这与「token 更新只走 EVENT」的原则有摩擦：投影副作用要靠执行器补刀。更干净的做法可能是：host token 在 SubProcess 上 waiting、内部用 child token；或让 `TERMINATED` 对已删除 token 保持删除语义。
+
+3. **`terminateScopeTokens` 双份实现**  
+   `Engine.terminateScopeTokens`（ESP）与 `Executor.terminateScopeTokens`（Error 传播）行为略有不同（是否包含 host / 是否 delete）。应合并为一处，避免嵌套 scope 语义分叉。
+
+4. **Compensate / Error end 共用 `END_EVENT` waiting 投影**  
+   为支持 compensate end 等待 handler，`waitingActivation` 包含了 `END_EVENT`。none/error end 的瞬时生命周期会短暂经过 waiting 状态（随即 COMPLETED）。目前可工作，但语义上偏宽；长期可改为仅在 compensate/error-wait 路径写显式 Wait 标记。

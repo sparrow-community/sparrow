@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             id="Definitions_nested_esp"
+             targetNamespace="http://sparrow.example/nested-esp">
+  <message id="message_1" name="cancel.inner"/>
+  <process id="Process_nested_esp" name="M4 Nested Event SubProcess" isExecutable="true">
+    <startEvent id="StartEvent_1">
+      <outgoing>Flow_start_to_sp</outgoing>
+    </startEvent>
+    <subProcess id="SubProcess_1" name="Inner work">
+      <incoming>Flow_start_to_sp</incoming>
+      <outgoing>Flow_sp_to_end</outgoing>
+      <startEvent id="Start_sp">
+        <outgoing>Flow_sp_start_to_task</outgoing>
+      </startEvent>
+      <userTask id="UserTask_sp" name="Work inside">
+        <incoming>Flow_sp_start_to_task</incoming>
+        <outgoing>Flow_sp_task_to_end</outgoing>
+      </userTask>
+      <endEvent id="End_sp">
+        <incoming>Flow_sp_task_to_end</incoming>
+      </endEvent>
+      <sequenceFlow id="Flow_sp_start_to_task" sourceRef="Start_sp" targetRef="UserTask_sp"/>
+      <sequenceFlow id="Flow_sp_task_to_end" sourceRef="UserTask_sp" targetRef="End_sp"/>
+
+      <subProcess id="Event_SubProcess_nested" name="On Cancel Inner" triggeredByEvent="true">
+        <startEvent id="ESP_Start_1" isInterrupting="true">
+          <outgoing>Flow_esp_start_to_end</outgoing>
+          <messageEventDefinition id="ESP_MsgDef_1" messageRef="message_1"/>
+        </startEvent>
+        <endEvent id="ESP_End_1">
+          <incoming>Flow_esp_start_to_end</incoming>
+        </endEvent>
+        <sequenceFlow id="Flow_esp_start_to_end" sourceRef="ESP_Start_1" targetRef="ESP_End_1"/>
+      </subProcess>
+    </subProcess>
+    <endEvent id="EndEvent_ok">
+      <incoming>Flow_sp_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_sp" sourceRef="StartEvent_1" targetRef="SubProcess_1"/>
+    <sequenceFlow id="Flow_sp_to_end" sourceRef="SubProcess_1" targetRef="EndEvent_ok"/>
+  </process>
+</definitions>

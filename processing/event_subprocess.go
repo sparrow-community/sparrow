@@ -11,8 +11,9 @@ import (
 	eventv1 "github.com/sparrow-community/sparrow/protocol/gen/go/event/v1"
 )
 
-// armEventSubProcesses registers process-level event sub-process subscriptions.
-// Nested event sub-processes inside embedded subProcesses are rejected at deploy.
+// armEventSubProcesses registers event sub-process subscriptions for the process
+// scope and any currently active embedded subProcess scopes.
+// Arms are projection-only (not EventLog records); Recover re-syncs them.
 func (e *Engine) armEventSubProcesses(dep *deploy.Deployment, inst *projection.Instance, now time.Time) {
 	if dep == nil || inst == nil {
 		return
@@ -20,9 +21,40 @@ func (e *Engine) armEventSubProcesses(dep *deploy.Deployment, inst *projection.I
 	if now.IsZero() {
 		now = e.now()
 	}
-	scopeID := dep.ProcessID()
+	armEventSubProcessesInScope(dep, inst, dep.ProcessID(), now)
+	for scopeID := range activeEmbeddedScopes(dep, inst) {
+		armEventSubProcessesInScope(dep, inst, scopeID, now)
+	}
+}
+
+func activeEmbeddedScopes(dep *deploy.Deployment, inst *projection.Instance) map[string]bool {
+	scopes := make(map[string]bool)
+	for _, tok := range inst.Tokens {
+		if tok == nil {
+			continue
+		}
+		if typ, err := dep.TypeOf(tok.ElementID); err == nil &&
+			typ == eventv1.Element_TYPE_SUB_PROCESS &&
+			!dep.IsEventSubProcess(tok.ElementID) {
+			scopes[tok.ElementID] = true
+		}
+		scope, ok := dep.ScopeOf(tok.ElementID)
+		if !ok || scope == "" || scope == dep.ProcessID() {
+			continue
+		}
+		if !dep.IsEventSubProcess(scope) {
+			scopes[scope] = true
+		}
+	}
+	return scopes
+}
+
+func armEventSubProcessesInScope(dep *deploy.Deployment, inst *projection.Instance, scopeID string, now time.Time) {
 	for _, spec := range dep.EventSubProcessesInScope(scopeID) {
 		if eventSubProcessRunning(dep, inst, spec.ID) {
+			continue
+		}
+		if _, ok := inst.EventSubProcesses[spec.ID]; ok {
 			continue
 		}
 		arm := &projection.EventSubProcessArm{
@@ -112,8 +144,7 @@ func (e *Engine) triggerEventSubProcessLocked(
 	if arm == nil {
 		return nil, nil
 	}
-	spec, ok := dep.EventSubProcessSpec(subProcessID)
-	if !ok {
+	if _, ok := dep.EventSubProcessSpec(subProcessID); !ok {
 		return nil, fmt.Errorf("NOT_FOUND: event subProcess %q", subProcessID)
 	}
 
@@ -155,8 +186,35 @@ func (e *Engine) triggerEventSubProcessLocked(
 	emit := e.emitter(ctx, inst, cmdID)
 
 	if arm.Interrupting {
+		hostTokenID := ""
+		for tid, tok := range inst.Tokens {
+			if tok != nil && tokenInOrIsScope(dep, tok, arm.ParentScopeID) {
+				hostTokenID = tid
+				break
+			}
+		}
 		if err := e.terminateScopeTokens(dep, inst, arm.ParentScopeID, emit); err != nil {
 			return nil, err
+		}
+		// Embedded parent scopes have no lingering host token (the entering token
+		// already moved inside). Still record SubProcess TERMINATED for audit.
+		if arm.ParentScopeID != dep.ProcessID() && hostTokenID != "" {
+			for _, intent := range []eventv1.Element_Intent{
+				eventv1.Element_INTENT_TERMINATING,
+				eventv1.Element_INTENT_TERMINATED,
+			} {
+				if err := emit(&eventv1.Element{
+					Intent:  intent,
+					Type:    eventv1.Element_TYPE_SUB_PROCESS,
+					Id:      arm.ParentScopeID,
+					TokenId: hostTokenID,
+				}); err != nil {
+					return nil, err
+				}
+			}
+			// applyToken would revive the host token on TERMINATED; drop it —
+			// the entering token already lived inside the scope and must not linger.
+			delete(inst.Tokens, hostTokenID)
 		}
 		inst.RemoveScopeBoundariesForScope(arm.ParentScopeID)
 		inst.RemoveEventSubProcessesInScope(arm.ParentScopeID)
@@ -164,18 +222,17 @@ func (e *Engine) triggerEventSubProcessLocked(
 		inst.RemoveEventSubProcess(subProcessID)
 	}
 
-	_ = spec
 	return e.executor.Enter(ctx, dep, inst, tokenID, subProcessID, emit)
 }
 
 func (e *Engine) terminateScopeTokens(dep *deploy.Deployment, inst *projection.Instance, scopeID string, emit Emitter) error {
+	processID := dep.ProcessID()
 	ids := make([]string, 0, len(inst.Tokens))
 	for tid, tok := range inst.Tokens {
 		if tok == nil {
 			continue
 		}
-		tokScope, _ := dep.ScopeOf(tok.ElementID)
-		if scopeID != dep.ProcessID() && !isInScope(dep, tokScope, scopeID) && tokScope != scopeID {
+		if scopeID != processID && !tokenInOrIsScope(dep, tok, scopeID) {
 			continue
 		}
 		ids = append(ids, tid)
@@ -207,6 +264,15 @@ func (e *Engine) terminateScopeTokens(dep *deploy.Deployment, inst *projection.I
 		delete(inst.Tokens, tid)
 	}
 	return nil
+}
+
+// tokenInOrIsScope reports whether tok sits on scopeID itself or inside it.
+func tokenInOrIsScope(dep *deploy.Deployment, tok *projection.Token, scopeID string) bool {
+	if tok.ElementID == scopeID {
+		return true
+	}
+	tokScope, _ := dep.ScopeOf(tok.ElementID)
+	return tokScope == scopeID || isInScope(dep, tokScope, scopeID)
 }
 
 func (e *Engine) collectESPMessageArms(name, instanceID string, keys []*eventv1.Variable) []espWait {

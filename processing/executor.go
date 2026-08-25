@@ -72,6 +72,9 @@ func (x *Executor) Enter(
 			pubs = append(pubs, *effect.Publish)
 		}
 		if effect.EnterChild != "" {
+			if typ == eventv1.Element_TYPE_SUB_PROCESS && !dep.IsEventSubProcess(elementID) {
+				armEventSubProcessesInScope(dep, inst, elementID, x.now())
+			}
 			elementID = effect.EnterChild
 			continue
 		}
@@ -345,6 +348,7 @@ func (x *Executor) tryCompleteScope(ctx context.Context, dep *deploy.Deployment,
 	}
 	// All tokens in this scope are at EndEvents; disarm scope boundaries and complete
 	inst.RemoveScopeBoundariesForScope(scopeID)
+	inst.RemoveEventSubProcessesInScope(scopeID)
 	h, err := x.Handlers.Get(eventv1.Element_TYPE_SUB_PROCESS)
 	if err != nil {
 		return nil, err
