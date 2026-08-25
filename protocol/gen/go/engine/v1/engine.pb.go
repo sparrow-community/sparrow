@@ -860,6 +860,117 @@ func (x *PublishSignalResponse) GetDelivered() int32 {
 	return 0
 }
 
+// ThrowErrorRequest throws a BPMN error from a waiting UserTask or ServiceTask.
+// Matching interrupting error boundaries catch it; otherwise the instance terminates.
+type ThrowErrorRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Process instance id (UUIDv7).
+	ProcessInstanceId string `protobuf:"bytes,1,opt,name=process_instance_id,json=processInstanceId,proto3" json:"process_instance_id,omitempty"`
+	// BPMN element id of the waiting activity.
+	ElementId string `protobuf:"bytes,2,opt,name=element_id,json=elementId,proto3" json:"element_id,omitempty"`
+	// Execution token id (UUIDv7).
+	TokenId string `protobuf:"bytes,3,opt,name=token_id,json=tokenId,proto3" json:"token_id,omitempty"`
+	// BPMN error code (Definitions/error@errorCode). Empty matches catch-all boundaries only when they have no code.
+	ErrorCode     string `protobuf:"bytes,4,opt,name=error_code,json=errorCode,proto3" json:"error_code,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ThrowErrorRequest) Reset() {
+	*x = ThrowErrorRequest{}
+	mi := &file_engine_v1_engine_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ThrowErrorRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ThrowErrorRequest) ProtoMessage() {}
+
+func (x *ThrowErrorRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_engine_v1_engine_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ThrowErrorRequest.ProtoReflect.Descriptor instead.
+func (*ThrowErrorRequest) Descriptor() ([]byte, []int) {
+	return file_engine_v1_engine_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *ThrowErrorRequest) GetProcessInstanceId() string {
+	if x != nil {
+		return x.ProcessInstanceId
+	}
+	return ""
+}
+
+func (x *ThrowErrorRequest) GetElementId() string {
+	if x != nil {
+		return x.ElementId
+	}
+	return ""
+}
+
+func (x *ThrowErrorRequest) GetTokenId() string {
+	if x != nil {
+		return x.TokenId
+	}
+	return ""
+}
+
+func (x *ThrowErrorRequest) GetErrorCode() string {
+	if x != nil {
+		return x.ErrorCode
+	}
+	return ""
+}
+
+// ThrowErrorResponse is empty on success.
+type ThrowErrorResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ThrowErrorResponse) Reset() {
+	*x = ThrowErrorResponse{}
+	mi := &file_engine_v1_engine_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ThrowErrorResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ThrowErrorResponse) ProtoMessage() {}
+
+func (x *ThrowErrorResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_engine_v1_engine_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ThrowErrorResponse.ProtoReflect.Descriptor instead.
+func (*ThrowErrorResponse) Descriptor() ([]byte, []int) {
+	return file_engine_v1_engine_proto_rawDescGZIP(), []int{15}
+}
+
 // ListEventsRequest reads the audit timeline for one instance.
 type ListEventsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -871,7 +982,7 @@ type ListEventsRequest struct {
 
 func (x *ListEventsRequest) Reset() {
 	*x = ListEventsRequest{}
-	mi := &file_engine_v1_engine_proto_msgTypes[14]
+	mi := &file_engine_v1_engine_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -883,7 +994,7 @@ func (x *ListEventsRequest) String() string {
 func (*ListEventsRequest) ProtoMessage() {}
 
 func (x *ListEventsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_engine_v1_engine_proto_msgTypes[14]
+	mi := &file_engine_v1_engine_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -896,7 +1007,7 @@ func (x *ListEventsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListEventsRequest.ProtoReflect.Descriptor instead.
 func (*ListEventsRequest) Descriptor() ([]byte, []int) {
-	return file_engine_v1_engine_proto_rawDescGZIP(), []int{14}
+	return file_engine_v1_engine_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *ListEventsRequest) GetProcessInstanceId() string {
@@ -917,7 +1028,7 @@ type ListEventsResponse struct {
 
 func (x *ListEventsResponse) Reset() {
 	*x = ListEventsResponse{}
-	mi := &file_engine_v1_engine_proto_msgTypes[15]
+	mi := &file_engine_v1_engine_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -929,7 +1040,7 @@ func (x *ListEventsResponse) String() string {
 func (*ListEventsResponse) ProtoMessage() {}
 
 func (x *ListEventsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_engine_v1_engine_proto_msgTypes[15]
+	mi := &file_engine_v1_engine_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -942,7 +1053,7 @@ func (x *ListEventsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListEventsResponse.ProtoReflect.Descriptor instead.
 func (*ListEventsResponse) Descriptor() ([]byte, []int) {
-	return file_engine_v1_engine_proto_rawDescGZIP(), []int{15}
+	return file_engine_v1_engine_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *ListEventsResponse) GetEvents() []*v1.Event {
@@ -1027,17 +1138,27 @@ const file_engine_v1_engine_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"5\n" +
 	"\x15PublishSignalResponse\x12\x1c\n" +
-	"\tdelivered\x18\x01 \x01(\x05R\tdelivered\"C\n" +
+	"\tdelivered\x18\x01 \x01(\x05R\tdelivered\"\x9c\x01\n" +
+	"\x11ThrowErrorRequest\x12.\n" +
+	"\x13process_instance_id\x18\x01 \x01(\tR\x11processInstanceId\x12\x1d\n" +
+	"\n" +
+	"element_id\x18\x02 \x01(\tR\telementId\x12\x19\n" +
+	"\btoken_id\x18\x03 \x01(\tR\atokenId\x12\x1d\n" +
+	"\n" +
+	"error_code\x18\x04 \x01(\tR\terrorCode\"\x14\n" +
+	"\x12ThrowErrorResponse\"C\n" +
 	"\x11ListEventsRequest\x12.\n" +
 	"\x13process_instance_id\x18\x01 \x01(\tR\x11processInstanceId\"=\n" +
 	"\x12ListEventsResponse\x12'\n" +
-	"\x06events\x18\x01 \x03(\v2\x0f.event.v1.EventR\x06events2\xae\x04\n" +
+	"\x06events\x18\x01 \x03(\v2\x0f.event.v1.EventR\x06events2\xf9\x04\n" +
 	"\rEngineService\x12=\n" +
 	"\x06Deploy\x12\x18.engine.v1.DeployRequest\x1a\x19.engine.v1.DeployResponse\x12U\n" +
 	"\x0eCreateInstance\x12 .engine.v1.CreateInstanceRequest\x1a!.engine.v1.CreateInstanceResponse\x12C\n" +
 	"\bComplete\x12\x1a.engine.v1.CompleteRequest\x1a\x1b.engine.v1.CompleteResponse\x12U\n" +
 	"\x0ePublishMessage\x12 .engine.v1.PublishMessageRequest\x1a!.engine.v1.PublishMessageResponse\x12R\n" +
-	"\rPublishSignal\x12\x1f.engine.v1.PublishSignalRequest\x1a .engine.v1.PublishSignalResponse\x12L\n" +
+	"\rPublishSignal\x12\x1f.engine.v1.PublishSignalRequest\x1a .engine.v1.PublishSignalResponse\x12I\n" +
+	"\n" +
+	"ThrowError\x12\x1c.engine.v1.ThrowErrorRequest\x1a\x1d.engine.v1.ThrowErrorResponse\x12L\n" +
 	"\vGetInstance\x12\x1d.engine.v1.GetInstanceRequest\x1a\x1e.engine.v1.GetInstanceResponse\x12I\n" +
 	"\n" +
 	"ListEvents\x12\x1c.engine.v1.ListEventsRequest\x1a\x1d.engine.v1.ListEventsResponseB\xaa\x01\n" +
@@ -1056,7 +1177,7 @@ func file_engine_v1_engine_proto_rawDescGZIP() []byte {
 	return file_engine_v1_engine_proto_rawDescData
 }
 
-var file_engine_v1_engine_proto_msgTypes = make([]protoimpl.MessageInfo, 22)
+var file_engine_v1_engine_proto_msgTypes = make([]protoimpl.MessageInfo, 24)
 var file_engine_v1_engine_proto_goTypes = []any{
 	(*Token)(nil),                  // 0: engine.v1.Token
 	(*Instance)(nil),               // 1: engine.v1.Instance
@@ -1072,42 +1193,46 @@ var file_engine_v1_engine_proto_goTypes = []any{
 	(*PublishMessageResponse)(nil), // 11: engine.v1.PublishMessageResponse
 	(*PublishSignalRequest)(nil),   // 12: engine.v1.PublishSignalRequest
 	(*PublishSignalResponse)(nil),  // 13: engine.v1.PublishSignalResponse
-	(*ListEventsRequest)(nil),      // 14: engine.v1.ListEventsRequest
-	(*ListEventsResponse)(nil),     // 15: engine.v1.ListEventsResponse
-	nil,                            // 16: engine.v1.Instance.VariablesEntry
-	nil,                            // 17: engine.v1.CreateInstanceRequest.VariablesEntry
-	nil,                            // 18: engine.v1.CompleteRequest.VariablesEntry
-	nil,                            // 19: engine.v1.PublishMessageRequest.VariablesEntry
-	nil,                            // 20: engine.v1.PublishMessageRequest.CorrelationKeysEntry
-	nil,                            // 21: engine.v1.PublishSignalRequest.VariablesEntry
-	(*v1.Event)(nil),               // 22: event.v1.Event
+	(*ThrowErrorRequest)(nil),      // 14: engine.v1.ThrowErrorRequest
+	(*ThrowErrorResponse)(nil),     // 15: engine.v1.ThrowErrorResponse
+	(*ListEventsRequest)(nil),      // 16: engine.v1.ListEventsRequest
+	(*ListEventsResponse)(nil),     // 17: engine.v1.ListEventsResponse
+	nil,                            // 18: engine.v1.Instance.VariablesEntry
+	nil,                            // 19: engine.v1.CreateInstanceRequest.VariablesEntry
+	nil,                            // 20: engine.v1.CompleteRequest.VariablesEntry
+	nil,                            // 21: engine.v1.PublishMessageRequest.VariablesEntry
+	nil,                            // 22: engine.v1.PublishMessageRequest.CorrelationKeysEntry
+	nil,                            // 23: engine.v1.PublishSignalRequest.VariablesEntry
+	(*v1.Event)(nil),               // 24: event.v1.Event
 }
 var file_engine_v1_engine_proto_depIdxs = []int32{
-	16, // 0: engine.v1.Instance.variables:type_name -> engine.v1.Instance.VariablesEntry
+	18, // 0: engine.v1.Instance.variables:type_name -> engine.v1.Instance.VariablesEntry
 	0,  // 1: engine.v1.Instance.tokens:type_name -> engine.v1.Token
-	17, // 2: engine.v1.CreateInstanceRequest.variables:type_name -> engine.v1.CreateInstanceRequest.VariablesEntry
-	18, // 3: engine.v1.CompleteRequest.variables:type_name -> engine.v1.CompleteRequest.VariablesEntry
+	19, // 2: engine.v1.CreateInstanceRequest.variables:type_name -> engine.v1.CreateInstanceRequest.VariablesEntry
+	20, // 3: engine.v1.CompleteRequest.variables:type_name -> engine.v1.CompleteRequest.VariablesEntry
 	1,  // 4: engine.v1.GetInstanceResponse.instance:type_name -> engine.v1.Instance
-	19, // 5: engine.v1.PublishMessageRequest.variables:type_name -> engine.v1.PublishMessageRequest.VariablesEntry
-	20, // 6: engine.v1.PublishMessageRequest.correlation_keys:type_name -> engine.v1.PublishMessageRequest.CorrelationKeysEntry
-	21, // 7: engine.v1.PublishSignalRequest.variables:type_name -> engine.v1.PublishSignalRequest.VariablesEntry
-	22, // 8: engine.v1.ListEventsResponse.events:type_name -> event.v1.Event
+	21, // 5: engine.v1.PublishMessageRequest.variables:type_name -> engine.v1.PublishMessageRequest.VariablesEntry
+	22, // 6: engine.v1.PublishMessageRequest.correlation_keys:type_name -> engine.v1.PublishMessageRequest.CorrelationKeysEntry
+	23, // 7: engine.v1.PublishSignalRequest.variables:type_name -> engine.v1.PublishSignalRequest.VariablesEntry
+	24, // 8: engine.v1.ListEventsResponse.events:type_name -> event.v1.Event
 	2,  // 9: engine.v1.EngineService.Deploy:input_type -> engine.v1.DeployRequest
 	4,  // 10: engine.v1.EngineService.CreateInstance:input_type -> engine.v1.CreateInstanceRequest
 	6,  // 11: engine.v1.EngineService.Complete:input_type -> engine.v1.CompleteRequest
 	10, // 12: engine.v1.EngineService.PublishMessage:input_type -> engine.v1.PublishMessageRequest
 	12, // 13: engine.v1.EngineService.PublishSignal:input_type -> engine.v1.PublishSignalRequest
-	8,  // 14: engine.v1.EngineService.GetInstance:input_type -> engine.v1.GetInstanceRequest
-	14, // 15: engine.v1.EngineService.ListEvents:input_type -> engine.v1.ListEventsRequest
-	3,  // 16: engine.v1.EngineService.Deploy:output_type -> engine.v1.DeployResponse
-	5,  // 17: engine.v1.EngineService.CreateInstance:output_type -> engine.v1.CreateInstanceResponse
-	7,  // 18: engine.v1.EngineService.Complete:output_type -> engine.v1.CompleteResponse
-	11, // 19: engine.v1.EngineService.PublishMessage:output_type -> engine.v1.PublishMessageResponse
-	13, // 20: engine.v1.EngineService.PublishSignal:output_type -> engine.v1.PublishSignalResponse
-	9,  // 21: engine.v1.EngineService.GetInstance:output_type -> engine.v1.GetInstanceResponse
-	15, // 22: engine.v1.EngineService.ListEvents:output_type -> engine.v1.ListEventsResponse
-	16, // [16:23] is the sub-list for method output_type
-	9,  // [9:16] is the sub-list for method input_type
+	14, // 14: engine.v1.EngineService.ThrowError:input_type -> engine.v1.ThrowErrorRequest
+	8,  // 15: engine.v1.EngineService.GetInstance:input_type -> engine.v1.GetInstanceRequest
+	16, // 16: engine.v1.EngineService.ListEvents:input_type -> engine.v1.ListEventsRequest
+	3,  // 17: engine.v1.EngineService.Deploy:output_type -> engine.v1.DeployResponse
+	5,  // 18: engine.v1.EngineService.CreateInstance:output_type -> engine.v1.CreateInstanceResponse
+	7,  // 19: engine.v1.EngineService.Complete:output_type -> engine.v1.CompleteResponse
+	11, // 20: engine.v1.EngineService.PublishMessage:output_type -> engine.v1.PublishMessageResponse
+	13, // 21: engine.v1.EngineService.PublishSignal:output_type -> engine.v1.PublishSignalResponse
+	15, // 22: engine.v1.EngineService.ThrowError:output_type -> engine.v1.ThrowErrorResponse
+	9,  // 23: engine.v1.EngineService.GetInstance:output_type -> engine.v1.GetInstanceResponse
+	17, // 24: engine.v1.EngineService.ListEvents:output_type -> engine.v1.ListEventsResponse
+	17, // [17:25] is the sub-list for method output_type
+	9,  // [9:17] is the sub-list for method input_type
 	9,  // [9:9] is the sub-list for extension type_name
 	9,  // [9:9] is the sub-list for extension extendee
 	0,  // [0:9] is the sub-list for field type_name
@@ -1124,7 +1249,7 @@ func file_engine_v1_engine_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_engine_v1_engine_proto_rawDesc), len(file_engine_v1_engine_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   22,
+			NumMessages:   24,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

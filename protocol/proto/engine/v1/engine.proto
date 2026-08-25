@@ -134,6 +134,22 @@ message PublishSignalResponse {
   int32 delivered = 1;
 }
 
+// ThrowErrorRequest throws a BPMN error from a waiting UserTask or ServiceTask.
+// Matching interrupting error boundaries catch it; otherwise the instance terminates.
+message ThrowErrorRequest {
+  // Process instance id (UUIDv7).
+  string process_instance_id = 1;
+  // BPMN element id of the waiting activity.
+  string element_id = 2;
+  // Execution token id (UUIDv7).
+  string token_id = 3;
+  // BPMN error code (Definitions/error@errorCode). Empty matches catch-all boundaries only when they have no code.
+  string error_code = 4;
+}
+
+// ThrowErrorResponse is empty on success.
+message ThrowErrorResponse {}
+
 // ListEventsRequest reads the audit timeline for one instance.
 message ListEventsRequest {
   // Process instance id (UUIDv7).
@@ -159,6 +175,8 @@ service EngineService {
   rpc PublishMessage(PublishMessageRequest) returns (PublishMessageResponse);
   // PublishSignal completes waiting signal catches whose name matches (no buffer).
   rpc PublishSignal(PublishSignalRequest) returns (PublishSignalResponse);
+  // ThrowError maps to Engine.ThrowError for a waiting UserTask or ServiceTask.
+  rpc ThrowError(ThrowErrorRequest) returns (ThrowErrorResponse);
   // GetInstance returns a projection snapshot.
   rpc GetInstance(GetInstanceRequest) returns (GetInstanceResponse);
   // ListEvents returns the instance audit timeline.

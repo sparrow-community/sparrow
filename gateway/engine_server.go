@@ -114,6 +114,16 @@ func (s *EngineServer) PublishSignal(ctx context.Context, req *enginev1.PublishS
 	return &enginev1.PublishSignalResponse{Delivered: int32(n)}, nil
 }
 
+func (s *EngineServer) ThrowError(ctx context.Context, req *enginev1.ThrowErrorRequest) (*enginev1.ThrowErrorResponse, error) {
+	if s.engine == nil {
+		return nil, status.Error(codes.FailedPrecondition, "engine is required")
+	}
+	if err := s.engine.ThrowError(ctx, req.GetProcessInstanceId(), req.GetElementId(), req.GetTokenId(), req.GetErrorCode()); err != nil {
+		return nil, statusFromEngine(err)
+	}
+	return &enginev1.ThrowErrorResponse{}, nil
+}
+
 func (s *EngineServer) GetInstance(_ context.Context, req *enginev1.GetInstanceRequest) (*enginev1.GetInstanceResponse, error) {
 	if s.engine == nil {
 		return nil, status.Error(codes.FailedPrecondition, "engine is required")

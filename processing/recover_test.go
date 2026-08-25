@@ -284,6 +284,66 @@ func TestRecoverRedrivesFailCommand(t *testing.T) {
 	}
 }
 
+func TestRecoverRedrivesThrowErrorCommand(t *testing.T) {
+	xml, err := os.ReadFile(filepath.Join("testdata", "m4_error_boundary.bpmn"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	memLog := eventlog.NewMemory()
+	store := deploy.NewMemoryStore()
+	eng1, err := processing.Recover(ctx, memLog, store, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	depID, err := eng1.Deploy(ctx, xml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instanceID, err := eng1.CreateInstance(ctx, depID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inst, _ := eng1.GetInstance(instanceID)
+	elementID, tokenID := waitingAt(inst)
+
+	cmdID := processing.MustNextID()
+	if _, err := memLog.Append(ctx, &eventv1.Event{
+		Id:                cmdID,
+		Timestamp:         1,
+		RecordType:        eventv1.Event_RECORD_TYPE_COMMAND,
+		DeploymentId:      depID,
+		ProcessInstanceId: instanceID,
+		ProcessVersion:    1,
+		Element: &eventv1.Element{
+			Intent:  eventv1.Element_INTENT_ERROR_THROWN,
+			Type:    eventv1.Element_TYPE_USER_TASK,
+			Id:      elementID,
+			TokenId: tokenID,
+			Payload: &eventv1.Element_EventPayload{
+				EventPayload: &eventv1.EventPayload{ErrorCode: "BUSINESS_ERROR"},
+			},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	eng2, err := processing.Recover(ctx, memLog, store, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inst, _ = eng2.GetInstance(instanceID)
+	if inst.Status != projection.StatusCompleted {
+		t.Fatalf("status=%s want completed after redrive", inst.Status)
+	}
+	if n := countIntent(t, eng2, instanceID, eventv1.Element_TYPE_USER_TASK, eventv1.Element_INTENT_ERROR_THROWN); n != 1 {
+		t.Fatalf("ERROR_THROWN count=%d", n)
+	}
+	if n := countIntent(t, eng2, instanceID, eventv1.Element_TYPE_BOUNDARY_EVENT, eventv1.Element_INTENT_COMPLETED); n != 1 {
+		t.Fatalf("boundary COMPLETED count=%d", n)
+	}
+}
+
 func readM1(t *testing.T) []byte {
 	t.Helper()
 	xml, err := os.ReadFile(filepath.Join("testdata", "m1_simple.bpmn"))

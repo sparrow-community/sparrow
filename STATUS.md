@@ -13,10 +13,10 @@
 | M1 | Start → UserTask → XOR → End；EventLog + Recover | 完成 |
 | M2 | ServiceTask/Job；Timer/Message catch + boundary | 完成 |
 | M3 | 网关 / SubProcess / Throw / ESP / Compensation / Signal boundary | 完成 |
-| M4（进行中） | Error 事件 | 进行中 |
+| M4 | Error 事件（boundary / end / ThrowError / Recover / gateway） | 完成 |
 | 其后 | 补偿收尾 → CallActivity / 版本 | 规划中 |
 
-**下一步（按序）**：① Error 事件（进行中）→ ② 补偿收尾（End / 嵌套 scope）→ ③ 嵌套 ESP / CallActivity → ④ 版本管理与迁移
+**下一步（按序）**：① 补偿收尾（End / 嵌套 scope）→ ② 嵌套 ESP / CallActivity → ③ 版本管理与迁移
 
 **暂缓**：同一活动 ≥3 个 **同类** waiting boundary；Incident；嵌套 ESP；instantiate EBG；补偿进未完成 SubProcess；集群；产品套件
 （同类各一：timer + message + signal 可共存）
@@ -57,7 +57,7 @@
 **最新提交**
 
 ```text
-（待提交）Support BPMN error events (boundary, end, ThrowError).
+2653adc Support BPMN error events (boundary, end, ThrowError).
 aea6050 Support signal boundary on waiting activities and scopes.
 ```
 

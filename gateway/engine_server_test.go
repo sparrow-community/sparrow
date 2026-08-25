@@ -252,6 +252,55 @@ func TestEngineServicePublishMessageCorrelation(t *testing.T) {
 	}
 }
 
+func TestEngineServiceThrowError(t *testing.T) {
+	_, conn, stop := startGRPC(t)
+	defer stop()
+	ctx := context.Background()
+	client := enginev1.NewEngineServiceClient(conn)
+
+	xml, err := os.ReadFile(filepath.Join("..", "processing", "testdata", "m4_error_boundary.bpmn"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dep, err := client.Deploy(ctx, &enginev1.DeployRequest{BpmnXml: xml})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := client.CreateInstance(ctx, &enginev1.CreateInstanceRequest{DeploymentId: dep.GetDeploymentId()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := client.GetInstance(ctx, &enginev1.GetInstanceRequest{ProcessInstanceId: created.GetProcessInstanceId()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var elementID, tokenID string
+	for _, tok := range got.GetInstance().GetTokens() {
+		if tok.GetStatus() == string(projection.TokenWaiting) {
+			elementID, tokenID = tok.GetElementId(), tok.GetId()
+			break
+		}
+	}
+	if elementID != "UserTask_1" {
+		t.Fatalf("waiting=%s", elementID)
+	}
+	if _, err := client.ThrowError(ctx, &enginev1.ThrowErrorRequest{
+		ProcessInstanceId: created.GetProcessInstanceId(),
+		ElementId:         elementID,
+		TokenId:           tokenID,
+		ErrorCode:         "BUSINESS_ERROR",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, err = client.GetInstance(ctx, &enginev1.GetInstanceRequest{ProcessInstanceId: created.GetProcessInstanceId()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.GetInstance().GetStatus() != string(projection.StatusCompleted) {
+		t.Fatalf("status=%s want completed", got.GetInstance().GetStatus())
+	}
+}
+
 func startGRPC(t *testing.T) (*processing.Engine, *grpc.ClientConn, func()) {
 	t.Helper()
 	eng := processing.NewEngine(eventlog.NewMemory())

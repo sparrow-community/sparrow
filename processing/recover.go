@@ -71,7 +71,7 @@ func (e *Engine) maybeRedrive(ctx context.Context, cmd *eventv1.Event, hasEvent 
 	}
 
 	lock.Lock()
-	if hasEvent && instanceStable(inst) && !completeCommandUnfinished(inst, cmd) {
+	if hasEvent && instanceStable(inst) && !completeCommandUnfinished(inst, cmd) && !errorCommandUnfinished(inst, cmd) {
 		lock.Unlock()
 		return nil
 	}
@@ -89,6 +89,15 @@ func (e *Engine) maybeRedrive(ctx context.Context, cmd *eventv1.Event, hasEvent 
 func completeCommandUnfinished(inst *projection.Instance, cmd *eventv1.Event) bool {
 	el := cmd.GetElement()
 	if el == nil || el.GetIntent() != eventv1.Element_INTENT_COMPLETING {
+		return false
+	}
+	tok := inst.Tokens[el.GetTokenId()]
+	return tok != nil && tok.ElementID == el.GetId() && tok.Status == projection.TokenWaiting
+}
+
+func errorCommandUnfinished(inst *projection.Instance, cmd *eventv1.Event) bool {
+	el := cmd.GetElement()
+	if el == nil || el.GetIntent() != eventv1.Element_INTENT_ERROR_THROWN {
 		return false
 	}
 	tok := inst.Tokens[el.GetTokenId()]
@@ -126,6 +135,8 @@ func (e *Engine) redriveCommand(ctx context.Context, dep *deploy.Deployment, ins
 		return e.redriveComplete(ctx, dep, inst, cmd, emit)
 	case eventv1.Element_INTENT_FAILED:
 		return nil, e.redriveFail(inst, cmd, emit)
+	case eventv1.Element_INTENT_ERROR_THROWN:
+		return e.redriveThrowError(ctx, dep, inst, cmd, emit)
 	default:
 		return nil, fmt.Errorf("unsupported command intent %v", el.GetIntent())
 	}
@@ -193,4 +204,26 @@ func (e *Engine) redriveFail(inst *projection.Instance, cmd *eventv1.Event, emit
 	e.releaseLease(inst.ID, el.GetTokenId())
 	e.notifyJobs()
 	return nil
+}
+
+func (e *Engine) redriveThrowError(ctx context.Context, dep *deploy.Deployment, inst *projection.Instance, cmd *eventv1.Event, emit Emitter) ([]handlers.Publication, error) {
+	el := cmd.GetElement()
+	errorCode := ""
+	if p := el.GetEventPayload(); p != nil {
+		errorCode = p.GetErrorCode()
+	}
+	if err := emit(&eventv1.Element{
+		Intent:  eventv1.Element_INTENT_ERROR_THROWN,
+		Type:    el.GetType(),
+		Id:      el.GetId(),
+		TokenId: el.GetTokenId(),
+		Payload: el.GetPayload(),
+	}); err != nil {
+		return nil, err
+	}
+	if el.GetType() == eventv1.Element_TYPE_SERVICE_TASK {
+		e.releaseLease(inst.ID, el.GetTokenId())
+		e.notifyJobs()
+	}
+	return e.executor.propagateError(ctx, dep, inst, el.GetId(), el.GetTokenId(), errorCode, emit)
 }
