@@ -137,12 +137,14 @@ func (x *Executor) propagateError(
 }
 
 func findScopeHostToken(dep *deploy.Deployment, inst *projection.Instance, scopeID string) (string, bool) {
-	for tid, tok := range inst.Tokens {
-		if tok != nil && tok.ElementID == scopeID {
-			return tid, true
+	if hostID, _, ok := scopeHostElement(dep, scopeID); ok {
+		for tid, tok := range inst.Tokens {
+			if tok != nil && tok.ElementID == hostID {
+				return tid, true
+			}
 		}
 	}
-	// Fallback: pre-host-token ledgers / CallActivity-style inline scopes.
+	// Fallback: any token inside the scope (pre-host-token ledgers).
 	var fallback string
 	for tid, tok := range inst.Tokens {
 		if tok == nil {
@@ -207,7 +209,7 @@ func (x *Executor) fireScopeErrorBoundary(
 		return nil, err
 	}
 	// Keep token_id: boundary outgoing continues on this token.
-	if err := terminateEmbeddedScope(scopeID, hostTokenID, emit); err != nil {
+	if err := terminateScopeHost(dep, scopeID, hostTokenID, emit); err != nil {
 		return nil, err
 	}
 	if err := emitEventSubProcessStartDisarmInScope(dep, scopeID, inst, emit); err != nil {
@@ -238,22 +240,17 @@ func (x *Executor) fireScopeErrorBoundary(
 }
 
 func (x *Executor) terminateScope(ctx context.Context, dep *deploy.Deployment, inst *projection.Instance, scopeID string, emit Emitter) error {
-	hadHost := false
-	for _, tok := range inst.Tokens {
-		if tok != nil && tok.ElementID == scopeID {
-			hadHost = true
-			break
-		}
-	}
+	_, hadHost := findScopeHostToken(dep, inst, scopeID)
 	if err := terminateScopeTokens(dep, inst, scopeID, emit, scopeTerminateOpts{
 		IncludeHost: true,
 		DropTokens:  true,
 	}); err != nil {
 		return err
 	}
-	// Pre-host ledgers: no token parked on the SubProcess — audit without revival.
+	// IncludeHost already TERMINATED a parked host (SubProcess or CallActivity).
+	// Audit-only when no host token existed (legacy SubProcess without host).
 	if !hadHost {
-		if err := terminateEmbeddedScope(scopeID, "", emit); err != nil {
+		if err := terminateScopeHost(dep, scopeID, "", emit); err != nil {
 			return err
 		}
 	}

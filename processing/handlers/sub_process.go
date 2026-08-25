@@ -12,9 +12,15 @@ type SubProcessHandler struct{}
 func (SubProcessHandler) Type() eventv1.Element_Type { return eventv1.Element_TYPE_SUB_PROCESS }
 
 func (SubProcessHandler) OnEnter(in EnterInput) (*Effect, error) {
-	startID, err := in.Deployment.SubProcessStartEventID(in.ElementID)
-	if err != nil {
-		return nil, err
+	var startID string
+	var err error
+	if spec, ok := in.Deployment.EventSubProcessSpec(in.ElementID); ok {
+		startID = spec.StartEventID
+	} else {
+		startID, err = in.Deployment.SubProcessStartEventID(in.ElementID)
+		if err != nil {
+			return nil, err
+		}
 	}
 	activated := &eventv1.Element{Intent: eventv1.Element_INTENT_ACTIVATED, Type: in.Type, Id: in.ElementID, TokenId: in.TokenID}
 	p, err := attachScopeBoundary(in.Deployment, in.ElementID, in.Now)

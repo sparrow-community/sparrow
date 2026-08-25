@@ -15,6 +15,26 @@ type scopeTerminateOpts struct {
 	DropTokens bool
 }
 
+// scopeHostElement returns the element that hosts an open scope.
+// Embedded SubProcess hosts itself; a called process is hosted by its CallActivity.
+func scopeHostElement(dep *deploy.Deployment, scopeID string) (elementID string, typ eventv1.Element_Type, ok bool) {
+	if call, found := dep.CallActivityForCalledProcess(scopeID); found {
+		return call.ID, eventv1.Element_TYPE_CALL_ACTIVITY, true
+	}
+	if t, err := dep.TypeOf(scopeID); err == nil && t == eventv1.Element_TYPE_SUB_PROCESS {
+		return scopeID, t, true
+	}
+	return "", eventv1.Element_TYPE_UNSPECIFIED, false
+}
+
+func isScopeHostToken(dep *deploy.Deployment, tok *projection.Token, scopeID string) bool {
+	if tok == nil {
+		return false
+	}
+	hostID, _, ok := scopeHostElement(dep, scopeID)
+	return ok && tok.ElementID == hostID
+}
+
 // terminateScopeTokens emits TERMINATING/TERMINATED for tokens in scopeID.
 // When scopeID is the root process, every token is terminated.
 func terminateScopeTokens(
@@ -31,10 +51,14 @@ func terminateScopeTokens(
 			continue
 		}
 		if scopeID != processID {
-			if !tokenInOrIsScope(dep, tok, scopeID) {
+			host := isScopeHostToken(dep, tok, scopeID)
+			if host {
+				if !opts.IncludeHost {
+					continue
+				}
+			} else if !tokenInOrIsScope(dep, tok, scopeID) {
 				continue
-			}
-			if tok.ElementID == scopeID && !opts.IncludeHost {
+			} else if tok.ElementID == scopeID && !opts.IncludeHost {
 				continue
 			}
 		}
@@ -69,10 +93,31 @@ func terminateScopeTokens(
 	return nil
 }
 
-// terminateEmbeddedScope records SubProcess TERMINATING/TERMINATED for an embedded scope.
-// Empty tokenID means audit-only: the EventLog still shows the cancel, but ApplyEvent
-// does not revive a projection token. Non-empty tokenID places that token on the
-// SubProcess so the caller can take outgoing (e.g. error / timer / signal boundary).
+// terminateScopeHost records TERMINATING/TERMINATED on the scope host element
+// (SubProcess or CallActivity). Empty tokenID is audit-only (no projection token).
+func terminateScopeHost(dep *deploy.Deployment, scopeID, tokenID string, emit Emitter) error {
+	hostID, hostType, ok := scopeHostElement(dep, scopeID)
+	if !ok {
+		hostID = scopeID
+		hostType = eventv1.Element_TYPE_SUB_PROCESS
+	}
+	for _, intent := range []eventv1.Element_Intent{
+		eventv1.Element_INTENT_TERMINATING,
+		eventv1.Element_INTENT_TERMINATED,
+	} {
+		if err := emit(&eventv1.Element{
+			Intent:  intent,
+			Type:    hostType,
+			Id:      hostID,
+			TokenId: tokenID,
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// terminateEmbeddedScope is kept for callers that already know the host is a SubProcess.
 func terminateEmbeddedScope(scopeID, tokenID string, emit Emitter) error {
 	for _, intent := range []eventv1.Element_Intent{
 		eventv1.Element_INTENT_TERMINATING,

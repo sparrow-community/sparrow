@@ -62,6 +62,62 @@ func TestCallActivityCompletesChildThenCaller(t *testing.T) {
 	}
 }
 
+func TestCallActivityEventSubProcessInterrupting(t *testing.T) {
+	xml := readTestdataCall(t, "m4_call_activity_event_subprocess.bpmn")
+	eng := processing.NewEngine(eventlog.NewMemory())
+	ctx := context.Background()
+
+	dep, err := eng.Deploy(ctx, xml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instanceID, err := eng.CreateInstance(ctx, dep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inst := mustInstance(t, eng, instanceID)
+	if waitingElement(inst) != "Task_called" {
+		t.Fatalf("expected Task_called, got %s tokens=%#v", waitingElement(inst), inst.Tokens)
+	}
+	if _, ok := inst.EventSubProcesses["Event_SubProcess_called"]; !ok {
+		t.Fatalf("expected event sub-process armed in called process, arms=%#v", inst.EventSubProcesses)
+	}
+	if !sawEventSubProcessStartActivated(mustListEvents(t, eng, instanceID), "Event_SubProcess_called") {
+		t.Fatal("expected event sub-process start ACTIVATED in event log")
+	}
+
+	n, err := eng.PublishMessage(ctx, processing.PublishMessageRequest{Name: "cancel.called"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("delivered=%d", n)
+	}
+	inst = mustInstance(t, eng, instanceID)
+	if inst.Status != projection.StatusCompleted {
+		t.Fatalf("status=%s tokens=%#v", inst.Status, inst.Tokens)
+	}
+	events, _ := eng.ListEvents(ctx, instanceID)
+	if !sawElementIntent(events, eventv1.Element_TYPE_CALL_ACTIVITY, "CallActivity_1", eventv1.Element_INTENT_TERMINATED) {
+		t.Fatal("expected CallActivity TERMINATED when interrupting event sub-process cancels called process")
+	}
+	if !sawElementIntent(events, eventv1.Element_TYPE_SUB_PROCESS, "Event_SubProcess_called", eventv1.Element_INTENT_COMPLETED) {
+		t.Fatal("expected event sub-process COMPLETED")
+	}
+	if sawElementIntent(events, eventv1.Element_TYPE_END_EVENT, "End_caller_ok", eventv1.Element_INTENT_COMPLETED) {
+		t.Fatal("caller happy-path end must not complete after interrupting event sub-process")
+	}
+}
+
+func mustListEvents(t *testing.T, eng *processing.Engine, instanceID string) []*eventv1.Event {
+	t.Helper()
+	events, err := eng.ListEvents(context.Background(), instanceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return events
+}
+
 func readTestdataCall(t *testing.T, name string) []byte {
 	t.Helper()
 	xml, err := os.ReadFile(filepath.Join("testdata", name))

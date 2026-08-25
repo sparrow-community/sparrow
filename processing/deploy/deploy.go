@@ -397,6 +397,14 @@ func (d *Deployment) StartEventID() (string, error) {
 func (d *Deployment) SubProcessStartEventID(subProcessID string) (string, error) {
 	sp := d.findSubProcess(&d.Process.FlowElements, subProcessID)
 	if sp == nil {
+		for _, called := range d.calledProcesses {
+			fe := called.FlowElements
+			if sp = d.findSubProcess(&fe, subProcessID); sp != nil {
+				break
+			}
+		}
+	}
+	if sp == nil {
 		return "", fmt.Errorf("NOT_FOUND: subProcess %q", subProcessID)
 	}
 	if len(sp.StartEvents) == 0 {

@@ -40,8 +40,8 @@
 | ParallelGateway | fork / join |
 | EventBasedGateway | exclusive（先到取消兄弟）；parallel（保留兄弟） |
 | SubProcess | 嵌入式（可多层）；补偿 boundary 订阅 |
-| CallActivity | **同定义** `calledElement`；同实例内联执行 |
-| Event Sub-Process | 流程级或**嵌入式 SubProcess 内**；message / timer / signal start；打断 / 非打断 |
+| CallActivity | **同定义** `calledElement`；同实例内联；host 停在 CallActivity；被调流程 Event Sub-Process 可武装 |
+| Event Sub-Process | 流程级、**嵌入式 SubProcess 内**、或 **CallActivity 被调流程内**；message / timer / signal start；打断 / 非打断 |
 | IntermediateCatchEvent | timer / message / signal |
 | IntermediateThrowEvent | none / message / signal / compensate |
 | BoundaryEvent | timer / message / signal（打断 / 非打断）；compensate（含 SubProcess）；error（打断） |
@@ -60,9 +60,9 @@
 **最新提交**
 
 ```text
-（本轮）Event Sub-Process 武装进账本：scope 打开时对 StartEvent 写 ACTIVATED（EventPayload.event_sub_process_element_id）；Recover 纯 replay。
+（本轮）CallActivity 与嵌入式 SubProcess 对齐：进入时武装被调流程 Event Sub-Process；scope host / 打断终止走 CallActivity。
+2512a8e Record event sub-process start arms in the EventLog.
 eb13dda Park host tokens on SubProcess and CallActivity.
-c72c6d9 Drop paid DESIGN debt notes; audit-only SubProcess TERMINATED.
 ```
 
 ---

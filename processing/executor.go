@@ -80,9 +80,16 @@ func (x *Executor) Enter(
 					return pubs, err
 				}
 			}
-			if typ == eventv1.Element_TYPE_SUB_PROCESS && !dep.IsEventSubProcess(elementID) {
+			switch {
+			case typ == eventv1.Element_TYPE_SUB_PROCESS && !dep.IsEventSubProcess(elementID):
 				if err := emitEventSubProcessStartArms(dep, inst, elementID, x.now(), emit); err != nil {
 					return pubs, err
+				}
+			case typ == eventv1.Element_TYPE_CALL_ACTIVITY:
+				if call, ok := dep.CallActivitySpec(elementID); ok {
+					if err := emitEventSubProcessStartArms(dep, inst, call.CalledProcessID, x.now(), emit); err != nil {
+						return pubs, err
+					}
 				}
 			}
 			elementID = effect.EnterChild
