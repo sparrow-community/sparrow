@@ -186,38 +186,17 @@ func (e *Engine) triggerEventSubProcessLocked(
 	emit := e.emitter(ctx, inst, cmdID)
 
 	if arm.Interrupting {
-		hostTokenID := ""
-		for tid, tok := range inst.Tokens {
-			if tok != nil && tokenInOrIsScope(dep, tok, arm.ParentScopeID) {
-				hostTokenID = tid
-				break
-			}
-		}
 		if err := terminateScopeTokens(dep, inst, arm.ParentScopeID, emit, scopeTerminateOpts{
 			IncludeHost: true,
 			DropTokens:  true,
 		}); err != nil {
 			return nil, err
 		}
-		// Embedded parent scopes have no lingering host token (the entering token
-		// already moved inside). Still record SubProcess TERMINATED for audit.
-		if arm.ParentScopeID != dep.ProcessID() && hostTokenID != "" {
-			for _, intent := range []eventv1.Element_Intent{
-				eventv1.Element_INTENT_TERMINATING,
-				eventv1.Element_INTENT_TERMINATED,
-			} {
-				if err := emit(&eventv1.Element{
-					Intent:  intent,
-					Type:    eventv1.Element_TYPE_SUB_PROCESS,
-					Id:      arm.ParentScopeID,
-					TokenId: hostTokenID,
-				}); err != nil {
-					return nil, err
-				}
+		// Audit-only: no token_id so projection does not revive a dropped token.
+		if arm.ParentScopeID != dep.ProcessID() {
+			if err := terminateEmbeddedScope(arm.ParentScopeID, "", emit); err != nil {
+				return nil, err
 			}
-			// applyToken would revive the host token on TERMINATED; drop it —
-			// the entering token already lived inside the scope and must not linger.
-			delete(inst.Tokens, hostTokenID)
 		}
 		inst.RemoveScopeBoundariesForScope(arm.ParentScopeID)
 		inst.RemoveEventSubProcessesInScope(arm.ParentScopeID)

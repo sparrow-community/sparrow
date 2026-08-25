@@ -91,6 +91,9 @@ func TestErrorEndInSubProcessCaughtByBoundary(t *testing.T) {
 	if !sawElementIntent(events, eventv1.Element_TYPE_SUB_PROCESS, "SubProcess_1", eventv1.Element_INTENT_TERMINATED) {
 		t.Fatal("expected SubProcess TERMINATED")
 	}
+	if tid := elementTokenID(events, eventv1.Element_TYPE_SUB_PROCESS, "SubProcess_1", eventv1.Element_INTENT_TERMINATED); tid == "" {
+		t.Fatal("scope error boundary SubProcess TERMINATED must keep token_id for outgoing")
+	}
 	if !sawElementIntent(events, eventv1.Element_TYPE_BOUNDARY_EVENT, "ErrorBoundary_sp", eventv1.Element_INTENT_COMPLETED) {
 		t.Fatal("expected scope error boundary COMPLETED")
 	}

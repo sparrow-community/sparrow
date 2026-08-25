@@ -203,20 +203,8 @@ func (x *Executor) fireScopeErrorBoundary(
 	}); err != nil {
 		return nil, err
 	}
-	if err := emit(&eventv1.Element{
-		Intent:  eventv1.Element_INTENT_TERMINATING,
-		Type:    eventv1.Element_TYPE_SUB_PROCESS,
-		Id:      scopeID,
-		TokenId: hostTokenID,
-	}); err != nil {
-		return nil, err
-	}
-	if err := emit(&eventv1.Element{
-		Intent:  eventv1.Element_INTENT_TERMINATED,
-		Type:    eventv1.Element_TYPE_SUB_PROCESS,
-		Id:      scopeID,
-		TokenId: hostTokenID,
-	}); err != nil {
+	// Keep token_id: boundary outgoing continues on this token.
+	if err := terminateEmbeddedScope(scopeID, hostTokenID, emit); err != nil {
 		return nil, err
 	}
 	inst.RemoveScopeBoundariesForScope(scopeID)
@@ -245,36 +233,16 @@ func (x *Executor) fireScopeErrorBoundary(
 }
 
 func (x *Executor) terminateScope(ctx context.Context, dep *deploy.Deployment, inst *projection.Instance, scopeID string, emit Emitter) error {
-	hostTokenID, hasHost := findScopeHostToken(dep, inst, scopeID)
 	if err := terminateScopeTokens(dep, inst, scopeID, emit, scopeTerminateOpts{
 		IncludeHost: false,
 		DropTokens:  true,
 	}); err != nil {
 		return err
 	}
-	if !hasHost {
-		inst.RemoveScopeBoundariesForScope(scopeID)
-		inst.RemoveEventSubProcessesInScope(scopeID)
-		return nil
-	}
-	if err := emit(&eventv1.Element{
-		Intent:  eventv1.Element_INTENT_TERMINATING,
-		Type:    eventv1.Element_TYPE_SUB_PROCESS,
-		Id:      scopeID,
-		TokenId: hostTokenID,
-	}); err != nil {
+	// Audit-only while bubbling: do not revive a host token onto the SubProcess.
+	if err := terminateEmbeddedScope(scopeID, "", emit); err != nil {
 		return err
 	}
-	if err := emit(&eventv1.Element{
-		Intent:  eventv1.Element_INTENT_TERMINATED,
-		Type:    eventv1.Element_TYPE_SUB_PROCESS,
-		Id:      scopeID,
-		TokenId: hostTokenID,
-	}); err != nil {
-		return err
-	}
-	// TERMINATED revives the token onto the SubProcess; drop it while bubbling.
-	delete(inst.Tokens, hostTokenID)
 	inst.RemoveScopeBoundariesForScope(scopeID)
 	inst.RemoveEventSubProcessesInScope(scopeID)
 	return nil

@@ -60,6 +60,7 @@
 **最新提交**
 
 ```text
+（本轮）清理 DESIGN §8 已还清项；打断 scope 的 SubProcess TERMINATED 可无 token_id（审计）以免复活投影 token。
 （设计还债）Unify terminateScopeTokens; EventPayload.token_wait for compensate end.
 3451012 Support CallActivity for called processes in the same definitions.
 ```

@@ -176,6 +176,9 @@ func TestNestedEventSubProcessMessageInterrupting(t *testing.T) {
 	if !sawElementIntent(events, eventv1.Element_TYPE_SUB_PROCESS, "SubProcess_1", eventv1.Element_INTENT_TERMINATED) {
 		t.Fatal("expected embedding SubProcess TERMINATED by interrupting nested ESP")
 	}
+	if tid := elementTokenID(events, eventv1.Element_TYPE_SUB_PROCESS, "SubProcess_1", eventv1.Element_INTENT_TERMINATED); tid != "" {
+		t.Fatalf("audit-only SubProcess TERMINATED must have empty token_id, got %q", tid)
+	}
 	if !sawElementIntent(events, eventv1.Element_TYPE_SUB_PROCESS, "Event_SubProcess_nested", eventv1.Element_INTENT_COMPLETED) {
 		t.Fatal("expected nested ESP COMPLETED")
 	}

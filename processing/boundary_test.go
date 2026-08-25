@@ -605,6 +605,21 @@ func sawElementIntent(events []*eventv1.Event, typ eventv1.Element_Type, id stri
 	return false
 }
 
+// elementTokenID returns the TokenId of the last matching EVENT record, or "".
+func elementTokenID(events []*eventv1.Event, typ eventv1.Element_Type, id string, intent eventv1.Element_Intent) string {
+	tokenID := ""
+	for _, ev := range events {
+		if ev.GetRecordType() != eventv1.Event_RECORD_TYPE_EVENT {
+			continue
+		}
+		el := ev.GetElement()
+		if el != nil && el.GetType() == typ && el.GetId() == id && el.GetIntent() == intent {
+			tokenID = el.GetTokenId()
+		}
+	}
+	return tokenID
+}
+
 func countElementIntent(events []*eventv1.Event, typ eventv1.Element_Type, id string, intent eventv1.Element_Intent) int {
 	n := 0
 	for _, ev := range events {

@@ -69,6 +69,27 @@ func terminateScopeTokens(
 	return nil
 }
 
+// terminateEmbeddedScope records SubProcess TERMINATING/TERMINATED for an embedded scope.
+// Empty tokenID means audit-only: the EventLog still shows the cancel, but ApplyEvent
+// does not revive a projection token (see DESIGN §8.2). Non-empty tokenID places that
+// token on the SubProcess so the caller can take outgoing (e.g. error boundary).
+func terminateEmbeddedScope(scopeID, tokenID string, emit Emitter) error {
+	for _, intent := range []eventv1.Element_Intent{
+		eventv1.Element_INTENT_TERMINATING,
+		eventv1.Element_INTENT_TERMINATED,
+	} {
+		if err := emit(&eventv1.Element{
+			Intent:  intent,
+			Type:    eventv1.Element_TYPE_SUB_PROCESS,
+			Id:      scopeID,
+			TokenId: tokenID,
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // tokenInOrIsScope reports whether tok sits on scopeID itself or inside it.
 func tokenInOrIsScope(dep *deploy.Deployment, tok *projection.Token, scopeID string) bool {
 	if tok.ElementID == scopeID {
