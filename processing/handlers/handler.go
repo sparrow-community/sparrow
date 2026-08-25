@@ -128,6 +128,7 @@ func DefaultRegistry() *Registry {
 		InclusiveGatewayHandler{},
 		EventBasedGatewayHandler{},
 		IntermediateThrowEventHandler{},
+		CallActivityHandler{},
 	)
 }
 

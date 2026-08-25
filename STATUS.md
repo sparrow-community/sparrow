@@ -15,11 +15,12 @@
 | M3 | 网关 / SubProcess / Throw / ESP / Compensation / Signal boundary | 完成 |
 | M4 | Error 事件（boundary / end / ThrowError / Recover / gateway） | 完成 |
 | M4b | 嵌套 Event Sub-Process（嵌入式 SubProcess 内） | 完成 |
-| 其后 | CallActivity / 版本 | 规划中 |
+| M4c | CallActivity（同定义内联 called process） | 完成 |
+| 其后 | CallActivity 子实例 / IO 映射 / 版本 | 规划中 |
 
-**下一步（按序）**：① CallActivity → ② 版本管理与迁移
+**下一步（按序）**：① CallActivity 增强（独立子实例 / 变量映射）或 Error ESP → ② 版本管理与迁移
 
-**暂缓**：同一活动 ≥3 个 **同类** waiting boundary；Incident；instantiate EBG；补偿进未完成 SubProcess；ESP 嵌套于 ESP；集群；产品套件
+**暂缓**：同一活动 ≥3 个 **同类** waiting boundary；Incident；instantiate EBG；补偿进未完成 SubProcess；ESP 嵌套于 ESP；跨部署 CallActivity；集群；产品套件
 （同类各一：timer + message + signal 可共存）
 
 ---
@@ -38,14 +39,15 @@
 | InclusiveGateway | OR-split / OR-join |
 | ParallelGateway | fork / join |
 | EventBasedGateway | exclusive（先到取消兄弟）；parallel（保留兄弟） |
-| SubProcess | 嵌入式（可多层）；**补偿 boundary 订阅** |
+| SubProcess | 嵌入式（可多层）；补偿 boundary 订阅 |
+| CallActivity | **同定义** `calledElement`；同实例内联执行 |
 | Event Sub-Process | 流程级或**嵌入式 SubProcess 内**；message / timer / signal start；打断 / 非打断 |
 | IntermediateCatchEvent | timer / message / signal |
 | IntermediateThrowEvent | none / message / signal / compensate |
 | BoundaryEvent | timer / message / signal（打断 / 非打断）；compensate（含 SubProcess）；error（打断） |
 | Association | 补偿 handler 关联 |
 
-**未实现（常见）**：Escalation / Link / Conditional / Terminate；CallActivity；Send/Receive/Manual/BusinessRule Task；Multi-instance；ESP 嵌套于 ESP；Error ESP
+**未实现（常见）**：Escalation / Link / Conditional / Terminate；Send/Receive/Manual/BusinessRule Task；Multi-instance；ESP 嵌套于 ESP；Error ESP；CallActivity 独立子实例 / IO 映射 / 跨部署
 
 ---
 
@@ -58,8 +60,8 @@
 **最新提交**
 
 ```text
+6ef4018 Support nested event sub-processes inside embedded SubProcesses.
 6fc8462 Support compensate end events and SubProcess compensation boundaries.
-548d16f Expose ThrowError over engine.v1 and redrive ERROR_THROWN on Recover.
 ```
 
 ---

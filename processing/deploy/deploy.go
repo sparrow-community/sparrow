@@ -2,6 +2,7 @@ package deploy
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/sparrow-community/sparrow/bpmn"
 	"github.com/sparrow-community/sparrow/bpmn/element"
@@ -26,8 +27,11 @@ type Deployment struct {
 	errorBoundaries   map[string][]string     // activity id -> error boundary ids
 	errorEnds         map[string]string       // error end event id -> error code
 	compensateEnds    map[string]string       // compensate end event id -> optional activityRef
-	elements          map[string]*elemEntry   // flat index of all elements (recursive into subprocesses)
-	seqFlows          map[string]*seqFlowEntry
+	callActivities      map[string]CallActivity // callActivity id -> spec
+	calledProcessOwner  map[string]string      // called process id -> callActivity id
+	calledProcesses     map[string]element.Process
+	elements            map[string]*elemEntry // flat index of all elements (recursive into subprocesses)
+	seqFlows            map[string]*seqFlowEntry
 }
 
 type elemEntry struct {
@@ -43,7 +47,8 @@ type seqFlowEntry struct {
 	TargetID string
 }
 
-// Compile parses BPMN XML and keeps the first executable process (M1 subset).
+// Compile parses BPMN XML and keeps the first executable process as the root.
+// Sibling processes in the same definitions may be invoked via CallActivity.
 func Compile(bpmnXML []byte) (*Deployment, error) {
 	model, err := bpmn.BpmnModelelementFromBytes(bpmnXML)
 	if err != nil {
@@ -51,6 +56,12 @@ func Compile(bpmnXML []byte) (*Deployment, error) {
 	}
 	if model.Definitions == nil || len(model.Definitions.Processes) == 0 {
 		return nil, fmt.Errorf("no process in definitions")
+	}
+
+	catalog := make(map[string]*element.Process, len(model.Definitions.Processes))
+	for i := range model.Definitions.Processes {
+		p := &model.Definitions.Processes[i]
+		catalog[p.ID] = p
 	}
 
 	var proc *element.Process
@@ -74,11 +85,13 @@ func Compile(bpmnXML []byte) (*Deployment, error) {
 	}
 
 	d := &Deployment{Version: 1, Process: *proc}
-	d.compile(model.Definitions.Messages, model.Definitions.Signals, model.Definitions.Errors)
+	if err := d.compile(model.Definitions.Messages, model.Definitions.Signals, model.Definitions.Errors, catalog); err != nil {
+		return nil, err
+	}
 	return d, nil
 }
 
-func (d *Deployment) compile(messages []element.Message, signals []element.Signal, errors []element.Error) {
+func (d *Deployment) compile(messages []element.Message, signals []element.Signal, errors []element.Error, catalog map[string]*element.Process) error {
 	p := &d.Process
 	d.timerCatch = make(map[string]timerCatch, len(p.IntermediateCatchEvents)+len(p.BoundaryEvents))
 	d.messageCatch = make(map[string]string, len(p.IntermediateCatchEvents)+len(p.BoundaryEvents))
@@ -90,11 +103,15 @@ func (d *Deployment) compile(messages []element.Message, signals []element.Signa
 	d.errorBoundaries = make(map[string][]string)
 	d.errorEnds = make(map[string]string)
 	d.compensateEnds = make(map[string]string)
+	d.callActivities = make(map[string]CallActivity)
+	d.calledProcessOwner = make(map[string]string)
+	d.calledProcesses = make(map[string]element.Process)
 	d.elements = make(map[string]*elemEntry)
 	d.seqFlows = make(map[string]*seqFlowEntry)
 
 	d.indexScope(&p.FlowElements, p.ID, messages, signals, errors, collectAssociations(p))
 	d.elements[p.ID] = &elemEntry{Type: eventv1.Element_TYPE_PROCESS, ScopeID: ""}
+	return d.indexCallActivities(&p.FlowElements, catalog, messages, signals, errors)
 }
 
 func collectAssociations(p *element.Process) []element.Association {
@@ -160,6 +177,9 @@ func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messag
 			d.throwEvents[e.ID] = spec
 		}
 	}
+	for _, e := range fe.CallActivities {
+		reg(e.ID, eventv1.Element_TYPE_CALL_ACTIVITY, e.Outgoing, e.Incoming)
+	}
 	for _, e := range fe.BoundaryEvents {
 		reg(e.ID, eventv1.Element_TYPE_BOUNDARY_EVENT, e.Outgoing, e.Incoming)
 		if spec, err := timerBoundarySpec(e); err == nil {
@@ -203,11 +223,45 @@ func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messag
 	}
 }
 
+func (d *Deployment) indexCallActivities(fe *element.FlowElements, catalog map[string]*element.Process, messages []element.Message, signals []element.Signal, errors []element.Error) error {
+	claimed := make(map[string]string)
+	var walk func(*element.FlowElements) error
+	walk = func(fe *element.FlowElements) error {
+		for _, ca := range fe.CallActivities {
+			spec, err := validateCallActivity(ca, catalog, claimed)
+			if err != nil {
+				return err
+			}
+			if spec.CalledProcessID == d.Process.ID {
+				return fmt.Errorf("UNSUPPORTED_ELEMENT: callActivity %q cannot call the root process", ca.ID)
+			}
+			called := catalog[spec.CalledProcessID]
+			if err := validateM1(called); err != nil {
+				return fmt.Errorf("UNSUPPORTED_ELEMENT: called process %q: %v", spec.CalledProcessID, err)
+			}
+			d.callActivities[spec.ID] = spec
+			d.calledProcessOwner[spec.CalledProcessID] = spec.ID
+			if _, exists := d.elements[spec.CalledProcessID]; exists {
+				return fmt.Errorf("UNSUPPORTED_ELEMENT: called process id %q collides with an existing element", spec.CalledProcessID)
+			}
+			d.calledProcesses[spec.CalledProcessID] = *called
+			d.indexScope(&called.FlowElements, called.ID, messages, signals, errors, collectAssociations(called))
+			d.elements[called.ID] = &elemEntry{Type: eventv1.Element_TYPE_PROCESS, ScopeID: ""}
+		}
+		for i := range fe.SubProcesses {
+			if err := walk(&fe.SubProcesses[i].FlowElements); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	return walk(fe)
+}
+
 func validateM1(proc *element.Process) error {
 	unsupported := 0
 	unsupported += len(proc.Tasks) + len(proc.ManualTasks)
 	unsupported += len(proc.SendTasks) + len(proc.ReceiveTasks) + len(proc.BusinessRuleTasks)
-	unsupported += len(proc.CallActivities)
 	if unsupported > 0 {
 		return fmt.Errorf("UNSUPPORTED_ELEMENT: process contains elements outside M1 subset")
 	}
@@ -402,6 +456,7 @@ func (d *Deployment) Outgoing(elementID string) []string {
 			ids = append(ids, id)
 		}
 	}
+	sort.Strings(ids)
 	return ids
 }
 
@@ -416,6 +471,7 @@ func Incoming(proc *element.Process, elementID string) []string {
 			ids = append(ids, f.ID)
 		}
 	}
+	sort.Strings(ids)
 	return ids
 }
 
@@ -429,6 +485,7 @@ func (d *Deployment) Incoming(elementID string) []string {
 			ids = append(ids, id)
 		}
 	}
+	sort.Strings(ids)
 	return ids
 }
 
@@ -521,7 +578,15 @@ func flowNodeOutgoing(proc *element.Process, id string) []string {
 }
 
 func (d *Deployment) SequenceFlow(id string) (element.SequenceFlow, error) {
-	return d.findSequenceFlow(id)
+	if f, err := d.findSequenceFlow(id); err == nil {
+		return f, nil
+	}
+	for _, proc := range d.calledProcesses {
+		if f, err := findSequenceFlowIn(&proc.FlowElements, id); err == nil {
+			return f, nil
+		}
+	}
+	return element.SequenceFlow{}, fmt.Errorf("NOT_FOUND: sequence flow %q", id)
 }
 
 func (d *Deployment) findSequenceFlow(id string) (element.SequenceFlow, error) {

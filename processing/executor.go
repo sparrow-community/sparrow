@@ -349,15 +349,25 @@ func (x *Executor) tryCompleteScope(ctx context.Context, dep *deploy.Deployment,
 	// All tokens in this scope are at EndEvents; disarm scope boundaries and complete
 	inst.RemoveScopeBoundariesForScope(scopeID)
 	inst.RemoveEventSubProcessesInScope(scopeID)
-	h, err := x.Handlers.Get(eventv1.Element_TYPE_SUB_PROCESS)
+
+	completeID := scopeID
+	completeType := eventv1.Element_TYPE_SUB_PROCESS
+	outgoingFrom := scopeID
+	if call, ok := dep.CallActivityForCalledProcess(scopeID); ok {
+		completeID = call.ID
+		completeType = eventv1.Element_TYPE_CALL_ACTIVITY
+		outgoingFrom = call.ID
+	}
+
+	h, err := x.Handlers.Get(completeType)
 	if err != nil {
 		return nil, err
 	}
 	effect, err := h.OnComplete(handlers.CompleteInput{
 		Deployment: dep,
 		Instance:   inst,
-		ElementID:  scopeID,
-		Type:       eventv1.Element_TYPE_SUB_PROCESS,
+		ElementID:  completeID,
+		Type:       completeType,
 		TokenID:    tokenID,
 	})
 	if err != nil {
@@ -381,7 +391,7 @@ func (x *Executor) tryCompleteScope(ctx context.Context, dep *deploy.Deployment,
 		return pubs, err
 	}
 	if effect.TakeOutgoing {
-		next, err := x.takeOutgoing(dep, tokenID, scopeID, effect.OutgoingFlowID, emit)
+		next, err := x.takeOutgoing(dep, tokenID, outgoingFrom, effect.OutgoingFlowID, emit)
 		if err != nil {
 			return pubs, err
 		}
