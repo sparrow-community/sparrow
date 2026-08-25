@@ -32,6 +32,20 @@ func compensateThrowSpec(ev element.IntermediateThrowEvent) (throwSpec, error) {
 	}, nil
 }
 
+func compensateEndSpec(ev element.EndEvent) (throwSpec, error) {
+	if len(ev.CompensateEventDefinitions) != 1 {
+		return throwSpec{}, fmt.Errorf("not a compensate end")
+	}
+	other := extraCatchDefinitions(ev.EventDefinitions) - len(ev.CompensateEventDefinitions)
+	if other > 0 {
+		return throwSpec{}, fmt.Errorf("not a compensate end")
+	}
+	return throwSpec{
+		Kind:        ThrowKindCompensate,
+		ActivityRef: strings.TrimSpace(ev.CompensateEventDefinitions[0].ActivityRef),
+	}, nil
+}
+
 func compensationBoundarySpec(ev element.BoundaryEvent, associations []element.Association) (Compensation, error) {
 	if err := requireBoundaryAttach(ev); err != nil {
 		return Compensation{}, err
@@ -105,11 +119,19 @@ func (d *Deployment) IsCompensationHandler(id string) bool {
 	return false
 }
 
-// CompensateActivityRef returns optional activityRef on a compensate throw (empty = all in scope).
+// CompensateActivityRef returns optional activityRef on a compensate throw/end (empty = all in scope).
 func (d *Deployment) CompensateActivityRef(throwID string) (string, error) {
-	spec, ok := d.throwEvents[throwID]
-	if !ok || spec.Kind != ThrowKindCompensate {
-		return "", fmt.Errorf("NOT_FOUND: compensate throw %q", throwID)
+	if spec, ok := d.throwEvents[throwID]; ok && spec.Kind == ThrowKindCompensate {
+		return spec.ActivityRef, nil
 	}
-	return spec.ActivityRef, nil
+	if ref, ok := d.compensateEnds[throwID]; ok {
+		return ref, nil
+	}
+	return "", fmt.Errorf("NOT_FOUND: compensate throw %q", throwID)
+}
+
+// IsCompensateEnd reports whether id is a compensate end event.
+func (d *Deployment) IsCompensateEnd(id string) bool {
+	_, ok := d.compensateEnds[id]
+	return ok
 }

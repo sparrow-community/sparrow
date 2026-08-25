@@ -14,9 +14,9 @@
 | M2 | ServiceTask/Job；Timer/Message catch + boundary | 完成 |
 | M3 | 网关 / SubProcess / Throw / ESP / Compensation / Signal boundary | 完成 |
 | M4 | Error 事件（boundary / end / ThrowError / Recover / gateway） | 完成 |
-| 其后 | 补偿收尾 → CallActivity / 版本 | 规划中 |
+| 其后 | 嵌套 ESP / CallActivity / 版本 | 规划中 |
 
-**下一步（按序）**：① 补偿收尾（End / 嵌套 scope）→ ② 嵌套 ESP / CallActivity → ③ 版本管理与迁移
+**下一步（按序）**：① 嵌套 ESP / CallActivity → ② 版本管理与迁移
 
 **暂缓**：同一活动 ≥3 个 **同类** waiting boundary；Incident；嵌套 ESP；instantiate EBG；补偿进未完成 SubProcess；集群；产品套件
 （同类各一：timer + message + signal 可共存）
@@ -29,7 +29,7 @@
 |------|------|
 | Process | 启动 / 完成 |
 | StartEvent | none |
-| EndEvent | none；**error（抛出）** |
+| EndEvent | none；error（抛出）；**compensate** |
 | SequenceFlow | 条件（XOR/OR 用） |
 | UserTask | 等待；统一 Complete |
 | ServiceTask | Job（Activate / Fail / Heartbeat） |
@@ -37,11 +37,11 @@
 | InclusiveGateway | OR-split / OR-join |
 | ParallelGateway | fork / join |
 | EventBasedGateway | exclusive（先到取消兄弟）；parallel（保留兄弟） |
-| SubProcess | 嵌入式（可多层） |
+| SubProcess | 嵌入式（可多层）；**补偿 boundary 订阅** |
 | Event Sub-Process | 流程级；message / timer start；打断 / 非打断 |
 | IntermediateCatchEvent | timer / message / signal |
 | IntermediateThrowEvent | none / message / signal / compensate |
-| BoundaryEvent | timer / message / signal（打断 / 非打断）；compensate；**error（打断）** |
+| BoundaryEvent | timer / message / signal（打断 / 非打断）；compensate（含 SubProcess）；error（打断） |
 | Association | 补偿 handler 关联 |
 
 **未实现（常见）**：Escalation / Link / Conditional / Terminate；CallActivity；Send/Receive/Manual/BusinessRule Task；Multi-instance；嵌套 ESP；Error ESP
@@ -57,8 +57,8 @@
 **最新提交**
 
 ```text
+548d16f Expose ThrowError over engine.v1 and redrive ERROR_THROWN on Recover.
 2653adc Support BPMN error events (boundary, end, ThrowError).
-aea6050 Support signal boundary on waiting activities and scopes.
 ```
 
 ---

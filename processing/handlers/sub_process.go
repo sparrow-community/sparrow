@@ -99,6 +99,8 @@ func (SubProcessHandler) OnComplete(in CompleteInput) (*Effect, error) {
 		effect.TryCompleteProcess = true
 		return effect, nil
 	}
+	effect.Records = append(effect.Records, cancelAttachedBoundary(in.Deployment, in.ElementID, in.TokenID)...)
+	effect.Records = append(effect.Records, subscribeCompensation(in.Deployment, in.ElementID, in.TokenID)...)
 	effect.TakeOutgoing = true
 	return effect, nil
 }

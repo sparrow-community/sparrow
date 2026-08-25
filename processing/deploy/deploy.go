@@ -25,6 +25,7 @@ type Deployment struct {
 	errorCatch        map[string]string       // error boundary id -> error code (empty = catch-all)
 	errorBoundaries   map[string][]string     // activity id -> error boundary ids
 	errorEnds         map[string]string       // error end event id -> error code
+	compensateEnds    map[string]string       // compensate end event id -> optional activityRef
 	elements          map[string]*elemEntry   // flat index of all elements (recursive into subprocesses)
 	seqFlows          map[string]*seqFlowEntry
 }
@@ -88,6 +89,7 @@ func (d *Deployment) compile(messages []element.Message, signals []element.Signa
 	d.errorCatch = make(map[string]string)
 	d.errorBoundaries = make(map[string][]string)
 	d.errorEnds = make(map[string]string)
+	d.compensateEnds = make(map[string]string)
 	d.elements = make(map[string]*elemEntry)
 	d.seqFlows = make(map[string]*seqFlowEntry)
 
@@ -120,6 +122,8 @@ func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messag
 		reg(e.ID, eventv1.Element_TYPE_END_EVENT, e.Outgoing, e.Incoming)
 		if code, err := errorEndSpec(e, errors); err == nil {
 			d.errorEnds[e.ID] = code
+		} else if spec, err := compensateEndSpec(e); err == nil {
+			d.compensateEnds[e.ID] = spec.ActivityRef
 		}
 	}
 	for _, e := range fe.UserTasks {
