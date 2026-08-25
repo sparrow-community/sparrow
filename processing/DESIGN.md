@@ -285,4 +285,7 @@ runtime 加载时丢弃过期/无效 lease 与过期/死实例消息缓冲；实
    当前 CallActivity 在**同一** `process_instance_id` 上把 token 送入同一定义文件中的被调 process（类似嵌入式 SubProcess）。这与 BPMN「独立 called process instance」不完全一致。限制：同一被调 process 仅允许一个 CallActivity、禁止递归 CallActivity、元素 id 必须在 Definitions 内全局唯一、尚无 IO 映射 / 跨部署 calledElement / 版本选择。独立子实例与版本管理应作为后续里程碑，避免与分区键语义纠缠后再拆。
 
 6. **`Outgoing`/`Incoming` 回退路径曾依赖 map 迭代顺序**  
+   当 BPMN 节点未写 `<outgoing>` 时，从 `seqFlows` map 收集边；Go map 无序会导致 XOR/OR 条件求值顺序抖动。已改为排序后返回；夹具仍应尽量写全 `<outgoing>`。
+
+6. **`Outgoing`/`Incoming` 回退路径曾依赖 map 迭代顺序**  
    当 BPMN 节点未写 `<outgoing>` 时，部署层从 `seqFlows` map 反查。Go map 迭代无序，XOR/OR 条件求值顺序会漂。现已对回退结果排序；仍应优先依赖模型中的 outgoing 列表。
