@@ -81,7 +81,9 @@ func (x *Executor) Enter(
 				}
 			}
 			if typ == eventv1.Element_TYPE_SUB_PROCESS && !dep.IsEventSubProcess(elementID) {
-				armEventSubProcessesInScope(dep, inst, elementID, x.now())
+				if err := emitEventSubProcessStartArms(dep, inst, elementID, x.now(), emit); err != nil {
+					return pubs, err
+				}
 			}
 			elementID = effect.EnterChild
 			tokenID = childTokenID
@@ -385,7 +387,9 @@ func (x *Executor) tryCompleteScope(ctx context.Context, dep *deploy.Deployment,
 	}
 	// All tokens in this scope are at EndEvents; disarm scope boundaries and complete
 	inst.RemoveScopeBoundariesForScope(scopeID)
-	inst.RemoveEventSubProcessesInScope(scopeID)
+	if err := emitEventSubProcessStartDisarmInScope(dep, scopeID, inst, emit); err != nil {
+		return nil, err
+	}
 
 	completeID := scopeID
 	completeType := eventv1.Element_TYPE_SUB_PROCESS
@@ -421,6 +425,13 @@ func (x *Executor) tryCompleteScope(ctx context.Context, dep *deploy.Deployment,
 	}
 	if effect.DiscardToken {
 		delete(inst.Tokens, completeTokenID)
+	}
+	if dep.IsEventSubProcess(scopeID) {
+		if spec, ok := dep.EventSubProcessSpec(scopeID); ok && !spec.Interrupting {
+			if err := emit(eventSubProcessStartActivated(dep, spec, x.now())); err != nil {
+				return pubs, err
+			}
+		}
 	}
 	if effect.TryCompleteProcess {
 		more, err := x.tryCompleteProcessScope(dep, inst, emit)

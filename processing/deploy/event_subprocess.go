@@ -72,6 +72,16 @@ func eventSubProcessStartSpec(subProcessID string, start element.StartEvent, mes
 	return EventSubProcess{}, fmt.Errorf("UNSUPPORTED_ELEMENT: event subProcess %q startEvent must be message, signal, or timer", subProcessID)
 }
 
+// EventSubProcessByStartEvent returns the event sub-process whose start event is startEventID.
+func (d *Deployment) EventSubProcessByStartEvent(startEventID string) (EventSubProcess, bool) {
+	for _, sp := range d.eventSubProcesses {
+		if sp.StartEventID == startEventID {
+			return sp, true
+		}
+	}
+	return EventSubProcess{}, false
+}
+
 // IsEventSubProcess reports whether id is a triggeredByEvent subProcess.
 func (d *Deployment) IsEventSubProcess(id string) bool {
 	_, ok := d.eventSubProcesses[id]

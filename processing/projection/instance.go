@@ -68,17 +68,13 @@ type ScopeBoundary struct {
 	SignalName  string // signal name (empty if timer/message boundary)
 }
 
-// EventSubProcessArm is a process-scoped subscription for a triggeredByEvent subProcess.
-// It is not an EventLog record; Engine re-syncs from the deployment while the instance is active.
+// EventSubProcessArm is an armed event sub-process start subscription (START_EVENT ACTIVATED).
 type EventSubProcessArm struct {
-	SubProcessID  string
-	StartEventID  string
-	ParentScopeID string
-	Interrupting  bool
-	MessageName   string
-	SignalName    string
-	DueUnixMs     int64
-	TimerText     string
+	StartEventID string
+	MessageName  string
+	SignalName   string
+	DueUnixMs    int64
+	TimerText    string
 }
 
 type Instance struct {
@@ -148,6 +144,7 @@ func (inst *Instance) ApplyEvent(e *eventv1.Event) {
 
 	inst.ElementIntent[el.GetId()] = el.GetIntent()
 	mergeVariables(inst, el)
+	applyEventSubProcessStart(inst, el)
 	applyToken(inst, el)
 	applyProcessLifecycle(inst, el)
 }
@@ -487,16 +484,26 @@ func (inst *Instance) RemoveScopeBoundariesForScope(scopeID string) {
 	}
 }
 
-func (inst *Instance) RemoveEventSubProcessesInScope(scopeID string) {
-	for id, arm := range inst.EventSubProcesses {
-		if arm.ParentScopeID == scopeID {
-			delete(inst.EventSubProcesses, id)
-		}
+func applyEventSubProcessStart(inst *Instance, el *eventv1.Element) {
+	if el.GetType() != eventv1.Element_TYPE_START_EVENT {
+		return
 	}
-}
-
-func (inst *Instance) RemoveEventSubProcess(subProcessID string) {
-	delete(inst.EventSubProcesses, subProcessID)
+	p := el.GetEventPayload()
+	if p == nil || p.GetEventSubProcessElementId() == "" {
+		return
+	}
+	switch el.GetIntent() {
+	case eventv1.Element_INTENT_ACTIVATED:
+		inst.EventSubProcesses[p.GetEventSubProcessElementId()] = &EventSubProcessArm{
+			StartEventID: el.GetId(),
+			MessageName:  p.GetMessageName(),
+			SignalName:   p.GetSignalName(),
+			DueUnixMs:    p.GetDueUnixMs(),
+			TimerText:    p.GetDuration(),
+		}
+	case eventv1.Element_INTENT_TERMINATED:
+		delete(inst.EventSubProcesses, p.GetEventSubProcessElementId())
+	}
 }
 
 func VariablesFromMap(vars map[string]any) ([]*eventv1.Variable, error) {

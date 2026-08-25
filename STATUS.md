@@ -12,15 +12,15 @@
 |------|------|------|
 | M1 | Start → UserTask → XOR → End；EventLog + Recover | 完成 |
 | M2 | ServiceTask/Job；Timer/Message catch + boundary | 完成 |
-| M3 | 网关 / SubProcess / Throw / ESP / Compensation / Signal boundary | 完成 |
+| M3 | 网关 / SubProcess / Throw / Event Sub-Process / Compensation / Signal boundary | 完成 |
 | M4 | Error 事件（boundary / end / ThrowError / Recover / gateway） | 完成 |
 | M4b | 嵌套 Event Sub-Process（嵌入式 SubProcess 内） | 完成 |
 | M4c | CallActivity（同定义内联 called process） | 完成 |
 | 其后 | CallActivity 子实例 / IO 映射 / 版本 | 规划中 |
 
-**下一步（按序）**：① CallActivity 增强（独立子实例 / 变量映射）或 Error ESP → ② 版本管理与迁移
+**下一步（按序）**：① CallActivity 增强（独立子实例 / 变量映射）或 Error Event Sub-Process → ② 版本管理与迁移
 
-**暂缓**：同一活动 ≥3 个 **同类** waiting boundary；Incident；instantiate EBG；补偿进未完成 SubProcess；ESP 嵌套于 ESP；跨部署 CallActivity；集群；产品套件
+**暂缓**：同一活动 ≥3 个 **同类** waiting boundary；Incident；instantiate EBG；补偿进未完成 SubProcess；Event Sub-Process 嵌套于 Event Sub-Process；跨部署 CallActivity；集群；产品套件
 （同类各一：timer + message + signal 可共存）
 
 ---
@@ -47,7 +47,7 @@
 | BoundaryEvent | timer / message / signal（打断 / 非打断）；compensate（含 SubProcess）；error（打断） |
 | Association | 补偿 handler 关联 |
 
-**未实现（常见）**：Escalation / Link / Conditional / Terminate；Send/Receive/Manual/BusinessRule Task；Multi-instance；ESP 嵌套于 ESP；Error ESP；CallActivity 独立子实例 / IO 映射 / 跨部署
+**未实现（常见）**：Escalation / Link / Conditional / Terminate；Send/Receive/Manual/BusinessRule Task；Multi-instance；Event Sub-Process 嵌套于 Event Sub-Process；Error Event Sub-Process；CallActivity 独立子实例 / IO 映射 / 跨部署
 
 ---
 
@@ -60,9 +60,9 @@
 **最新提交**
 
 ```text
-（本轮）嵌入式 SubProcess / CallActivity host token（child 进内部）；清掉 DESIGN §8 host-token 债。
+（本轮）Event Sub-Process 武装进账本：scope 打开时对 StartEvent 写 ACTIVATED（EventPayload.event_sub_process_element_id）；Recover 纯 replay。
+eb13dda Park host tokens on SubProcess and CallActivity.
 c72c6d9 Drop paid DESIGN debt notes; audit-only SubProcess TERMINATED.
-791333a Pay down scope-terminate and END_EVENT waiting design debt.
 ```
 
 ---

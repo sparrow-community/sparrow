@@ -14,7 +14,7 @@ import (
 )
 
 func TestEventSubProcessMessageInterrupting(t *testing.T) {
-	xml := readTestdataESP(t, "m3_event_subprocess_message.bpmn")
+	xml := readTestdataEventSubProcess(t, "m3_event_subprocess_message.bpmn")
 	eng := processing.NewEngine(eventlog.NewMemory())
 	ctx := context.Background()
 
@@ -31,7 +31,7 @@ func TestEventSubProcessMessageInterrupting(t *testing.T) {
 		t.Fatalf("expected UserTask_1, got %s", waitingElement(inst))
 	}
 	if _, ok := inst.EventSubProcesses["Event_SubProcess_1"]; !ok {
-		t.Fatalf("expected ESP armed, arms=%#v", inst.EventSubProcesses)
+		t.Fatalf("expected event sub-process armed, arms=%#v", inst.EventSubProcesses)
 	}
 
 	n, err := eng.PublishMessage(ctx, processing.PublishMessageRequest{Name: "cancel.order"})
@@ -46,16 +46,19 @@ func TestEventSubProcessMessageInterrupting(t *testing.T) {
 		t.Fatalf("status=%s tokens=%#v", inst.Status, inst.Tokens)
 	}
 	events, _ := eng.ListEvents(ctx, instanceID)
+	if !sawEventSubProcessStartActivated(events, "Event_SubProcess_1") {
+		t.Fatal("expected event sub-process start ACTIVATED in event log")
+	}
 	if !sawElementIntent(events, eventv1.Element_TYPE_SUB_PROCESS, "Event_SubProcess_1", eventv1.Element_INTENT_ACTIVATED) {
-		t.Fatal("expected ESP ACTIVATED")
+		t.Fatal("expected event sub-process ACTIVATED")
 	}
 	if !sawElementIntent(events, eventv1.Element_TYPE_SUB_PROCESS, "Event_SubProcess_1", eventv1.Element_INTENT_COMPLETED) {
-		t.Fatal("expected ESP COMPLETED")
+		t.Fatal("expected event sub-process COMPLETED")
 	}
 }
 
 func TestEventSubProcessMessageNonInterrupting(t *testing.T) {
-	xml := readTestdataESP(t, "m3_event_subprocess_message_ni.bpmn")
+	xml := readTestdataEventSubProcess(t, "m3_event_subprocess_message_ni.bpmn")
 	eng := processing.NewEngine(eventlog.NewMemory())
 	ctx := context.Background()
 
@@ -93,7 +96,7 @@ func TestEventSubProcessMessageNonInterrupting(t *testing.T) {
 }
 
 func TestEventSubProcessTimerInterrupting(t *testing.T) {
-	xml := readTestdataESP(t, "m3_event_subprocess_timer.bpmn")
+	xml := readTestdataEventSubProcess(t, "m3_event_subprocess_timer.bpmn")
 	eng := processing.NewEngine(eventlog.NewMemory())
 	ctx := context.Background()
 
@@ -115,7 +118,7 @@ func TestEventSubProcessTimerInterrupting(t *testing.T) {
 }
 
 func TestEventSubProcessBufferedMessage(t *testing.T) {
-	xml := readTestdataESP(t, "m3_event_subprocess_message.bpmn")
+	xml := readTestdataEventSubProcess(t, "m3_event_subprocess_message.bpmn")
 	eng := processing.NewEngine(eventlog.NewMemory())
 	ctx := context.Background()
 
@@ -136,12 +139,12 @@ func TestEventSubProcessBufferedMessage(t *testing.T) {
 	}
 	inst := mustInstance(t, eng, instanceID)
 	if inst.Status != projection.StatusCompleted {
-		t.Fatalf("buffered message should trigger ESP, status=%s", inst.Status)
+		t.Fatalf("buffered message should trigger event sub-process, status=%s", inst.Status)
 	}
 }
 
 func TestNestedEventSubProcessMessageInterrupting(t *testing.T) {
-	xml := readTestdataESP(t, "m4_nested_esp.bpmn")
+	xml := readTestdataEventSubProcess(t, "m4_nested_event_subprocess.bpmn")
 	eng := processing.NewEngine(eventlog.NewMemory())
 	ctx := context.Background()
 
@@ -170,7 +173,7 @@ func TestNestedEventSubProcessMessageInterrupting(t *testing.T) {
 		t.Fatalf("expected one SubProcess host token, got %d tokens=%#v", hostCount, inst.Tokens)
 	}
 	if _, ok := inst.EventSubProcesses["Event_SubProcess_nested"]; !ok {
-		t.Fatalf("expected nested ESP armed while inside SubProcess, arms=%#v", inst.EventSubProcesses)
+		t.Fatalf("expected nested event sub-process armed while inside SubProcess, arms=%#v", inst.EventSubProcesses)
 	}
 
 	n, err := eng.PublishMessage(ctx, processing.PublishMessageRequest{Name: "cancel.inner"})
@@ -186,21 +189,21 @@ func TestNestedEventSubProcessMessageInterrupting(t *testing.T) {
 	}
 	events, _ := eng.ListEvents(ctx, instanceID)
 	if !sawElementIntent(events, eventv1.Element_TYPE_SUB_PROCESS, "SubProcess_1", eventv1.Element_INTENT_TERMINATED) {
-		t.Fatal("expected embedding SubProcess TERMINATED by interrupting nested ESP")
+		t.Fatal("expected embedding SubProcess TERMINATED by interrupting nested event sub-process")
 	}
 	if tid := elementTokenID(events, eventv1.Element_TYPE_SUB_PROCESS, "SubProcess_1", eventv1.Element_INTENT_TERMINATED); tid == "" {
 		t.Fatal("expected host token_id on SubProcess TERMINATED")
 	}
 	if !sawElementIntent(events, eventv1.Element_TYPE_SUB_PROCESS, "Event_SubProcess_nested", eventv1.Element_INTENT_COMPLETED) {
-		t.Fatal("expected nested ESP COMPLETED")
+		t.Fatal("expected nested event sub-process COMPLETED")
 	}
 	if sawElementIntent(events, eventv1.Element_TYPE_END_EVENT, "EndEvent_ok", eventv1.Element_INTENT_COMPLETED) {
-		t.Fatal("happy-path end must not complete after interrupting nested ESP")
+		t.Fatal("happy-path end must not complete after interrupting nested event sub-process")
 	}
 }
 
 func TestRecoverRearmsNestedEventSubProcess(t *testing.T) {
-	xml := readTestdataESP(t, "m4_nested_esp.bpmn")
+	xml := readTestdataEventSubProcess(t, "m4_nested_event_subprocess.bpmn")
 	ctx := context.Background()
 	memLog := eventlog.NewMemory()
 	store := deploy.NewMemoryStore()
@@ -218,7 +221,7 @@ func TestRecoverRearmsNestedEventSubProcess(t *testing.T) {
 	}
 	inst := mustInstance(t, eng1, instanceID)
 	if _, ok := inst.EventSubProcesses["Event_SubProcess_nested"]; !ok {
-		t.Fatalf("expected nested ESP armed before recover, arms=%#v", inst.EventSubProcesses)
+		t.Fatalf("expected nested event sub-process armed before recover, arms=%#v", inst.EventSubProcesses)
 	}
 
 	eng2, err := processing.Recover(ctx, memLog, store, nil)
@@ -230,7 +233,7 @@ func TestRecoverRearmsNestedEventSubProcess(t *testing.T) {
 		t.Fatalf("expected UserTask_sp after recover, got %s", waitingElement(inst))
 	}
 	if _, ok := inst.EventSubProcesses["Event_SubProcess_nested"]; !ok {
-		t.Fatalf("expected nested ESP re-armed after Recover, arms=%#v", inst.EventSubProcesses)
+		t.Fatalf("expected nested event sub-process re-armed after Recover, arms=%#v", inst.EventSubProcesses)
 	}
 	n, err := eng2.PublishMessage(ctx, processing.PublishMessageRequest{Name: "cancel.inner"})
 	if err != nil || n != 1 {
@@ -238,12 +241,12 @@ func TestRecoverRearmsNestedEventSubProcess(t *testing.T) {
 	}
 	inst = mustInstance(t, eng2, instanceID)
 	if inst.Status != projection.StatusCompleted {
-		t.Fatalf("status=%s after nested ESP trigger post-recover", inst.Status)
+		t.Fatalf("status=%s after nested event sub-process trigger post-recover", inst.Status)
 	}
 }
 
 func TestNestedEventSubProcessDisarmedAfterComplete(t *testing.T) {
-	xml := readTestdataESP(t, "m4_nested_esp.bpmn")
+	xml := readTestdataEventSubProcess(t, "m4_nested_event_subprocess.bpmn")
 	eng := processing.NewEngine(eventlog.NewMemory())
 	ctx := context.Background()
 
@@ -265,7 +268,7 @@ func TestNestedEventSubProcessDisarmedAfterComplete(t *testing.T) {
 		t.Fatalf("status=%s", inst.Status)
 	}
 	if _, ok := inst.EventSubProcesses["Event_SubProcess_nested"]; ok {
-		t.Fatalf("nested ESP should be disarmed after SubProcess completes, arms=%#v", inst.EventSubProcesses)
+		t.Fatalf("nested event sub-process should be disarmed after SubProcess completes, arms=%#v", inst.EventSubProcesses)
 	}
 	events, _ := eng.ListEvents(ctx, instanceID)
 	if !sawElementIntent(events, eventv1.Element_TYPE_END_EVENT, "EndEvent_ok", eventv1.Element_INTENT_COMPLETED) {
@@ -273,11 +276,30 @@ func TestNestedEventSubProcessDisarmedAfterComplete(t *testing.T) {
 	}
 }
 
-func readTestdataESP(t *testing.T, name string) []byte {
+func readTestdataEventSubProcess(t *testing.T, name string) []byte {
 	t.Helper()
 	xml, err := os.ReadFile(filepath.Join("testdata", name))
 	if err != nil {
 		t.Fatal(err)
 	}
 	return xml
+}
+
+func sawEventSubProcessStartActivated(events []*eventv1.Event, eventSubProcessElementID string) bool {
+	for _, ev := range events {
+		if ev.GetRecordType() != eventv1.Event_RECORD_TYPE_EVENT {
+			continue
+		}
+		el := ev.GetElement()
+		if el == nil || el.GetType() != eventv1.Element_TYPE_START_EVENT {
+			continue
+		}
+		if el.GetIntent() != eventv1.Element_INTENT_ACTIVATED {
+			continue
+		}
+		if p := el.GetEventPayload(); p != nil && p.GetEventSubProcessElementId() == eventSubProcessElementID {
+			return true
+		}
+	}
+	return false
 }

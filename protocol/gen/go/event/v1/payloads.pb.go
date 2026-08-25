@@ -140,9 +140,12 @@ type EventPayload struct {
 	// When true on ACTIVATED, the token stays waiting for an external Complete
 	// (e.g. compensate end awaiting handlers). Prefer this over treating all
 	// END_EVENT activations as waiting.
-	TokenWait     bool `protobuf:"varint,8,opt,name=token_wait,json=tokenWait,proto3" json:"token_wait,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	TokenWait bool `protobuf:"varint,8,opt,name=token_wait,json=tokenWait,proto3" json:"token_wait,omitempty"`
+	// BPMN element id of the event sub-process (not a process instance id).
+	// Set on START_EVENT ACTIVATED/TERMINATED while the parent scope is open.
+	EventSubProcessElementId string `protobuf:"bytes,9,opt,name=event_sub_process_element_id,json=eventSubProcessElementId,proto3" json:"event_sub_process_element_id,omitempty"`
+	unknownFields            protoimpl.UnknownFields
+	sizeCache                protoimpl.SizeCache
 }
 
 func (x *EventPayload) Reset() {
@@ -229,6 +232,13 @@ func (x *EventPayload) GetTokenWait() bool {
 		return x.TokenWait
 	}
 	return false
+}
+
+func (x *EventPayload) GetEventSubProcessElementId() string {
+	if x != nil {
+		return x.EventSubProcessElementId
+	}
+	return ""
 }
 
 // Shared payload for BPMN activities (tasks, subProcess, callActivity, …).
@@ -507,7 +517,7 @@ const file_event_v1_payloads_proto_rawDesc = "" +
 	"\n" +
 	"json_value\x18\x02 \x01(\tR\tjsonValue\"B\n" +
 	"\x0eProcessPayload\x120\n" +
-	"\tvariables\x18\x01 \x03(\v2\x12.event.v1.VariableR\tvariables\"\xb6\x02\n" +
+	"\tvariables\x18\x01 \x03(\v2\x12.event.v1.VariableR\tvariables\"\xf6\x02\n" +
 	"\fEventPayload\x12\x1e\n" +
 	"\vdue_unix_ms\x18\x01 \x01(\x03R\tdueUnixMs\x12\x1a\n" +
 	"\bduration\x18\x02 \x01(\tR\bduration\x12!\n" +
@@ -519,7 +529,8 @@ const file_event_v1_payloads_proto_rawDesc = "" +
 	"\n" +
 	"error_code\x18\a \x01(\tR\terrorCode\x12\x1d\n" +
 	"\n" +
-	"token_wait\x18\b \x01(\bR\ttokenWait\"\x82\x03\n" +
+	"token_wait\x18\b \x01(\bR\ttokenWait\x12>\n" +
+	"\x1cevent_sub_process_element_id\x18\t \x01(\tR\x18eventSubProcessElementId\"\x82\x03\n" +
 	"\x0fActivityPayload\x120\n" +
 	"\tvariables\x18\x01 \x03(\v2\x12.event.v1.VariableR\tvariables\x12\x19\n" +
 	"\bjob_type\x18\x02 \x01(\tR\ajobType\x12#\n" +

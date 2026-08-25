@@ -147,7 +147,10 @@ func (e *Engine) CreateInstance(ctx context.Context, deploymentID string, vars m
 			return "", err
 		}
 	}
-	e.armEventSubProcesses(dep, inst, e.now())
+	if err := emitEventSubProcessStartArms(dep, inst, dep.ProcessID(), e.now(), emit); err != nil {
+		lock.Unlock()
+		return "", err
+	}
 	pubs, err := e.executor.Enter(ctx, dep, inst, tokenID, startID, emit)
 	lock.Unlock()
 	if err != nil {
@@ -457,7 +460,9 @@ func (e *Engine) completeScopeBoundaryLocked(ctx context.Context, dep *deploy.De
 
 	// Remove scope boundaries
 	inst.RemoveScopeBoundariesForScope(scopeID)
-	inst.RemoveEventSubProcessesInScope(scopeID)
+	if err := emitEventSubProcessStartDisarmInScope(dep, scopeID, inst, emit); err != nil {
+		return nil, err
+	}
 
 	// Complete the boundary and take outgoing
 	if err := emit(&eventv1.Element{

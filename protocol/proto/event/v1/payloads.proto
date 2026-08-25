@@ -34,6 +34,9 @@ message EventPayload {
   // (e.g. compensate end awaiting handlers). Prefer this over treating all
   // END_EVENT activations as waiting.
   bool token_wait = 8;
+  // BPMN element id of the event sub-process (not a process instance id).
+  // Set on START_EVENT ACTIVATED/TERMINATED while the parent scope is open.
+  string event_sub_process_element_id = 9;
 }
 
 // Shared payload for BPMN activities (tasks, subProcess, callActivity, …).

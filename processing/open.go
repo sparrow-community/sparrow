@@ -128,6 +128,5 @@ func (e *Engine) replay(ctx context.Context) error {
 	if err := e.redrive(ctx); err != nil {
 		return err
 	}
-	e.rearmEventSubProcesses()
 	return nil
 }

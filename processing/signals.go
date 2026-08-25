@@ -35,8 +35,8 @@ func (e *Engine) PublishSignal(ctx context.Context, req PublishSignalRequest) (i
 	}
 	waiters := e.collectSignalWaiters(name, instanceID)
 	scopeWaiters := e.collectScopeSignalWaiters(name, instanceID)
-	espWaiters := e.collectESPSignalArms(name, instanceID)
-	if len(waiters) == 0 && len(scopeWaiters) == 0 && len(espWaiters) == 0 {
+	eventSubProcessWaiters := e.collectEventSubProcessSignalArms(name, instanceID)
+	if len(waiters) == 0 && len(scopeWaiters) == 0 && len(eventSubProcessWaiters) == 0 {
 		return 0, nil
 	}
 	delivered := 0
@@ -68,11 +68,11 @@ func (e *Engine) PublishSignal(ctx context.Context, req PublishSignalRequest) (i
 		}
 		delivered++
 	}
-	for _, ew := range espWaiters {
+	for _, ew := range eventSubProcessWaiters {
 		if err := ctx.Err(); err != nil {
 			return delivered, err
 		}
-		if err := e.triggerEventSubProcess(ctx, ew.instanceID, ew.subProcessID, req.Variables); err != nil {
+		if err := e.triggerEventSubProcess(ctx, ew.instanceID, ew.eventSubProcessElementID, req.Variables); err != nil {
 			if first == nil {
 				first = err
 			}

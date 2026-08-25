@@ -55,8 +55,8 @@ func (e *Engine) PublishMessage(ctx context.Context, req PublishMessageRequest) 
 	}
 	waiters := e.collectMessageWaiters(name, instanceID, keys)
 	scopeWaiters := e.collectScopeMessageWaiters(name, instanceID, keys)
-	espWaiters := e.collectESPMessageArms(name, instanceID, keys)
-	if len(waiters) == 0 && len(scopeWaiters) == 0 && len(espWaiters) == 0 {
+	eventSubProcessWaiters := e.collectEventSubProcessMessageArms(name, instanceID, keys)
+	if len(waiters) == 0 && len(scopeWaiters) == 0 && len(eventSubProcessWaiters) == 0 {
 		if err := e.enqueueBuffered(name, instanceID, keys, req.Variables); err != nil {
 			return 0, err
 		}
@@ -91,11 +91,11 @@ func (e *Engine) PublishMessage(ctx context.Context, req PublishMessageRequest) 
 		}
 		delivered++
 	}
-	for _, ew := range espWaiters {
+	for _, ew := range eventSubProcessWaiters {
 		if err := ctx.Err(); err != nil {
 			return delivered, err
 		}
-		if err := e.triggerEventSubProcess(ctx, ew.instanceID, ew.subProcessID, req.Variables); err != nil {
+		if err := e.triggerEventSubProcess(ctx, ew.instanceID, ew.eventSubProcessElementID, req.Variables); err != nil {
 			if first == nil {
 				first = err
 			}
@@ -252,7 +252,7 @@ func (e *Engine) prependBuffered(m bufferedMessage) {
 
 func (e *Engine) tryDeliverBuffered(ctx context.Context, instanceID string) error {
 	for {
-		if err := e.tryDeliverBufferedESP(ctx, instanceID); err != nil {
+		if err := e.tryDeliverBufferedEventSubProcess(ctx, instanceID); err != nil {
 			return err
 		}
 		w, vars, ok := e.messageWaiterOn(instanceID)
@@ -273,9 +273,9 @@ func (e *Engine) tryDeliverBuffered(ctx context.Context, instanceID string) erro
 	}
 }
 
-func (e *Engine) tryDeliverBufferedESP(ctx context.Context, instanceID string) error {
+func (e *Engine) tryDeliverBufferedEventSubProcess(ctx context.Context, instanceID string) error {
 	for {
-		arm, vars, ok := e.espMessageArmOn(instanceID)
+		eventSubProcessID, arm, vars, ok := e.eventSubProcessMessageArmOn(instanceID)
 		if !ok {
 			return nil
 		}
@@ -283,31 +283,31 @@ func (e *Engine) tryDeliverBufferedESP(ctx context.Context, instanceID string) e
 		if !ok {
 			return nil
 		}
-		if err := e.triggerEventSubProcess(ctx, instanceID, arm.SubProcessID, msg.vars); err != nil {
+		if err := e.triggerEventSubProcess(ctx, instanceID, eventSubProcessID, msg.vars); err != nil {
 			e.prependBuffered(msg)
 			return err
 		}
 	}
 }
 
-func (e *Engine) espMessageArmOn(instanceID string) (*projection.EventSubProcessArm, map[string]string, bool) {
+func (e *Engine) eventSubProcessMessageArmOn(instanceID string) (string, *projection.EventSubProcessArm, map[string]string, bool) {
 	e.mu.Lock()
 	inst := e.instances[instanceID]
 	lock := e.instMu[instanceID]
 	e.mu.Unlock()
 	if inst == nil || lock == nil {
-		return nil, nil, false
+		return "", nil, nil, false
 	}
 	lock.Lock()
 	defer lock.Unlock()
-	for _, arm := range inst.EventSubProcesses {
+	for eventSubProcessID, arm := range inst.EventSubProcesses {
 		if arm == nil || arm.MessageName == "" {
 			continue
 		}
 		cp := *arm
-		return &cp, cloneStringMap(inst.Variables), true
+		return eventSubProcessID, &cp, cloneStringMap(inst.Variables), true
 	}
-	return nil, nil, false
+	return "", nil, nil, false
 }
 
 func (e *Engine) messageWaiterOn(instanceID string) (dueWait, map[string]string, bool) {

@@ -45,11 +45,11 @@ func (e *Engine) FireDue(ctx context.Context) error {
 			}
 		}
 	}
-	for _, ew := range e.collectESPTimerDue(now) {
+	for _, ew := range e.collectEventSubProcessTimerDue(now) {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := e.triggerEventSubProcess(ctx, ew.instanceID, ew.subProcessID, nil); err != nil {
+		if err := e.triggerEventSubProcess(ctx, ew.instanceID, ew.eventSubProcessElementID, nil); err != nil {
 			if first == nil {
 				first = err
 			}

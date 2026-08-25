@@ -192,7 +192,7 @@ runtime 加载时丢弃过期/无效 lease 与过期/死实例消息缓冲；实
 | Type | 要点 |
 |------|------|
 | `PROCESS` | 实例启动 / 完成 |
-| `START_EVENT` | 瞬时生命周期后出边 |
+| `START_EVENT` | 瞬时生命周期后出边；**Event Sub-Process start** 在 parent scope 打开时 `ACTIVATED`（`EventPayload.event_sub_process_element_id` + message/timer/signal） |
 | `END_EVENT` | 完成后 `TryCompleteProcess` |
 | `USER_TASK` / `SERVICE_TASK` | ACTIVATED 后 Wait；统一 `Complete` 完成；ServiceTask 带 `job_type` |
 | `INTERMEDIATE_CATCH_EVENT` | Timer（due）/ Message / Signal → Wait；由 FireDue / Publish* / Complete 完成 |
@@ -269,8 +269,5 @@ runtime 加载时丢弃过期/无效 lease 与过期/死实例消息缓冲；实
 
 下列不是阻塞缺陷，但是当前模型下需要注意的不合理点 / 技术债；后续可重构时优先处理。已还清的条目直接删除，不保留「已还清」坟场。
 
-1. **Event Sub-Process 武装不在账本中**  
-   `EventSubProcessArm` 是投影侧订阅（与 Job 租约、消息缓冲同类），不是 EventLog 主语。`Recover` / `Open` 依赖「当前活跃 scope + 部署定义」重装武装。嵌入式 SubProcess / CallActivity 现以 **host token** 停在宿主元素上，`activeEmbeddedScopes` 更易判定；约定用回归测试锁住（见 `TestRecoverRearmsNestedEventSubProcess`）。进账本属更大协议变更。
-
-2. **CallActivity v1 = 同实例内联，不是子 process instance**  
+1. **CallActivity v1 = 同实例内联，不是子 process instance**  
    当前 CallActivity 在**同一** `process_instance_id` 上把 token 送入同一定义文件中的被调 process；host token 停在 CallActivity，内部用 child token（与嵌入式 SubProcess 同构）。这与 BPMN「独立 called process instance」不完全一致。限制：同一被调 process 仅允许一个 CallActivity、禁止递归 CallActivity、元素 id 必须在 Definitions 内全局唯一、尚无 IO 映射 / 跨部署 calledElement / 版本选择。独立子实例与版本管理应作为后续功能里程碑。

@@ -11,45 +11,32 @@ import (
 	eventv1 "github.com/sparrow-community/sparrow/protocol/gen/go/event/v1"
 )
 
-// armEventSubProcesses registers event sub-process subscriptions for the process
-// scope and any currently active embedded subProcess scopes.
-// Arms are projection-only (not EventLog records); Recover re-syncs them.
-func (e *Engine) armEventSubProcesses(dep *deploy.Deployment, inst *projection.Instance, now time.Time) {
-	if dep == nil || inst == nil {
-		return
-	}
-	if now.IsZero() {
-		now = e.now()
-	}
-	armEventSubProcessesInScope(dep, inst, dep.ProcessID(), now)
-	for scopeID := range activeEmbeddedScopes(dep, inst) {
-		armEventSubProcessesInScope(dep, inst, scopeID, now)
-	}
-}
-
-func activeEmbeddedScopes(dep *deploy.Deployment, inst *projection.Instance) map[string]bool {
-	scopes := make(map[string]bool)
+func eventSubProcessRunning(dep *deploy.Deployment, inst *projection.Instance, eventSubProcessID string) bool {
 	for _, tok := range inst.Tokens {
 		if tok == nil {
 			continue
 		}
-		if typ, err := dep.TypeOf(tok.ElementID); err == nil &&
-			typ == eventv1.Element_TYPE_SUB_PROCESS &&
-			!dep.IsEventSubProcess(tok.ElementID) {
-			scopes[tok.ElementID] = true
+		if tok.ElementID == eventSubProcessID {
+			return true
 		}
-		scope, ok := dep.ScopeOf(tok.ElementID)
-		if !ok || scope == "" || scope == dep.ProcessID() {
-			continue
-		}
-		if !dep.IsEventSubProcess(scope) {
-			scopes[scope] = true
+		scope, _ := dep.ScopeOf(tok.ElementID)
+		if scope == eventSubProcessID || isInScope(dep, scope, eventSubProcessID) {
+			return true
 		}
 	}
-	return scopes
+	return false
 }
 
-func armEventSubProcessesInScope(dep *deploy.Deployment, inst *projection.Instance, scopeID string, now time.Time) {
+func emitEventSubProcessStartArms(
+	dep *deploy.Deployment,
+	inst *projection.Instance,
+	scopeID string,
+	now time.Time,
+	emit Emitter,
+) error {
+	if dep == nil || inst == nil || emit == nil {
+		return nil
+	}
 	for _, spec := range dep.EventSubProcessesInScope(scopeID) {
 		if eventSubProcessRunning(dep, inst, spec.ID) {
 			continue
@@ -57,58 +44,80 @@ func armEventSubProcessesInScope(dep *deploy.Deployment, inst *projection.Instan
 		if _, ok := inst.EventSubProcesses[spec.ID]; ok {
 			continue
 		}
-		arm := &projection.EventSubProcessArm{
-			SubProcessID:  spec.ID,
-			StartEventID:  spec.StartEventID,
-			ParentScopeID: spec.ParentScopeID,
-			Interrupting:  spec.Interrupting,
-			MessageName:   spec.MessageName,
-			SignalName:    spec.SignalName,
+		if err := emit(eventSubProcessStartActivated(dep, spec, now)); err != nil {
+			return err
 		}
-		if spec.Kind == deploy.CatchKindTimer {
-			due, text, err := dep.TimerDue(spec.StartEventID, now)
-			if err == nil {
-				arm.DueUnixMs = due
-				arm.TimerText = text
-			}
+	}
+	return nil
+}
+
+func eventSubProcessStartActivated(dep *deploy.Deployment, spec deploy.EventSubProcess, now time.Time) *eventv1.Element {
+	payload := &eventv1.EventPayload{EventSubProcessElementId: spec.ID}
+	switch spec.Kind {
+	case deploy.CatchKindMessage:
+		payload.MessageName = spec.MessageName
+	case deploy.CatchKindSignal:
+		payload.SignalName = spec.SignalName
+	case deploy.CatchKindTimer:
+		if now.IsZero() {
+			now = time.Now()
 		}
-		inst.EventSubProcesses[spec.ID] = arm
+		if due, text, err := dep.TimerDue(spec.StartEventID, now); err == nil {
+			payload.DueUnixMs = due
+			payload.Duration = text
+		}
+	}
+	return &eventv1.Element{
+		Intent:  eventv1.Element_INTENT_ACTIVATED,
+		Type:    eventv1.Element_TYPE_START_EVENT,
+		Id:      spec.StartEventID,
+		Payload: &eventv1.Element_EventPayload{EventPayload: payload},
 	}
 }
 
-func eventSubProcessRunning(dep *deploy.Deployment, inst *projection.Instance, espID string) bool {
-	for _, tok := range inst.Tokens {
-		if tok == nil {
+func emitEventSubProcessStartDisarmInScope(
+	dep *deploy.Deployment,
+	scopeID string,
+	inst *projection.Instance,
+	emit Emitter,
+) error {
+	for eventSubProcessID := range inst.EventSubProcesses {
+		spec, ok := dep.EventSubProcessSpec(eventSubProcessID)
+		if !ok || spec.ParentScopeID != scopeID {
 			continue
 		}
-		if tok.ElementID == espID {
-			return true
-		}
-		scope, _ := dep.ScopeOf(tok.ElementID)
-		if scope == espID || isInScope(dep, scope, espID) {
-			return true
+		if err := emitEventSubProcessStartDisarm(dep, eventSubProcessID, emit); err != nil {
+			return err
 		}
 	}
-	return false
+	return nil
 }
 
-func (e *Engine) rearmEventSubProcesses() {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	now := e.now()
-	for _, inst := range e.instances {
-		if inst == nil || inst.Status != projection.StatusActive {
-			continue
-		}
-		dep := e.deployments[inst.DeploymentID]
-		if dep == nil {
-			continue
-		}
-		e.armEventSubProcesses(dep, inst, now)
+func emitEventSubProcessStartDisarm(dep *deploy.Deployment, eventSubProcessElementID string, emit Emitter) error {
+	spec, ok := dep.EventSubProcessSpec(eventSubProcessElementID)
+	if !ok {
+		return nil
 	}
+	ep := &eventv1.Element_EventPayload{
+		EventPayload: &eventv1.EventPayload{EventSubProcessElementId: eventSubProcessElementID},
+	}
+	for _, intent := range []eventv1.Element_Intent{
+		eventv1.Element_INTENT_TERMINATING,
+		eventv1.Element_INTENT_TERMINATED,
+	} {
+		if err := emit(&eventv1.Element{
+			Intent:  intent,
+			Type:    eventv1.Element_TYPE_START_EVENT,
+			Id:      spec.StartEventID,
+			Payload: ep,
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-func (e *Engine) triggerEventSubProcess(ctx context.Context, instanceID, subProcessID string, vars map[string]any) error {
+func (e *Engine) triggerEventSubProcess(ctx context.Context, instanceID, eventSubProcessElementID string, vars map[string]any) error {
 	e.mu.Lock()
 	inst := e.instances[instanceID]
 	lock := e.instMu[instanceID]
@@ -122,7 +131,7 @@ func (e *Engine) triggerEventSubProcess(ctx context.Context, instanceID, subProc
 	}
 
 	lock.Lock()
-	pubs, err := e.triggerEventSubProcessLocked(ctx, dep, inst, instanceID, subProcessID, vars)
+	pubs, err := e.triggerEventSubProcessLocked(ctx, dep, inst, instanceID, eventSubProcessElementID, vars)
 	lock.Unlock()
 	if err != nil {
 		return err
@@ -137,15 +146,15 @@ func (e *Engine) triggerEventSubProcessLocked(
 	ctx context.Context,
 	dep *deploy.Deployment,
 	inst *projection.Instance,
-	instanceID, subProcessID string,
+	instanceID, eventSubProcessElementID string,
 	vars map[string]any,
 ) ([]handlers.Publication, error) {
-	arm := inst.EventSubProcesses[subProcessID]
-	if arm == nil {
+	if _, ok := inst.EventSubProcesses[eventSubProcessElementID]; !ok {
 		return nil, nil
 	}
-	if _, ok := dep.EventSubProcessSpec(subProcessID); !ok {
-		return nil, fmt.Errorf("NOT_FOUND: event subProcess %q", subProcessID)
+	spec, ok := dep.EventSubProcessSpec(eventSubProcessElementID)
+	if !ok {
+		return nil, fmt.Errorf("NOT_FOUND: event subProcess %q", eventSubProcessElementID)
 	}
 
 	tokenID, err := NextID()
@@ -171,7 +180,7 @@ func (e *Engine) triggerEventSubProcessLocked(
 		Element: &eventv1.Element{
 			Intent:  eventv1.Element_INTENT_ACTIVATING,
 			Type:    eventv1.Element_TYPE_SUB_PROCESS,
-			Id:      subProcessID,
+			Id:      eventSubProcessElementID,
 			TokenId: tokenID,
 		},
 	}
@@ -185,35 +194,39 @@ func (e *Engine) triggerEventSubProcessLocked(
 	}
 	emit := e.emitter(ctx, inst, cmdID)
 
-	if arm.Interrupting {
-		if err := terminateScopeTokens(dep, inst, arm.ParentScopeID, emit, scopeTerminateOpts{
+	if spec.Interrupting {
+		if err := emitEventSubProcessStartDisarmInScope(dep, spec.ParentScopeID, inst, emit); err != nil {
+			return nil, err
+		}
+		if err := terminateScopeTokens(dep, inst, spec.ParentScopeID, emit, scopeTerminateOpts{
 			IncludeHost: true,
 			DropTokens:  true,
 		}); err != nil {
 			return nil, err
 		}
-		inst.RemoveScopeBoundariesForScope(arm.ParentScopeID)
-		inst.RemoveEventSubProcessesInScope(arm.ParentScopeID)
+		inst.RemoveScopeBoundariesForScope(spec.ParentScopeID)
 	} else {
-		inst.RemoveEventSubProcess(subProcessID)
+		if err := emitEventSubProcessStartDisarm(dep, eventSubProcessElementID, emit); err != nil {
+			return nil, err
+		}
 	}
 
-	return e.executor.Enter(ctx, dep, inst, tokenID, subProcessID, emit)
+	return e.executor.Enter(ctx, dep, inst, tokenID, eventSubProcessElementID, emit)
 }
 
-func (e *Engine) collectESPMessageArms(name, instanceID string, keys []*eventv1.Variable) []espWait {
-	return e.collectESPArms(instanceID, keys, func(arm *projection.EventSubProcessArm) bool {
+func (e *Engine) collectEventSubProcessMessageArms(name, instanceID string, keys []*eventv1.Variable) []eventSubProcessWait {
+	return e.collectEventSubProcessArms(instanceID, keys, func(_ string, arm *projection.EventSubProcessArm) bool {
 		return arm.MessageName != "" && arm.MessageName == name
 	})
 }
 
-func (e *Engine) collectESPSignalArms(name, instanceID string) []espWait {
-	return e.collectESPArms(instanceID, nil, func(arm *projection.EventSubProcessArm) bool {
+func (e *Engine) collectEventSubProcessSignalArms(name, instanceID string) []eventSubProcessWait {
+	return e.collectEventSubProcessArms(instanceID, nil, func(_ string, arm *projection.EventSubProcessArm) bool {
 		return arm.SignalName != "" && arm.SignalName == name
 	})
 }
 
-func (e *Engine) collectESPTimerDue(nowUnixMs int64) []espWait {
+func (e *Engine) collectEventSubProcessTimerDue(nowUnixMs int64) []eventSubProcessWait {
 	e.mu.Lock()
 	ids := make([]string, 0, len(e.instances))
 	for id := range e.instances {
@@ -221,7 +234,7 @@ func (e *Engine) collectESPTimerDue(nowUnixMs int64) []espWait {
 	}
 	e.mu.Unlock()
 
-	var due []espWait
+	var due []eventSubProcessWait
 	for _, iid := range ids {
 		e.mu.Lock()
 		inst := e.instances[iid]
@@ -231,9 +244,9 @@ func (e *Engine) collectESPTimerDue(nowUnixMs int64) []espWait {
 			continue
 		}
 		lock.Lock()
-		for _, arm := range inst.EventSubProcesses {
+		for eventSubProcessID, arm := range inst.EventSubProcesses {
 			if arm != nil && arm.DueUnixMs > 0 && arm.DueUnixMs <= nowUnixMs {
-				due = append(due, espWait{instanceID: iid, subProcessID: arm.SubProcessID})
+				due = append(due, eventSubProcessWait{instanceID: iid, eventSubProcessElementID: eventSubProcessID})
 			}
 		}
 		lock.Unlock()
@@ -241,12 +254,16 @@ func (e *Engine) collectESPTimerDue(nowUnixMs int64) []espWait {
 	return due
 }
 
-type espWait struct {
-	instanceID   string
-	subProcessID string
+type eventSubProcessWait struct {
+	instanceID               string
+	eventSubProcessElementID string
 }
 
-func (e *Engine) collectESPArms(instanceID string, keys []*eventv1.Variable, match func(*projection.EventSubProcessArm) bool) []espWait {
+func (e *Engine) collectEventSubProcessArms(
+	instanceID string,
+	keys []*eventv1.Variable,
+	match func(eventSubProcessElementID string, arm *projection.EventSubProcessArm) bool,
+) []eventSubProcessWait {
 	e.mu.Lock()
 	ids := make([]string, 0, len(e.instances))
 	if instanceID != "" {
@@ -260,7 +277,7 @@ func (e *Engine) collectESPArms(instanceID string, keys []*eventv1.Variable, mat
 	}
 	e.mu.Unlock()
 
-	var out []espWait
+	var out []eventSubProcessWait
 	for _, iid := range ids {
 		e.mu.Lock()
 		inst := e.instances[iid]
@@ -274,9 +291,9 @@ func (e *Engine) collectESPArms(instanceID string, keys []*eventv1.Variable, mat
 			lock.Unlock()
 			continue
 		}
-		for _, arm := range inst.EventSubProcesses {
-			if arm != nil && match(arm) {
-				out = append(out, espWait{instanceID: iid, subProcessID: arm.SubProcessID})
+		for eventSubProcessID, arm := range inst.EventSubProcesses {
+			if arm != nil && match(eventSubProcessID, arm) {
+				out = append(out, eventSubProcessWait{instanceID: iid, eventSubProcessElementID: eventSubProcessID})
 			}
 		}
 		lock.Unlock()
