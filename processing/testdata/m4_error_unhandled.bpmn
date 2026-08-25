@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             id="Definitions_error_unhandled"
+             targetNamespace="http://sparrow.example/error-unhandled">
+  <error id="Error_fatal" errorCode="FATAL" name="Fatal"/>
+  <process id="Process_error_unhandled" name="M4 Error Unhandled" isExecutable="true">
+    <startEvent id="StartEvent_1">
+      <outgoing>Flow_start_to_task</outgoing>
+    </startEvent>
+    <userTask id="UserTask_1" name="Work">
+      <incoming>Flow_start_to_task</incoming>
+      <outgoing>Flow_task_to_ok</outgoing>
+    </userTask>
+    <endEvent id="EndEvent_ok">
+      <incoming>Flow_task_to_ok</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_task" sourceRef="StartEvent_1" targetRef="UserTask_1"/>
+    <sequenceFlow id="Flow_task_to_ok" sourceRef="UserTask_1" targetRef="EndEvent_ok"/>
+  </process>
+</definitions>

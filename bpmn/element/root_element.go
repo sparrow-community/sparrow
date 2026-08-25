@@ -33,4 +33,5 @@ type RootElemnts struct {
 	Resources       []Resource       `xml:"resource"`
 	ItemDefinitions []ItemDefinition `xml:"itemDefinition"`
 	Signals         []Signal         `xml:"signal"`
+	Errors          []Error          `xml:"error"`
 }

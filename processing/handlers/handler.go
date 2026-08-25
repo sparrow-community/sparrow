@@ -41,6 +41,13 @@ type Effect struct {
 	TriggerCompensation bool
 	// AdvanceCompensation continues the pending compensate throw after a handler finishes.
 	AdvanceCompensation bool
+	// ThrowError propagates a BPMN error after ACTIVATED (error end) or ERROR_THROWN.
+	ThrowError *ThrowErrorEffect
+}
+
+// ThrowErrorEffect requests error propagation from the throwing element.
+type ThrowErrorEffect struct {
+	ErrorCode string
 }
 
 // PublicationKind is message or signal broadcast from an intermediate throw.

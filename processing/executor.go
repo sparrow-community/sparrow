@@ -105,6 +105,26 @@ func (x *Executor) Enter(
 			}
 			return pubs, nil
 		}
+		if effect.ThrowError != nil {
+			throwTyp, err := dep.TypeOf(elementID)
+			if err != nil {
+				return pubs, fmt.Errorf("UNSUPPORTED_ELEMENT: %v", err)
+			}
+			if err := emit(&eventv1.Element{
+				Intent:  eventv1.Element_INTENT_ERROR_THROWN,
+				Type:    throwTyp,
+				Id:      elementID,
+				TokenId: tokenID,
+				Payload: &eventv1.Element_EventPayload{
+					EventPayload: &eventv1.EventPayload{ErrorCode: effect.ThrowError.ErrorCode},
+				},
+			}); err != nil {
+				return pubs, err
+			}
+			more, err := x.propagateError(ctx, dep, inst, elementID, tokenID, effect.ThrowError.ErrorCode, emit)
+			pubs = append(pubs, more...)
+			return pubs, err
+		}
 		if effect.TryCompleteProcess {
 			more, err := x.tryCompleteScope(ctx, dep, inst, tokenID, elementID, emit)
 			pubs = append(pubs, more...)

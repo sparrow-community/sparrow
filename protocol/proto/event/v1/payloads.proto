@@ -28,6 +28,8 @@ message EventPayload {
   // Compensation handler element id. Set on BOUNDARY_EVENT ACTIVATED after the
   // host activity COMPLETED (compensation subscription). Empty otherwise.
   string compensation_handler_id = 6;
+  // BPMN error code on ERROR_THROWN (error end or propagated error). Empty for generic.
+  string error_code = 7;
 }
 
 // Shared payload for BPMN activities (tasks, subProcess, callActivity, …).

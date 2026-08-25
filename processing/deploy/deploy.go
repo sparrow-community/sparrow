@@ -22,6 +22,9 @@ type Deployment struct {
 	throwEvents       map[string]throwSpec  // intermediate throw id -> spec
 	eventSubProcesses map[string]EventSubProcess
 	compensations     map[string]Compensation // activity id -> compensation
+	errorCatch        map[string]string       // error boundary id -> error code (empty = catch-all)
+	errorBoundaries   map[string][]string     // activity id -> error boundary ids
+	errorEnds         map[string]string       // error end event id -> error code
 	elements          map[string]*elemEntry   // flat index of all elements (recursive into subprocesses)
 	seqFlows          map[string]*seqFlowEntry
 }
@@ -70,11 +73,11 @@ func Compile(bpmnXML []byte) (*Deployment, error) {
 	}
 
 	d := &Deployment{Version: 1, Process: *proc}
-	d.compile(model.Definitions.Messages, model.Definitions.Signals)
+	d.compile(model.Definitions.Messages, model.Definitions.Signals, model.Definitions.Errors)
 	return d, nil
 }
 
-func (d *Deployment) compile(messages []element.Message, signals []element.Signal) {
+func (d *Deployment) compile(messages []element.Message, signals []element.Signal, errors []element.Error) {
 	p := &d.Process
 	d.timerCatch = make(map[string]timerCatch, len(p.IntermediateCatchEvents)+len(p.BoundaryEvents))
 	d.messageCatch = make(map[string]string, len(p.IntermediateCatchEvents)+len(p.BoundaryEvents))
@@ -82,10 +85,13 @@ func (d *Deployment) compile(messages []element.Message, signals []element.Signa
 	d.throwEvents = make(map[string]throwSpec, len(p.IntermediateThrowEvents))
 	d.eventSubProcesses = make(map[string]EventSubProcess)
 	d.compensations = make(map[string]Compensation)
+	d.errorCatch = make(map[string]string)
+	d.errorBoundaries = make(map[string][]string)
+	d.errorEnds = make(map[string]string)
 	d.elements = make(map[string]*elemEntry)
 	d.seqFlows = make(map[string]*seqFlowEntry)
 
-	d.indexScope(&p.FlowElements, p.ID, messages, signals, collectAssociations(p))
+	d.indexScope(&p.FlowElements, p.ID, messages, signals, errors, collectAssociations(p))
 	d.elements[p.ID] = &elemEntry{Type: eventv1.Element_TYPE_PROCESS, ScopeID: ""}
 }
 
@@ -103,7 +109,7 @@ func collectAssociations(p *element.Process) []element.Association {
 	return out
 }
 
-func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messages []element.Message, signals []element.Signal, associations []element.Association) {
+func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messages []element.Message, signals []element.Signal, errors []element.Error, associations []element.Association) {
 	reg := func(id string, typ eventv1.Element_Type, outgoing, incoming []string) {
 		d.elements[id] = &elemEntry{Type: typ, ScopeID: scopeID, Outgoing: outgoing, Incoming: incoming}
 	}
@@ -112,6 +118,9 @@ func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messag
 	}
 	for _, e := range fe.EndEvents {
 		reg(e.ID, eventv1.Element_TYPE_END_EVENT, e.Outgoing, e.Incoming)
+		if code, err := errorEndSpec(e, errors); err == nil {
+			d.errorEnds[e.ID] = code
+		}
 	}
 	for _, e := range fe.UserTasks {
 		reg(e.ID, eventv1.Element_TYPE_USER_TASK, e.Outgoing, e.Incoming)
@@ -157,6 +166,9 @@ func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messag
 			d.signalCatch[e.ID] = spec.Name
 		} else if spec, err := compensationBoundarySpec(e, associations); err == nil {
 			d.compensations[spec.ActivityID] = spec
+		} else if spec, err := errorBoundarySpec(e, errors); err == nil {
+			d.errorCatch[e.ID] = spec.ErrorCode
+			d.errorBoundaries[spec.AttachedTo] = append(d.errorBoundaries[spec.AttachedTo], e.ID)
 		}
 	}
 	for _, e := range fe.SequenceFlows {
@@ -183,7 +195,7 @@ func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messag
 				}
 			}
 		}
-		d.indexScope(&sp.FlowElements, sp.ID, messages, signals, associations)
+		d.indexScope(&sp.FlowElements, sp.ID, messages, signals, errors, associations)
 	}
 }
 
@@ -245,8 +257,15 @@ func validateM1(proc *element.Process) error {
 			}
 			attached = spec.ActivityID
 			kind = "compensate"
+		case len(e.ErrorEventDefinitions) > 0:
+			spec, err := errorBoundarySpec(e, nil)
+			if err != nil {
+				return err
+			}
+			attached = spec.AttachedTo
+			kind = "error:" + spec.ErrorCode
 		default:
-			return fmt.Errorf("UNSUPPORTED_ELEMENT: boundaryEvent %q must be a timer, message, signal, or compensation boundary", e.ID)
+			return fmt.Errorf("UNSUPPORTED_ELEMENT: boundaryEvent %q must be a timer, message, signal, error, or compensation boundary", e.ID)
 		}
 		key := seenKey{attached, kind}
 		if prev, ok := seenAttach[key]; ok {

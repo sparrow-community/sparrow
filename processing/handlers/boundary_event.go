@@ -61,6 +61,10 @@ func attachBoundary(dep *deploy.Deployment, activityID string, now time.Time, p 
 	return p, nil
 }
 
+func CancelAttachedBoundaries(dep *deploy.Deployment, activityID, tokenID string) []*eventv1.Element {
+	return cancelAttachedBoundary(dep, activityID, tokenID)
+}
+
 func cancelAttachedBoundary(dep *deploy.Deployment, activityID, tokenID string) []*eventv1.Element {
 	if dep == nil {
 		return nil
