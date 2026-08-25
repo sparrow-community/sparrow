@@ -291,7 +291,11 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 	// Tokens are updated only from EVENT records (not by the executor).
 	switch el.GetIntent() {
 	case eventv1.Element_INTENT_ACTIVATED:
-		if waitingActivation(el.GetType()) {
+		wait := waitingActivation(el.GetType())
+		if p := el.GetEventPayload(); p != nil && p.GetTokenWait() {
+			wait = true
+		}
+		if wait {
 			tok.Status = TokenWaiting
 		} else {
 			tok.Status = TokenActive
@@ -402,7 +406,7 @@ func boundaryRearmOnWaitingHost(hostElementID string, el *eventv1.Element, tok *
 
 func waitingActivation(t eventv1.Element_Type) bool {
 	switch t {
-	case eventv1.Element_TYPE_USER_TASK, eventv1.Element_TYPE_SERVICE_TASK, eventv1.Element_TYPE_INTERMEDIATE_CATCH_EVENT, eventv1.Element_TYPE_INTERMEDIATE_THROW_EVENT, eventv1.Element_TYPE_END_EVENT, eventv1.Element_TYPE_PARALLEL_GATEWAY, eventv1.Element_TYPE_INCLUSIVE_GATEWAY:
+	case eventv1.Element_TYPE_USER_TASK, eventv1.Element_TYPE_SERVICE_TASK, eventv1.Element_TYPE_INTERMEDIATE_CATCH_EVENT, eventv1.Element_TYPE_INTERMEDIATE_THROW_EVENT, eventv1.Element_TYPE_PARALLEL_GATEWAY, eventv1.Element_TYPE_INCLUSIVE_GATEWAY:
 		return true
 	default:
 		return false

@@ -60,8 +60,8 @@
 **最新提交**
 
 ```text
-6ef4018 Support nested event sub-processes inside embedded SubProcesses.
-6fc8462 Support compensate end events and SubProcess compensation boundaries.
+（设计还债）Unify terminateScopeTokens; EventPayload.token_wait for compensate end.
+3451012 Support CallActivity for called processes in the same definitions.
 ```
 
 ---

@@ -30,6 +30,10 @@ message EventPayload {
   string compensation_handler_id = 6;
   // BPMN error code on ERROR_THROWN (error end or propagated error). Empty for generic.
   string error_code = 7;
+  // When true on ACTIVATED, the token stays waiting for an external Complete
+  // (e.g. compensate end awaiting handlers). Prefer this over treating all
+  // END_EVENT activations as waiting.
+  bool token_wait = 8;
 }
 
 // Shared payload for BPMN activities (tasks, subProcess, callActivity, …).

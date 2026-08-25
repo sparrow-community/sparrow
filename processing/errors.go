@@ -197,7 +197,10 @@ func (x *Executor) fireScopeErrorBoundary(
 	scopeID, hostTokenID, boundaryID string,
 	emit Emitter,
 ) ([]handlers.Publication, error) {
-	if err := x.terminateScopeTokens(dep, inst, scopeID, emit); err != nil {
+	if err := terminateScopeTokens(dep, inst, scopeID, emit, scopeTerminateOpts{
+		IncludeHost: false,
+		DropTokens:  true,
+	}); err != nil {
 		return nil, err
 	}
 	if err := emit(&eventv1.Element{
@@ -242,11 +245,14 @@ func (x *Executor) fireScopeErrorBoundary(
 }
 
 func (x *Executor) terminateScope(ctx context.Context, dep *deploy.Deployment, inst *projection.Instance, scopeID string, emit Emitter) error {
-	if err := x.terminateScopeTokens(dep, inst, scopeID, emit); err != nil {
+	hostTokenID, hasHost := findScopeHostToken(dep, inst, scopeID)
+	if err := terminateScopeTokens(dep, inst, scopeID, emit, scopeTerminateOpts{
+		IncludeHost: false,
+		DropTokens:  true,
+	}); err != nil {
 		return err
 	}
-	hostTokenID, ok := findScopeHostToken(dep, inst, scopeID)
-	if !ok {
+	if !hasHost {
 		inst.RemoveScopeBoundariesForScope(scopeID)
 		inst.RemoveEventSubProcessesInScope(scopeID)
 		return nil
@@ -267,41 +273,10 @@ func (x *Executor) terminateScope(ctx context.Context, dep *deploy.Deployment, i
 	}); err != nil {
 		return err
 	}
+	// TERMINATED revives the token onto the SubProcess; drop it while bubbling.
+	delete(inst.Tokens, hostTokenID)
 	inst.RemoveScopeBoundariesForScope(scopeID)
 	inst.RemoveEventSubProcessesInScope(scopeID)
-	return nil
-}
-
-func (x *Executor) terminateScopeTokens(dep *deploy.Deployment, inst *projection.Instance, scopeID string, emit Emitter) error {
-	for tid, tok := range inst.Tokens {
-		if tok == nil {
-			continue
-		}
-		tokScope, _ := dep.ScopeOf(tok.ElementID)
-		if tokScope != scopeID && !isInScope(dep, tokScope, scopeID) && tok.ElementID != scopeID {
-			continue
-		}
-		if tok.ElementID == scopeID {
-			continue
-		}
-		tokType, err := dep.TypeOf(tok.ElementID)
-		if err != nil {
-			continue
-		}
-		for _, intent := range []eventv1.Element_Intent{
-			eventv1.Element_INTENT_TERMINATING,
-			eventv1.Element_INTENT_TERMINATED,
-		} {
-			if err := emit(&eventv1.Element{
-				Intent:  intent,
-				Type:    tokType,
-				Id:      tok.ElementID,
-				TokenId: tid,
-			}); err != nil {
-				return err
-			}
-		}
-	}
 	return nil
 }
 

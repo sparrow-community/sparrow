@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/sparrow-community/sparrow/processing"
+	"github.com/sparrow-community/sparrow/processing/deploy"
 	eventlog "github.com/sparrow-community/sparrow/processing/log"
 	"github.com/sparrow-community/sparrow/processing/projection"
 	eventv1 "github.com/sparrow-community/sparrow/protocol/gen/go/event/v1"
@@ -180,6 +181,49 @@ func TestNestedEventSubProcessMessageInterrupting(t *testing.T) {
 	}
 	if sawElementIntent(events, eventv1.Element_TYPE_END_EVENT, "EndEvent_ok", eventv1.Element_INTENT_COMPLETED) {
 		t.Fatal("happy-path end must not complete after interrupting nested ESP")
+	}
+}
+
+func TestRecoverRearmsNestedEventSubProcess(t *testing.T) {
+	xml := readTestdataESP(t, "m4_nested_esp.bpmn")
+	ctx := context.Background()
+	memLog := eventlog.NewMemory()
+	store := deploy.NewMemoryStore()
+	eng1, err := processing.Recover(ctx, memLog, store, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	depID, err := eng1.Deploy(ctx, xml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instanceID, err := eng1.CreateInstance(ctx, depID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inst := mustInstance(t, eng1, instanceID)
+	if _, ok := inst.EventSubProcesses["Event_SubProcess_nested"]; !ok {
+		t.Fatalf("expected nested ESP armed before recover, arms=%#v", inst.EventSubProcesses)
+	}
+
+	eng2, err := processing.Recover(ctx, memLog, store, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inst = mustInstance(t, eng2, instanceID)
+	if waitingElement(inst) != "UserTask_sp" {
+		t.Fatalf("expected UserTask_sp after recover, got %s", waitingElement(inst))
+	}
+	if _, ok := inst.EventSubProcesses["Event_SubProcess_nested"]; !ok {
+		t.Fatalf("expected nested ESP re-armed after Recover, arms=%#v", inst.EventSubProcesses)
+	}
+	n, err := eng2.PublishMessage(ctx, processing.PublishMessageRequest{Name: "cancel.inner"})
+	if err != nil || n != 1 {
+		t.Fatalf("publish after recover n=%d err=%v", n, err)
+	}
+	inst = mustInstance(t, eng2, instanceID)
+	if inst.Status != projection.StatusCompleted {
+		t.Fatalf("status=%s after nested ESP trigger post-recover", inst.Status)
 	}
 }
 

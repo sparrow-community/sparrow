@@ -193,7 +193,10 @@ func (e *Engine) triggerEventSubProcessLocked(
 				break
 			}
 		}
-		if err := e.terminateScopeTokens(dep, inst, arm.ParentScopeID, emit); err != nil {
+		if err := terminateScopeTokens(dep, inst, arm.ParentScopeID, emit, scopeTerminateOpts{
+			IncludeHost: true,
+			DropTokens:  true,
+		}); err != nil {
 			return nil, err
 		}
 		// Embedded parent scopes have no lingering host token (the entering token
@@ -223,56 +226,6 @@ func (e *Engine) triggerEventSubProcessLocked(
 	}
 
 	return e.executor.Enter(ctx, dep, inst, tokenID, subProcessID, emit)
-}
-
-func (e *Engine) terminateScopeTokens(dep *deploy.Deployment, inst *projection.Instance, scopeID string, emit Emitter) error {
-	processID := dep.ProcessID()
-	ids := make([]string, 0, len(inst.Tokens))
-	for tid, tok := range inst.Tokens {
-		if tok == nil {
-			continue
-		}
-		if scopeID != processID && !tokenInOrIsScope(dep, tok, scopeID) {
-			continue
-		}
-		ids = append(ids, tid)
-	}
-	for _, tid := range ids {
-		tok := inst.Tokens[tid]
-		if tok == nil {
-			continue
-		}
-		tokType, err := dep.TypeOf(tok.ElementID)
-		if err != nil {
-			tokType = eventv1.Element_TYPE_UNSPECIFIED
-		}
-		for _, intent := range []eventv1.Element_Intent{
-			eventv1.Element_INTENT_TERMINATING,
-			eventv1.Element_INTENT_TERMINATED,
-		} {
-			if err := emit(&eventv1.Element{
-				Intent:  intent,
-				Type:    tokType,
-				Id:      tok.ElementID,
-				TokenId: tid,
-			}); err != nil {
-				return err
-			}
-		}
-		// Projection keeps non-catch TERMINATED tokens as active; drop them so
-		// interrupting event sub-processes can finish the parent scope cleanly.
-		delete(inst.Tokens, tid)
-	}
-	return nil
-}
-
-// tokenInOrIsScope reports whether tok sits on scopeID itself or inside it.
-func tokenInOrIsScope(dep *deploy.Deployment, tok *projection.Token, scopeID string) bool {
-	if tok.ElementID == scopeID {
-		return true
-	}
-	tokScope, _ := dep.ScopeOf(tok.ElementID)
-	return tokScope == scopeID || isInScope(dep, tokScope, scopeID)
 }
 
 func (e *Engine) collectESPMessageArms(name, instanceID string, keys []*eventv1.Variable) []espWait {

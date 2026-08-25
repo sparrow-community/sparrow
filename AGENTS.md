@@ -59,7 +59,7 @@ Current `Event` shape (high level):
 - Nested `Element`: `Intent`, `Type`, `id`, `token_id` (token id is UUIDv7 string)
 - `Element.Type` = one value per independent BPMN element (`PROCESS` + `FlowElements` concrete types); no generic TASK/GATEWAY + kind
 - Payloads are data-only groups: process / event / activity / gateway / sequence-flow / data
-- `EventPayload` may carry `due_unix_ms` + original timer text (`duration` field, timeDuration / timeDate / timeCycle) for timer catch ACTIVATED, `message_name` for message catch/throw ACTIVATED, `signal_name` for signal catch/throw ACTIVATED, `compensation_handler_id` on compensation boundary ACTIVATED after host COMPLETED, and `variables` on catch COMPLETING. `ActivityPayload` may carry `boundary_id` plus either `due_unix_ms` / `duration` (interrupting timer) or `message_name` (interrupting message) when a boundary is armed on a waiting activity.
+- `EventPayload` may carry `due_unix_ms` + original timer text (`duration` field, timeDuration / timeDate / timeCycle) for timer catch ACTIVATED, `message_name` for message catch/throw ACTIVATED, `signal_name` for signal catch/throw ACTIVATED, `compensation_handler_id` on compensation boundary ACTIVATED after host COMPLETED, `error_code` on ERROR_THROWN, `token_wait` on ACTIVATED when the token must wait for Complete (e.g. compensate end), and `variables` on catch COMPLETING. `ActivityPayload` may carry `boundary_id` plus either `due_unix_ms` / `duration` (interrupting timer) or `message_name` (interrupting message) when a boundary is armed on a waiting activity.
 
 ### Regenerate
 

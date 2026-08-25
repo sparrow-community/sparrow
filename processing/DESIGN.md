@@ -275,17 +275,14 @@ runtime 加载时丢弃过期/无效 lease 与过期/死实例消息缓冲；实
 2. **嵌入式 SubProcess 没有常驻 host token**  
    进入 SubProcess 后，同一 token 进入内部 Start，投影上不再停在 `SUB_PROCESS` 元素。打断型嵌套 ESP 取消父 scope 时，需要**补记** `SUB_PROCESS TERMINATED` 审计，并在 `ApplyEvent` 之后再次 `delete` token——因为 `TERMINATED` 会把已删除的 token 复活为 active。这与「token 更新只走 EVENT」的原则有摩擦：投影副作用要靠执行器补刀。更干净的做法可能是：host token 在 SubProcess 上 waiting、内部用 child token；或让 `TERMINATED` 对已删除 token 保持删除语义。
 
-3. **`terminateScopeTokens` 双份实现**  
-   `Engine.terminateScopeTokens`（ESP）与 `Executor.terminateScopeTokens`（Error 传播）行为略有不同（是否包含 host / 是否 delete）。应合并为一处，避免嵌套 scope 语义分叉。
+3. **`terminateScopeTokens` 双份实现** — **已还清**  
+   统一为 `terminateScopeTokens(..., scopeTerminateOpts{IncludeHost, DropTokens})`，ESP 与 Error 传播共用；Error 冒泡在 TERMINATED 后显式 drop，避免投影复活残留 token。
 
-4. **Compensate / Error end 共用 `END_EVENT` waiting 投影**  
-   为支持 compensate end 等待 handler，`waitingActivation` 包含了 `END_EVENT`。none/error end 的瞬时生命周期会短暂经过 waiting 状态（随即 COMPLETED）。目前可工作，但语义上偏宽；长期可改为仅在 compensate/error-wait 路径写显式 Wait 标记。
+4. **Compensate end 的 waiting 投影** — **已还清**  
+   `waitingActivation` 不再包含全部 `END_EVENT`。compensate end 在 ACTIVATED 上设置 `EventPayload.token_wait=true`，投影仅因此进入 waiting。
 
 5. **CallActivity v1 = 同实例内联，不是子 process instance**  
    当前 CallActivity 在**同一** `process_instance_id` 上把 token 送入同一定义文件中的被调 process（类似嵌入式 SubProcess）。这与 BPMN「独立 called process instance」不完全一致。限制：同一被调 process 仅允许一个 CallActivity、禁止递归 CallActivity、元素 id 必须在 Definitions 内全局唯一、尚无 IO 映射 / 跨部署 calledElement / 版本选择。独立子实例与版本管理应作为后续里程碑，避免与分区键语义纠缠后再拆。
 
-6. **`Outgoing`/`Incoming` 回退路径曾依赖 map 迭代顺序**  
-   当 BPMN 节点未写 `<outgoing>` 时，从 `seqFlows` map 收集边；Go map 无序会导致 XOR/OR 条件求值顺序抖动。已改为排序后返回；夹具仍应尽量写全 `<outgoing>`。
-
-6. **`Outgoing`/`Incoming` 回退路径曾依赖 map 迭代顺序**  
-   当 BPMN 节点未写 `<outgoing>` 时，部署层从 `seqFlows` map 反查。Go map 迭代无序，XOR/OR 条件求值顺序会漂。现已对回退结果排序；仍应优先依赖模型中的 outgoing 列表。
+6. **`Outgoing`/`Incoming` 回退路径曾依赖 map 迭代顺序** — **已还清**  
+   回退收集结果已排序；夹具仍应尽量写全 `<outgoing>`。

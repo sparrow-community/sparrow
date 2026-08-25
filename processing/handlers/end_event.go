@@ -22,7 +22,15 @@ func (EndEventHandler) OnEnter(in EnterInput) (*Effect, error) {
 		return &Effect{
 			Records: []*eventv1.Element{
 				{Intent: eventv1.Element_INTENT_ACTIVATING, Type: in.Type, Id: in.ElementID, TokenId: in.TokenID},
-				{Intent: eventv1.Element_INTENT_ACTIVATED, Type: in.Type, Id: in.ElementID, TokenId: in.TokenID},
+				{
+					Intent:  eventv1.Element_INTENT_ACTIVATED,
+					Type:    in.Type,
+					Id:      in.ElementID,
+					TokenId: in.TokenID,
+					Payload: &eventv1.Element_EventPayload{
+						EventPayload: &eventv1.EventPayload{TokenWait: true},
+					},
+				},
 			},
 			Wait:                true,
 			TriggerCompensation: true,
