@@ -20,15 +20,15 @@ This session: <one thing; prefer next unchecked US in tasks.md>
 
 ## Roadmap
 
-**Done (M1–M4c):** Start/UserTask/XOR/End; ServiceTask/Job; timer/message/signal catch & boundary; gateways; SubProcess; Event Sub-Process (message/timer/signal, incl. nested in SubProcess); throw/compensation; error boundary/end/ThrowError; CallActivity (same-definition, **inline** on one instance).
+**Done (M1–M4c + CallActivity child instance + IO mapping):** Start/UserTask/XOR/End; ServiceTask/Job; timer/message/signal catch & boundary; gateways; SubProcess; Event Sub-Process (message/timer/signal); throw/compensation; error boundary/end/ThrowError; CallActivity as **independent child instance** with optional IO name mappings.
 
-**Next:** [`001-engine-completeness`](./specs/001-engine-completeness/tasks.md) — US1 child CallActivity instance → US2 IO mapping → US3 Error Event Sub-Process → US4 revision coexistence. Task order only; do not invent a second backlog here.
+**Next:** [`tasks.md`](./specs/001-engine-completeness/tasks.md) T017+ — US3 Error Event Sub-Process → US4 revision coexistence.
 
 **Deferred:** cross-deployment CallActivity; live migration; ≥3 same-kind waiting boundaries on one activity; Incident; instantiate EBG; compensation into unfinished SubProcess; ESP nested in ESP; cluster; product suite. (One timer + one message + one signal boundary may coexist.)
 
 ## Implemented elements (snapshot)
 
-Process; Start (none); End (none/error/compensate); SequenceFlow; UserTask; ServiceTask (+ Job Activate/Fail/Heartbeat); Exclusive/Inclusive/Parallel/EventBased gateways; embedded SubProcess; CallActivity (inline); Event Sub-Process (message/timer/signal); intermediate catch/throw (timer/message/signal/compensate); Boundary (timer/message/signal/compensate/error); Association (compensation).
+Process; Start (none); End (none/error/compensate); SequenceFlow; UserTask; ServiceTask (+ Job Activate/Fail/Heartbeat); Exclusive/Inclusive/Parallel/EventBased gateways; embedded SubProcess; CallActivity | Same-definition `calledElement`; **child process instance**; host parked with `called_process_instance_id`; optional IO name mappings; Event Sub-Process (message/timer/signal); intermediate catch/throw (timer/message/signal/compensate); Boundary (timer/message/signal/compensate/error); Association (compensation).
 
 **Gaps covered by active spec:** CallActivity child instance + IO mapping; Error Event Sub-Process; process revision coexistence. **Still out of scope:** Escalation/Link/Conditional/Terminate; Send/Receive/Manual/BusinessRule Task; Multi-instance; cross-deployment CallActivity.
 

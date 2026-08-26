@@ -157,23 +157,39 @@ func (e *Engine) collectScopeSignalWaiters(name, instanceID string) []scopeDueWa
 	return waiters
 }
 
-// flushPublications delivers deferred throws after the instance lock is released.
+// flushPublications delivers deferred throws / call-activity child actions after the instance lock is released.
 func (e *Engine) flushPublications(ctx context.Context, pubs []handlers.Publication) error {
 	for _, p := range pubs {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		name := strings.TrimSpace(p.Name)
-		if name == "" {
-			continue
-		}
 		switch p.Kind {
 		case handlers.PublicationMessage:
+			name := strings.TrimSpace(p.Name)
+			if name == "" {
+				continue
+			}
 			if _, err := e.PublishMessage(ctx, PublishMessageRequest{Name: name}); err != nil {
 				return err
 			}
 		case handlers.PublicationSignal:
+			name := strings.TrimSpace(p.Name)
+			if name == "" {
+				continue
+			}
 			if _, err := e.PublishSignal(ctx, PublishSignalRequest{Name: name}); err != nil {
+				return err
+			}
+		case handlers.PublicationStartChild:
+			if err := e.startCalledInstance(ctx, p); err != nil {
+				return err
+			}
+		case handlers.PublicationResumeParent:
+			if err := e.resumeParentCall(ctx, p); err != nil {
+				return err
+			}
+		case handlers.PublicationTerminateChild:
+			if err := e.terminateCalledInstance(ctx, p.ChildInstanceID); err != nil {
 				return err
 			}
 		default:

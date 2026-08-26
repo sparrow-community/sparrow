@@ -11,6 +11,13 @@ message Variable {
 
 message ProcessPayload {
   repeated Variable variables = 1;
+  // Parent process instance id when this PROCESS was started by a Call Activity.
+  // Empty on root instances.
+  string parent_process_instance_id = 2;
+  // Call Activity element id on the parent. Empty when unused.
+  string parent_element_id = 3;
+  // Parked host token id on the parent Call Activity. Empty when unused.
+  string parent_token_id = 4;
 }
 
 // Shared payload for BPMN event flow nodes (start/end/intermediate/boundary/…).
@@ -66,6 +73,9 @@ message ActivityPayload {
   // BPMN id of the signal boundary when another waiting boundary already occupies boundary_id.
   // When only a signal boundary exists, boundary_id carries it.
   string signal_boundary_id = 10;
+  // Child process instance id for a Call Activity host while the called instance exists.
+  // Set on CALL_ACTIVITY ACTIVATED; may still appear on COMPLETED/TERMINATED for audit.
+  string called_process_instance_id = 11;
 }
 
 message GatewayPayload {

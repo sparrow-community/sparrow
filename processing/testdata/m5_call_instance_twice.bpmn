@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             id="Definitions_call_twice"
+             targetNamespace="http://sparrow.example/call-twice">
+  <process id="Process_caller" name="Caller" isExecutable="true">
+    <startEvent id="Start_caller">
+      <outgoing>Flow_s_c1</outgoing>
+    </startEvent>
+    <callActivity id="CallActivity_1" calledElement="Process_called">
+      <incoming>Flow_s_c1</incoming>
+      <outgoing>Flow_c1_c2</outgoing>
+    </callActivity>
+    <callActivity id="CallActivity_2" calledElement="Process_called">
+      <incoming>Flow_c1_c2</incoming>
+      <outgoing>Flow_c2_e</outgoing>
+    </callActivity>
+    <endEvent id="End_caller">
+      <incoming>Flow_c2_e</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_s_c1" sourceRef="Start_caller" targetRef="CallActivity_1"/>
+    <sequenceFlow id="Flow_c1_c2" sourceRef="CallActivity_1" targetRef="CallActivity_2"/>
+    <sequenceFlow id="Flow_c2_e" sourceRef="CallActivity_2" targetRef="End_caller"/>
+  </process>
+  <process id="Process_called" name="Called" isExecutable="false">
+    <startEvent id="Start_called">
+      <outgoing>Flow_cs_t</outgoing>
+    </startEvent>
+    <userTask id="Task_called">
+      <incoming>Flow_cs_t</incoming>
+      <outgoing>Flow_ct_e</outgoing>
+    </userTask>
+    <endEvent id="End_called">
+      <incoming>Flow_ct_e</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_cs_t" sourceRef="Start_called" targetRef="Task_called"/>
+    <sequenceFlow id="Flow_ct_e" sourceRef="Task_called" targetRef="End_called"/>
+  </process>
+</definitions>

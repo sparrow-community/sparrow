@@ -22,6 +22,8 @@ message Token {
   string boundary_id = 7;
   // BPMN signal name when waiting on a signal catch; empty otherwise.
   string signal_name = 8;
+  // Child process instance id when waiting on a Call Activity host; empty otherwise.
+  string called_process_instance_id = 9;
 }
 
 // Instance is a read-only projection snapshot. It is not an EventLog record.
@@ -38,6 +40,12 @@ message Instance {
   map<string, string> variables = 5;
   // Current tokens.
   repeated Token tokens = 6;
+  // Parent process instance id when this instance was started by a Call Activity.
+  string parent_process_instance_id = 7;
+  // Call Activity element id on the parent.
+  string parent_element_id = 8;
+  // BPMN process id bound at start.
+  string process_id = 9;
 }
 
 // DeployRequest uploads BPMN XML and compiles the M1 executable subset.
@@ -46,10 +54,14 @@ message DeployRequest {
   bytes bpmn_xml = 1;
 }
 
-// DeployResponse returns the new deployment id.
+// DeployResponse returns the new deployment id and process revision.
 message DeployResponse {
   // Deployment id (UUIDv7).
   string deployment_id = 1;
+  // Primary process id in the definitions (the one CreateInstance starts from this deployment).
+  string process_id = 2;
+  // Assigned revision for that process id.
+  int32 process_version = 3;
 }
 
 // CreateInstanceRequest starts a process instance from a deployment.
@@ -58,6 +70,11 @@ message CreateInstanceRequest {
   string deployment_id = 1;
   // Initial variables: name -> JSON text.
   map<string, string> variables = 2;
+  // Optional BPMN process id; start latest revision when deployment_id is empty.
+  // When both are set they MUST agree.
+  string process_id = 3;
+  // Optional revision with process_id; 0 means latest.
+  int32 process_version = 4;
 }
 
 // CreateInstanceResponse returns the new process instance id.

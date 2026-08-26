@@ -16,11 +16,9 @@ type scopeTerminateOpts struct {
 }
 
 // scopeHostElement returns the element that hosts an open scope.
-// Embedded SubProcess hosts itself; a called process is hosted by its CallActivity.
+// Embedded SubProcess hosts itself. Called processes run as separate instances
+// and are no longer hosted by a CallActivity token on the same instance.
 func scopeHostElement(dep *deploy.Deployment, scopeID string) (elementID string, typ eventv1.Element_Type, ok bool) {
-	if call, found := dep.CallActivityForCalledProcess(scopeID); found {
-		return call.ID, eventv1.Element_TYPE_CALL_ACTIVITY, true
-	}
 	if t, err := dep.TypeOf(scopeID); err == nil && t == eventv1.Element_TYPE_SUB_PROCESS {
 		return scopeID, t, true
 	}

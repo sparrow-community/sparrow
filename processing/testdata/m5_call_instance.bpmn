@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             id="Definitions_call_activity"
+             targetNamespace="http://sparrow.example/call-activity">
+  <process id="Process_caller" name="M4 Caller" isExecutable="true">
+    <startEvent id="Start_caller">
+      <outgoing>Flow_start_to_call</outgoing>
+    </startEvent>
+    <callActivity id="CallActivity_1" name="Call child" calledElement="Process_called">
+      <incoming>Flow_start_to_call</incoming>
+      <outgoing>Flow_call_to_end</outgoing>
+    </callActivity>
+    <endEvent id="End_caller">
+      <incoming>Flow_call_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_call" sourceRef="Start_caller" targetRef="CallActivity_1"/>
+    <sequenceFlow id="Flow_call_to_end" sourceRef="CallActivity_1" targetRef="End_caller"/>
+  </process>
+  <process id="Process_called" name="M4 Called" isExecutable="false">
+    <startEvent id="Start_called">
+      <outgoing>Flow_called_start_to_task</outgoing>
+    </startEvent>
+    <userTask id="Task_called" name="Child work">
+      <incoming>Flow_called_start_to_task</incoming>
+      <outgoing>Flow_called_task_to_end</outgoing>
+    </userTask>
+    <endEvent id="End_called">
+      <incoming>Flow_called_task_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_called_start_to_task" sourceRef="Start_called" targetRef="Task_called"/>
+    <sequenceFlow id="Flow_called_task_to_end" sourceRef="Task_called" targetRef="End_called"/>
+  </process>
+</definitions>

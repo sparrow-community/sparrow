@@ -76,8 +76,15 @@ func (x *Variable) GetJsonValue() string {
 }
 
 type ProcessPayload struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Variables     []*Variable            `protobuf:"bytes,1,rep,name=variables,proto3" json:"variables,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Variables []*Variable            `protobuf:"bytes,1,rep,name=variables,proto3" json:"variables,omitempty"`
+	// Parent process instance id when this PROCESS was started by a Call Activity.
+	// Empty on root instances.
+	ParentProcessInstanceId string `protobuf:"bytes,2,opt,name=parent_process_instance_id,json=parentProcessInstanceId,proto3" json:"parent_process_instance_id,omitempty"`
+	// Call Activity element id on the parent. Empty when unused.
+	ParentElementId string `protobuf:"bytes,3,opt,name=parent_element_id,json=parentElementId,proto3" json:"parent_element_id,omitempty"`
+	// Parked host token id on the parent Call Activity. Empty when unused.
+	ParentTokenId string `protobuf:"bytes,4,opt,name=parent_token_id,json=parentTokenId,proto3" json:"parent_token_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -117,6 +124,27 @@ func (x *ProcessPayload) GetVariables() []*Variable {
 		return x.Variables
 	}
 	return nil
+}
+
+func (x *ProcessPayload) GetParentProcessInstanceId() string {
+	if x != nil {
+		return x.ParentProcessInstanceId
+	}
+	return ""
+}
+
+func (x *ProcessPayload) GetParentElementId() string {
+	if x != nil {
+		return x.ParentElementId
+	}
+	return ""
+}
+
+func (x *ProcessPayload) GetParentTokenId() string {
+	if x != nil {
+		return x.ParentTokenId
+	}
+	return ""
 }
 
 // Shared payload for BPMN event flow nodes (start/end/intermediate/boundary/…).
@@ -269,8 +297,11 @@ type ActivityPayload struct {
 	// BPMN id of the signal boundary when another waiting boundary already occupies boundary_id.
 	// When only a signal boundary exists, boundary_id carries it.
 	SignalBoundaryId string `protobuf:"bytes,10,opt,name=signal_boundary_id,json=signalBoundaryId,proto3" json:"signal_boundary_id,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// Child process instance id for a Call Activity host while the called instance exists.
+	// Set on CALL_ACTIVITY ACTIVATED; may still appear on COMPLETED/TERMINATED for audit.
+	CalledProcessInstanceId string `protobuf:"bytes,11,opt,name=called_process_instance_id,json=calledProcessInstanceId,proto3" json:"called_process_instance_id,omitempty"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
 }
 
 func (x *ActivityPayload) Reset() {
@@ -369,6 +400,13 @@ func (x *ActivityPayload) GetSignalName() string {
 func (x *ActivityPayload) GetSignalBoundaryId() string {
 	if x != nil {
 		return x.SignalBoundaryId
+	}
+	return ""
+}
+
+func (x *ActivityPayload) GetCalledProcessInstanceId() string {
+	if x != nil {
+		return x.CalledProcessInstanceId
 	}
 	return ""
 }
@@ -515,9 +553,12 @@ const file_event_v1_payloads_proto_rawDesc = "" +
 	"\bVariable\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1d\n" +
 	"\n" +
-	"json_value\x18\x02 \x01(\tR\tjsonValue\"B\n" +
+	"json_value\x18\x02 \x01(\tR\tjsonValue\"\xd3\x01\n" +
 	"\x0eProcessPayload\x120\n" +
-	"\tvariables\x18\x01 \x03(\v2\x12.event.v1.VariableR\tvariables\"\xf6\x02\n" +
+	"\tvariables\x18\x01 \x03(\v2\x12.event.v1.VariableR\tvariables\x12;\n" +
+	"\x1aparent_process_instance_id\x18\x02 \x01(\tR\x17parentProcessInstanceId\x12*\n" +
+	"\x11parent_element_id\x18\x03 \x01(\tR\x0fparentElementId\x12&\n" +
+	"\x0fparent_token_id\x18\x04 \x01(\tR\rparentTokenId\"\xf6\x02\n" +
 	"\fEventPayload\x12\x1e\n" +
 	"\vdue_unix_ms\x18\x01 \x01(\x03R\tdueUnixMs\x12\x1a\n" +
 	"\bduration\x18\x02 \x01(\tR\bduration\x12!\n" +
@@ -530,7 +571,7 @@ const file_event_v1_payloads_proto_rawDesc = "" +
 	"error_code\x18\a \x01(\tR\terrorCode\x12\x1d\n" +
 	"\n" +
 	"token_wait\x18\b \x01(\bR\ttokenWait\x12>\n" +
-	"\x1cevent_sub_process_element_id\x18\t \x01(\tR\x18eventSubProcessElementId\"\x82\x03\n" +
+	"\x1cevent_sub_process_element_id\x18\t \x01(\tR\x18eventSubProcessElementId\"\xbf\x03\n" +
 	"\x0fActivityPayload\x120\n" +
 	"\tvariables\x18\x01 \x03(\v2\x12.event.v1.VariableR\tvariables\x12\x19\n" +
 	"\bjob_type\x18\x02 \x01(\tR\ajobType\x12#\n" +
@@ -544,7 +585,8 @@ const file_event_v1_payloads_proto_rawDesc = "" +
 	"\vsignal_name\x18\t \x01(\tR\n" +
 	"signalName\x12,\n" +
 	"\x12signal_boundary_id\x18\n" +
-	" \x01(\tR\x10signalBoundaryId\"E\n" +
+	" \x01(\tR\x10signalBoundaryId\x12;\n" +
+	"\x1acalled_process_instance_id\x18\v \x01(\tR\x17calledProcessInstanceId\"E\n" +
 	"\x0eGatewayPayload\x123\n" +
 	"\x16taken_sequence_flow_id\x18\x01 \x01(\tR\x13takenSequenceFlowId\"O\n" +
 	"\x13SequenceFlowPayload\x12\x1b\n" +

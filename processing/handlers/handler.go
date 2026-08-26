@@ -53,18 +53,29 @@ type ThrowErrorEffect struct {
 	ErrorCode string
 }
 
-// PublicationKind is message or signal broadcast from an intermediate throw.
+// PublicationKind is a deferred engine action after Enter/Complete unlocks the instance.
 type PublicationKind string
 
 const (
-	PublicationMessage PublicationKind = "message"
-	PublicationSignal  PublicationKind = "signal"
+	PublicationMessage        PublicationKind = "message"
+	PublicationSignal         PublicationKind = "signal"
+	PublicationStartChild     PublicationKind = "start_child"
+	PublicationResumeParent   PublicationKind = "resume_parent"
+	PublicationTerminateChild PublicationKind = "terminate_child"
 )
 
 // Publication is delivered by the engine after Enter/Complete unlocks the instance.
 type Publication struct {
 	Kind PublicationKind
 	Name string
+	// StartChild / ResumeParent / TerminateChild fields (ignored for message/signal).
+	ChildInstanceID  string
+	ParentInstanceID string
+	CallActivityID   string
+	HostTokenID      string
+	CalledProcessID  string
+	DeploymentID     string
+	Completed        bool // ResumeParent: true=complete CallActivity, false=terminate
 }
 
 // SpawnOutgoingEffect describes a boundary path taken on a newly minted token.

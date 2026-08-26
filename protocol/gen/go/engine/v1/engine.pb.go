@@ -40,9 +40,11 @@ type Token struct {
 	// Attached interrupting timer boundary id; empty otherwise.
 	BoundaryId string `protobuf:"bytes,7,opt,name=boundary_id,json=boundaryId,proto3" json:"boundary_id,omitempty"`
 	// BPMN signal name when waiting on a signal catch; empty otherwise.
-	SignalName    string `protobuf:"bytes,8,opt,name=signal_name,json=signalName,proto3" json:"signal_name,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	SignalName string `protobuf:"bytes,8,opt,name=signal_name,json=signalName,proto3" json:"signal_name,omitempty"`
+	// Child process instance id when waiting on a Call Activity host; empty otherwise.
+	CalledProcessInstanceId string `protobuf:"bytes,9,opt,name=called_process_instance_id,json=calledProcessInstanceId,proto3" json:"called_process_instance_id,omitempty"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
 }
 
 func (x *Token) Reset() {
@@ -131,6 +133,13 @@ func (x *Token) GetSignalName() string {
 	return ""
 }
 
+func (x *Token) GetCalledProcessInstanceId() string {
+	if x != nil {
+		return x.CalledProcessInstanceId
+	}
+	return ""
+}
+
 // Instance is a read-only projection snapshot. It is not an EventLog record.
 type Instance struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -145,7 +154,13 @@ type Instance struct {
 	// Instance variables: name -> JSON text.
 	Variables map[string]string `protobuf:"bytes,5,rep,name=variables,proto3" json:"variables,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// Current tokens.
-	Tokens        []*Token `protobuf:"bytes,6,rep,name=tokens,proto3" json:"tokens,omitempty"`
+	Tokens []*Token `protobuf:"bytes,6,rep,name=tokens,proto3" json:"tokens,omitempty"`
+	// Parent process instance id when this instance was started by a Call Activity.
+	ParentProcessInstanceId string `protobuf:"bytes,7,opt,name=parent_process_instance_id,json=parentProcessInstanceId,proto3" json:"parent_process_instance_id,omitempty"`
+	// Call Activity element id on the parent.
+	ParentElementId string `protobuf:"bytes,8,opt,name=parent_element_id,json=parentElementId,proto3" json:"parent_element_id,omitempty"`
+	// BPMN process id bound at start.
+	ProcessId     string `protobuf:"bytes,9,opt,name=process_id,json=processId,proto3" json:"process_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -222,6 +237,27 @@ func (x *Instance) GetTokens() []*Token {
 	return nil
 }
 
+func (x *Instance) GetParentProcessInstanceId() string {
+	if x != nil {
+		return x.ParentProcessInstanceId
+	}
+	return ""
+}
+
+func (x *Instance) GetParentElementId() string {
+	if x != nil {
+		return x.ParentElementId
+	}
+	return ""
+}
+
+func (x *Instance) GetProcessId() string {
+	if x != nil {
+		return x.ProcessId
+	}
+	return ""
+}
+
 // DeployRequest uploads BPMN XML and compiles the M1 executable subset.
 type DeployRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -268,13 +304,17 @@ func (x *DeployRequest) GetBpmnXml() []byte {
 	return nil
 }
 
-// DeployResponse returns the new deployment id.
+// DeployResponse returns the new deployment id and process revision.
 type DeployResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Deployment id (UUIDv7).
-	DeploymentId  string `protobuf:"bytes,1,opt,name=deployment_id,json=deploymentId,proto3" json:"deployment_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	DeploymentId string `protobuf:"bytes,1,opt,name=deployment_id,json=deploymentId,proto3" json:"deployment_id,omitempty"`
+	// Primary process id in the definitions (the one CreateInstance starts from this deployment).
+	ProcessId string `protobuf:"bytes,2,opt,name=process_id,json=processId,proto3" json:"process_id,omitempty"`
+	// Assigned revision for that process id.
+	ProcessVersion int32 `protobuf:"varint,3,opt,name=process_version,json=processVersion,proto3" json:"process_version,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *DeployResponse) Reset() {
@@ -314,15 +354,34 @@ func (x *DeployResponse) GetDeploymentId() string {
 	return ""
 }
 
+func (x *DeployResponse) GetProcessId() string {
+	if x != nil {
+		return x.ProcessId
+	}
+	return ""
+}
+
+func (x *DeployResponse) GetProcessVersion() int32 {
+	if x != nil {
+		return x.ProcessVersion
+	}
+	return 0
+}
+
 // CreateInstanceRequest starts a process instance from a deployment.
 type CreateInstanceRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Deployment id returned by Deploy.
 	DeploymentId string `protobuf:"bytes,1,opt,name=deployment_id,json=deploymentId,proto3" json:"deployment_id,omitempty"`
 	// Initial variables: name -> JSON text.
-	Variables     map[string]string `protobuf:"bytes,2,rep,name=variables,proto3" json:"variables,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Variables map[string]string `protobuf:"bytes,2,rep,name=variables,proto3" json:"variables,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// Optional BPMN process id; start latest revision when deployment_id is empty.
+	// When both are set they MUST agree.
+	ProcessId string `protobuf:"bytes,3,opt,name=process_id,json=processId,proto3" json:"process_id,omitempty"`
+	// Optional revision with process_id; 0 means latest.
+	ProcessVersion int32 `protobuf:"varint,4,opt,name=process_version,json=processVersion,proto3" json:"process_version,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *CreateInstanceRequest) Reset() {
@@ -367,6 +426,20 @@ func (x *CreateInstanceRequest) GetVariables() map[string]string {
 		return x.Variables
 	}
 	return nil
+}
+
+func (x *CreateInstanceRequest) GetProcessId() string {
+	if x != nil {
+		return x.ProcessId
+	}
+	return ""
+}
+
+func (x *CreateInstanceRequest) GetProcessVersion() int32 {
+	if x != nil {
+		return x.ProcessVersion
+	}
+	return 0
 }
 
 // CreateInstanceResponse returns the new process instance id.
@@ -1067,7 +1140,7 @@ var File_engine_v1_engine_proto protoreflect.FileDescriptor
 
 const file_engine_v1_engine_proto_rawDesc = "" +
 	"\n" +
-	"\x16engine/v1/engine.proto\x12\tengine.v1\x1a\x14event/v1/event.proto\"\xee\x01\n" +
+	"\x16engine/v1/engine.proto\x12\tengine.v1\x1a\x14event/v1/event.proto\"\xab\x02\n" +
 	"\x05Token\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -1079,24 +1152,35 @@ const file_engine_v1_engine_proto_rawDesc = "" +
 	"\vboundary_id\x18\a \x01(\tR\n" +
 	"boundaryId\x12\x1f\n" +
 	"\vsignal_name\x18\b \x01(\tR\n" +
-	"signalName\"\xaa\x02\n" +
+	"signalName\x12;\n" +
+	"\x1acalled_process_instance_id\x18\t \x01(\tR\x17calledProcessInstanceId\"\xb2\x03\n" +
 	"\bInstance\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12#\n" +
 	"\rdeployment_id\x18\x02 \x01(\tR\fdeploymentId\x12'\n" +
 	"\x0fprocess_version\x18\x03 \x01(\x05R\x0eprocessVersion\x12\x16\n" +
 	"\x06status\x18\x04 \x01(\tR\x06status\x12@\n" +
 	"\tvariables\x18\x05 \x03(\v2\".engine.v1.Instance.VariablesEntryR\tvariables\x12(\n" +
-	"\x06tokens\x18\x06 \x03(\v2\x10.engine.v1.TokenR\x06tokens\x1a<\n" +
+	"\x06tokens\x18\x06 \x03(\v2\x10.engine.v1.TokenR\x06tokens\x12;\n" +
+	"\x1aparent_process_instance_id\x18\a \x01(\tR\x17parentProcessInstanceId\x12*\n" +
+	"\x11parent_element_id\x18\b \x01(\tR\x0fparentElementId\x12\x1d\n" +
+	"\n" +
+	"process_id\x18\t \x01(\tR\tprocessId\x1a<\n" +
 	"\x0eVariablesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"*\n" +
 	"\rDeployRequest\x12\x19\n" +
-	"\bbpmn_xml\x18\x01 \x01(\fR\abpmnXml\"5\n" +
+	"\bbpmn_xml\x18\x01 \x01(\fR\abpmnXml\"}\n" +
 	"\x0eDeployResponse\x12#\n" +
-	"\rdeployment_id\x18\x01 \x01(\tR\fdeploymentId\"\xc9\x01\n" +
+	"\rdeployment_id\x18\x01 \x01(\tR\fdeploymentId\x12\x1d\n" +
+	"\n" +
+	"process_id\x18\x02 \x01(\tR\tprocessId\x12'\n" +
+	"\x0fprocess_version\x18\x03 \x01(\x05R\x0eprocessVersion\"\x91\x02\n" +
 	"\x15CreateInstanceRequest\x12#\n" +
 	"\rdeployment_id\x18\x01 \x01(\tR\fdeploymentId\x12M\n" +
-	"\tvariables\x18\x02 \x03(\v2/.engine.v1.CreateInstanceRequest.VariablesEntryR\tvariables\x1a<\n" +
+	"\tvariables\x18\x02 \x03(\v2/.engine.v1.CreateInstanceRequest.VariablesEntryR\tvariables\x12\x1d\n" +
+	"\n" +
+	"process_id\x18\x03 \x01(\tR\tprocessId\x12'\n" +
+	"\x0fprocess_version\x18\x04 \x01(\x05R\x0eprocessVersion\x1a<\n" +
 	"\x0eVariablesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"H\n" +

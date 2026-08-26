@@ -22,9 +22,9 @@ description: "Task list for engine completeness next increment"
 
 **Purpose**: Wire-compatible protocol fields used by later stories
 
-- [ ] T001 Add optional parent/call fields to `ProcessPayload` and `called_process_instance_id` to `ActivityPayload` in `protocol/proto/event/v1/payloads.proto`
-- [ ] T002 [P] Add `process_id` / `process_version` selection on `CreateInstanceRequest`, parent/called fields on `Instance`/`Token`, and deploy response ids in `protocol/proto/engine/v1/engine.proto`
-- [ ] T003 Regenerate Go with `cd protocol/proto && ./build.sh` (do not hand-edit `protocol/gen/go`)
+- [x] T001 Add optional parent/call fields to `ProcessPayload` and `called_process_instance_id` to `ActivityPayload` in `protocol/proto/event/v1/payloads.proto`
+- [x] T002 [P] Add `process_id` / `process_version` selection on `CreateInstanceRequest`, parent/called fields on `Instance`/`Token`, and deploy response ids in `protocol/proto/engine/v1/engine.proto`
+- [x] T003 Regenerate Go with `cd protocol/proto && ./build.sh` (do not hand-edit `protocol/gen/go`)
 
 **Checkpoint**: `buf lint` clean; existing `go test ./protocol/proto/event/v1/` still passes
 
@@ -34,9 +34,9 @@ description: "Task list for engine completeness next increment"
 
 **Purpose**: Projection and deploy hooks every story needs; no user-visible Call Activity behavior change yet except dropping v1 uniqueness so US1 can deploy
 
-- [ ] T004 Extend `projection.Instance` and `projection.Token` with parent/called ids in `processing/projection/instance.go` and apply them from the new payload fields in `ApplyEvent`
-- [ ] T005 Compile Call Activity IO mapping structs (may be empty) and drop “one Call Activity per called process” / “no nested Call Activity” checks in `processing/deploy/call_activity.go` and `processing/deploy/deploy.go`
-- [ ] T006 Add a post-lock child-instance publication kind (create child / resume parent) next to existing message/signal publication in `processing/executor.go` and `processing/handlers/handler.go` without changing inline SubProcess behavior
+- [x] T004 Extend `projection.Instance` and `projection.Token` with parent/called ids in `processing/projection/instance.go` and apply them from the new payload fields in `ApplyEvent`
+- [x] T005 Compile Call Activity IO mapping structs (may be empty) and drop “one Call Activity per called process” / “no nested Call Activity” checks in `processing/deploy/call_activity.go` and `processing/deploy/deploy.go`
+- [x] T006 Add a post-lock child-instance publication kind (create child / resume parent) next to existing message/signal publication in `processing/executor.go` and `processing/handlers/handler.go` without changing inline SubProcess behavior
 
 **Checkpoint**: Existing `go test ./processing/` passes (inline Call Activity tests may still expect same-instance tokens until US1)
 
@@ -50,15 +50,15 @@ description: "Task list for engine completeness next increment"
 
 ### Tests for User Story 1
 
-- [ ] T007 [P] [US1] Add `processing/testdata/m5_call_instance.bpmn` (caller + child user task) and `processing/testdata/m5_call_instance_twice.bpmn` (two Call Activities → same child)
-- [ ] T008 [US1] Rewrite `processing/call_activity_test.go` for child `process_instance_id`, parent host token, complete-child-then-caller, dual-call, interrupting boundary, and Recover mid-call
+- [x] T007 [P] [US1] Add `processing/testdata/m5_call_instance.bpmn` (caller + child user task) and `processing/testdata/m5_call_instance_twice.bpmn` (two Call Activities → same child)
+- [x] T008 [US1] Rewrite `processing/call_activity_test.go` for child `process_instance_id`, parent host token, complete-child-then-caller, dual-call, interrupting boundary, and Recover mid-call
 
 ### Implementation for User Story 1
 
-- [ ] T009 [US1] Change `handlers.CallActivityHandler` in `processing/handlers/call_activity.go` to park the host token and request child start (payload: `called_process_instance_id`) instead of `EnterChild` on the same instance
-- [ ] T010 [US1] Implement child CreateInstance under the child lock and parent Complete/Terminate of the Call Activity after child PROCESS COMPLETED/TERMINATED in `processing/engine.go` / `processing/executor.go`
-- [ ] T011 [US1] Map parent/called fields through `gateway/engine_server.go` `GetInstance` snapshots
-- [ ] T012 [US1] Update Call Activity semantics in `processing/DESIGN.md` §5.1 / §8 to match independent instances (remove v1 inline debt note)
+- [x] T009 [US1] Change `handlers.CallActivityHandler` in `processing/handlers/call_activity.go` to park the host token and request child start (payload: `called_process_instance_id`) instead of `EnterChild` on the same instance
+- [x] T010 [US1] Implement child CreateInstance under the child lock and parent Complete/Terminate of the Call Activity after child PROCESS COMPLETED/TERMINATED in `processing/engine.go` / `processing/executor.go`
+- [x] T011 [US1] Map parent/called fields through `gateway/engine_server.go` `GetInstance` snapshots
+- [x] T012 [US1] Update Call Activity semantics in `processing/DESIGN.md` §5.1 / §8 to match independent instances (remove v1 inline debt note)
 
 **Checkpoint**: Story 1 quickstart passes; embedded SubProcess tests still pass
 
@@ -72,13 +72,13 @@ description: "Task list for engine completeness next increment"
 
 ### Tests for User Story 2
 
-- [ ] T013 [P] [US2] Add `processing/testdata/m5_call_io.bpmn` and `processing/testdata/m5_call_no_io.bpmn`
-- [ ] T014 [US2] Add mapping tests in `processing/call_activity_test.go` (input only, output only, missing source skipped, no mapping)
+- [x] T013 [P] [US2] Add `processing/testdata/m5_call_io.bpmn` and `processing/testdata/m5_call_no_io.bpmn`
+- [x] T014 [US2] Add mapping tests in `processing/call_activity_test.go` (input only, output only, missing source skipped, no mapping)
 
 ### Implementation for User Story 2
 
-- [ ] T015 [US2] Resolve `DataInputAssociations` / `DataOutputAssociations` into compiled mappings in `processing/deploy/call_activity.go`; reject unknown structure at deploy
-- [ ] T016 [US2] Apply inputs when starting the child and outputs when completing the Call Activity in `processing/handlers/call_activity.go` / `processing/executor.go`
+- [x] T015 [US2] Resolve `DataInputAssociations` / `DataOutputAssociations` into compiled mappings in `processing/deploy/call_activity.go`; reject unknown structure at deploy
+- [x] T016 [US2] Apply inputs when starting the child and outputs when completing the Call Activity in `processing/handlers/call_activity.go` / `processing/executor.go`
 
 **Checkpoint**: Story 1 still passes with unmapped fixtures; Story 2 mappings hold
 

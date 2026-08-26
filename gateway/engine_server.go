@@ -151,12 +151,15 @@ func instanceToProto(inst *projection.Instance) *enginev1.Instance {
 		return nil
 	}
 	out := &enginev1.Instance{
-		Id:             inst.ID,
-		DeploymentId:   inst.DeploymentID,
-		ProcessVersion: inst.Version,
-		Status:         string(inst.Status),
-		Variables:      inst.Variables,
-		Tokens:         make([]*enginev1.Token, 0, len(inst.Tokens)),
+		Id:                      inst.ID,
+		DeploymentId:            inst.DeploymentID,
+		ProcessVersion:          inst.Version,
+		Status:                  string(inst.Status),
+		Variables:               inst.Variables,
+		Tokens:                  make([]*enginev1.Token, 0, len(inst.Tokens)),
+		ParentProcessInstanceId: inst.ParentProcessInstanceID,
+		ParentElementId:         inst.ParentElementID,
+		ProcessId:               inst.ProcessID,
 	}
 	ids := make([]string, 0, len(inst.Tokens))
 	for id := range inst.Tokens {
@@ -169,14 +172,15 @@ func instanceToProto(inst *projection.Instance) *enginev1.Instance {
 			continue
 		}
 		out.Tokens = append(out.Tokens, &enginev1.Token{
-			Id:          tok.ID,
-			ElementId:   tok.ElementID,
-			Status:      string(tok.Status),
-			JobType:     tok.JobType,
-			MessageName: tok.MessageName,
-			DueUnixMs:   tok.DueUnixMs,
-			BoundaryId:  tok.BoundaryID,
-			SignalName:  tok.SignalName,
+			Id:                      tok.ID,
+			ElementId:               tok.ElementID,
+			Status:                  string(tok.Status),
+			JobType:                 tok.JobType,
+			MessageName:             tok.MessageName,
+			DueUnixMs:               tok.DueUnixMs,
+			BoundaryId:              tok.BoundaryID,
+			SignalName:              tok.SignalName,
+			CalledProcessInstanceId: tok.CalledProcessInstanceID,
 		})
 	}
 	return out

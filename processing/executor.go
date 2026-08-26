@@ -80,16 +80,9 @@ func (x *Executor) Enter(
 					return pubs, err
 				}
 			}
-			switch {
-			case typ == eventv1.Element_TYPE_SUB_PROCESS && !dep.IsEventSubProcess(elementID):
+			if typ == eventv1.Element_TYPE_SUB_PROCESS && !dep.IsEventSubProcess(elementID) {
 				if err := emitEventSubProcessStartArms(dep, inst, elementID, x.now(), emit); err != nil {
 					return pubs, err
-				}
-			case typ == eventv1.Element_TYPE_CALL_ACTIVITY:
-				if call, ok := dep.CallActivitySpec(elementID); ok {
-					if err := emitEventSubProcessStartArms(dep, inst, call.CalledProcessID, x.now(), emit); err != nil {
-						return pubs, err
-					}
 				}
 			}
 			elementID = effect.EnterChild
@@ -344,20 +337,20 @@ func (x *Executor) takeOutgoing(
 // If at process level, tries to complete the Process.
 func (x *Executor) tryCompleteScope(ctx context.Context, dep *deploy.Deployment, inst *projection.Instance, tokenID, elementID string, emit Emitter) ([]handlers.Publication, error) {
 	scopeID, _ := dep.ScopeOf(elementID)
-	if scopeID == "" || scopeID == dep.ProcessID() {
+	rootProcessID := inst.ProcessID
+	if rootProcessID == "" {
+		rootProcessID = dep.ProcessID()
+	}
+	if scopeID == "" || scopeID == rootProcessID {
 		return x.tryCompleteProcessScope(dep, inst, emit)
 	}
-	// SubProcess / called-process scope: ignore parked host; require children at EndEvents.
+	// SubProcess scope: ignore parked host; require children at EndEvents.
 	hostTokenID := ""
-	callHostElementID := ""
-	if call, ok := dep.CallActivityForCalledProcess(scopeID); ok {
-		callHostElementID = call.ID
-	}
 	for tid, tok := range inst.Tokens {
 		if tok == nil {
 			continue
 		}
-		if tok.ElementID == scopeID || (callHostElementID != "" && tok.ElementID == callHostElementID) {
+		if tok.ElementID == scopeID {
 			hostTokenID = tid
 			continue
 		}
@@ -384,7 +377,7 @@ func (x *Executor) tryCompleteScope(ctx context.Context, dep *deploy.Deployment,
 		if tok == nil || tid == completeTokenID {
 			continue
 		}
-		if tok.ElementID == scopeID || (callHostElementID != "" && tok.ElementID == callHostElementID) {
+		if tok.ElementID == scopeID {
 			continue
 		}
 		tokScope, _ := dep.ScopeOf(tok.ElementID)
@@ -401,11 +394,6 @@ func (x *Executor) tryCompleteScope(ctx context.Context, dep *deploy.Deployment,
 	completeID := scopeID
 	completeType := eventv1.Element_TYPE_SUB_PROCESS
 	outgoingFrom := scopeID
-	if call, ok := dep.CallActivityForCalledProcess(scopeID); ok {
-		completeID = call.ID
-		completeType = eventv1.Element_TYPE_CALL_ACTIVITY
-		outgoingFrom = call.ID
-	}
 
 	h, err := x.Handlers.Get(completeType)
 	if err != nil {
@@ -459,7 +447,10 @@ func (x *Executor) tryCompleteScope(ctx context.Context, dep *deploy.Deployment,
 
 // tryCompleteProcessScope checks if all tokens are at process-level EndEvents.
 func (x *Executor) tryCompleteProcessScope(dep *deploy.Deployment, inst *projection.Instance, emit Emitter) ([]handlers.Publication, error) {
-	processID := dep.ProcessID()
+	processID := inst.ProcessID
+	if processID == "" {
+		processID = dep.ProcessID()
+	}
 	for _, tok := range inst.Tokens {
 		if tok.Status == projection.TokenWaiting {
 			return nil, nil

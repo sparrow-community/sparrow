@@ -53,8 +53,10 @@ type Token struct {
 	// occupies BoundaryID. Empty when only a signal boundary is armed (then BoundaryID holds it).
 	SignalBoundaryID string
 	// ScopeHost is true while this token is parked on an embedded SubProcess
-	// or CallActivity (waiting for the internal child token(s) to finish).
+	// or CallActivity (waiting for the internal child token(s) / child instance to finish).
 	ScopeHost bool
+	// CalledProcessInstanceID is set on a Call Activity host while the child instance lives.
+	CalledProcessInstanceID string
 }
 
 // ScopeBoundary tracks a boundary armed on a SubProcess scope.
@@ -81,9 +83,15 @@ type Instance struct {
 	ID           string
 	DeploymentID string
 	Version      int32
-	Status       InstanceStatus
-	Variables    map[string]string // name -> json_value
-	Tokens       map[string]*Token
+	// ProcessID is the BPMN process id this instance executes (root or called).
+	ProcessID string
+	Status    InstanceStatus
+	Variables map[string]string // name -> json_value
+	Tokens    map[string]*Token
+	// ParentProcessInstanceID is set when this instance was started by a Call Activity.
+	ParentProcessInstanceID string
+	ParentElementID         string
+	ParentTokenID           string
 	// elementID -> last intent seen (for validation helpers)
 	ElementIntent map[string]eventv1.Element_Intent
 	// ScopeBoundaries tracks boundaries armed on SubProcess scopes.
@@ -155,16 +163,20 @@ func (inst *Instance) Clone() *Instance {
 		return nil
 	}
 	out := &Instance{
-		ID:                inst.ID,
-		DeploymentID:      inst.DeploymentID,
-		Version:           inst.Version,
-		Status:            inst.Status,
-		Variables:         make(map[string]string, len(inst.Variables)),
-		Tokens:            make(map[string]*Token, len(inst.Tokens)),
-		ElementIntent:     make(map[string]eventv1.Element_Intent, len(inst.ElementIntent)),
-		ScopeBoundaries:   make(map[string]*ScopeBoundary, len(inst.ScopeBoundaries)),
-		EventSubProcesses: make(map[string]*EventSubProcessArm, len(inst.EventSubProcesses)),
-		CompensationSubs:  make(map[string]*CompensationSub, len(inst.CompensationSubs)),
+		ID:                      inst.ID,
+		DeploymentID:            inst.DeploymentID,
+		Version:                 inst.Version,
+		ProcessID:               inst.ProcessID,
+		Status:                  inst.Status,
+		ParentProcessInstanceID: inst.ParentProcessInstanceID,
+		ParentElementID:         inst.ParentElementID,
+		ParentTokenID:           inst.ParentTokenID,
+		Variables:               make(map[string]string, len(inst.Variables)),
+		Tokens:                  make(map[string]*Token, len(inst.Tokens)),
+		ElementIntent:           make(map[string]eventv1.Element_Intent, len(inst.ElementIntent)),
+		ScopeBoundaries:         make(map[string]*ScopeBoundary, len(inst.ScopeBoundaries)),
+		EventSubProcesses:       make(map[string]*EventSubProcessArm, len(inst.EventSubProcesses)),
+		CompensationSubs:        make(map[string]*CompensationSub, len(inst.CompensationSubs)),
 	}
 	for k, v := range inst.Variables {
 		out.Variables[k] = v
@@ -205,6 +217,17 @@ func mergeVariables(inst *Instance, el *eventv1.Element) {
 	case *eventv1.Element_ProcessPayload:
 		for _, v := range p.ProcessPayload.GetVariables() {
 			inst.Variables[v.GetName()] = v.GetJsonValue()
+		}
+		if pp := p.ProcessPayload; pp != nil {
+			if pp.GetParentProcessInstanceId() != "" {
+				inst.ParentProcessInstanceID = pp.GetParentProcessInstanceId()
+			}
+			if pp.GetParentElementId() != "" {
+				inst.ParentElementID = pp.GetParentElementId()
+			}
+			if pp.GetParentTokenId() != "" {
+				inst.ParentTokenID = pp.GetParentTokenId()
+			}
 		}
 	case *eventv1.Element_ActivityPayload:
 		for _, v := range p.ActivityPayload.GetVariables() {
@@ -310,6 +333,7 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 		tok.BoundaryID = ""
 		tok.MessageBoundaryID = ""
 		tok.SignalBoundaryID = ""
+		tok.CalledProcessInstanceID = ""
 		if p := el.GetActivityPayload(); p != nil {
 			if el.GetType() == eventv1.Element_TYPE_SUB_PROCESS {
 				inst.applyScopeBoundary(el.GetId(), tokenID, p)
@@ -322,6 +346,7 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 				tok.MessageBoundaryID = p.GetMessageBoundaryId()
 				tok.SignalName = p.GetSignalName()
 				tok.SignalBoundaryID = p.GetSignalBoundaryId()
+				tok.CalledProcessInstanceID = p.GetCalledProcessInstanceId()
 			}
 		}
 		if p := el.GetEventPayload(); p != nil {
@@ -355,6 +380,7 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 		tok.BoundaryID = ""
 		tok.MessageBoundaryID = ""
 		tok.SignalBoundaryID = ""
+		tok.CalledProcessInstanceID = ""
 	case eventv1.Element_INTENT_FAILED:
 		// Job failure does not complete the activity; worker may retry.
 		tok.Status = TokenWaiting
@@ -372,6 +398,7 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 		tok.BoundaryID = ""
 		tok.MessageBoundaryID = ""
 		tok.SignalBoundaryID = ""
+		tok.CalledProcessInstanceID = ""
 		if sp := el.GetSequenceFlowPayload(); sp != nil && sp.GetTargetId() != "" {
 			tok.ElementID = sp.GetTargetId()
 		}
@@ -420,6 +447,9 @@ func waitingActivation(t eventv1.Element_Type) bool {
 func applyProcessLifecycle(inst *Instance, el *eventv1.Element) {
 	if el.GetType() != eventv1.Element_TYPE_PROCESS {
 		return
+	}
+	if inst.ProcessID == "" && el.GetId() != "" {
+		inst.ProcessID = el.GetId()
 	}
 	switch el.GetIntent() {
 	case eventv1.Element_INTENT_COMPLETED:

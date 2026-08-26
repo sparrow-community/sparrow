@@ -224,11 +224,10 @@ func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messag
 }
 
 func (d *Deployment) indexCallActivities(fe *element.FlowElements, catalog map[string]*element.Process, messages []element.Message, signals []element.Signal, errors []element.Error) error {
-	claimed := make(map[string]string)
 	var walk func(*element.FlowElements) error
 	walk = func(fe *element.FlowElements) error {
 		for _, ca := range fe.CallActivities {
-			spec, err := validateCallActivity(ca, catalog, claimed)
+			spec, err := validateCallActivity(ca, catalog)
 			if err != nil {
 				return err
 			}
@@ -240,13 +239,21 @@ func (d *Deployment) indexCallActivities(fe *element.FlowElements, catalog map[s
 				return fmt.Errorf("UNSUPPORTED_ELEMENT: called process %q: %v", spec.CalledProcessID, err)
 			}
 			d.callActivities[spec.ID] = spec
-			d.calledProcessOwner[spec.CalledProcessID] = spec.ID
-			if _, exists := d.elements[spec.CalledProcessID]; exists {
-				return fmt.Errorf("UNSUPPORTED_ELEMENT: called process id %q collides with an existing element", spec.CalledProcessID)
+			if _, exists := d.calledProcessOwner[spec.CalledProcessID]; !exists {
+				d.calledProcessOwner[spec.CalledProcessID] = spec.ID
 			}
-			d.calledProcesses[spec.CalledProcessID] = *called
-			d.indexScope(&called.FlowElements, called.ID, messages, signals, errors, collectAssociations(called))
-			d.elements[called.ID] = &elemEntry{Type: eventv1.Element_TYPE_PROCESS, ScopeID: ""}
+			if _, exists := d.calledProcesses[spec.CalledProcessID]; !exists {
+				if _, exists := d.elements[spec.CalledProcessID]; exists {
+					return fmt.Errorf("UNSUPPORTED_ELEMENT: called process id %q collides with an existing element", spec.CalledProcessID)
+				}
+				d.calledProcesses[spec.CalledProcessID] = *called
+				d.indexScope(&called.FlowElements, called.ID, messages, signals, errors, collectAssociations(called))
+				d.elements[called.ID] = &elemEntry{Type: eventv1.Element_TYPE_PROCESS, ScopeID: ""}
+			}
+			// Index CallActivities nested inside the called process (once per process).
+			if err := walk(&called.FlowElements); err != nil {
+				return err
+			}
 		}
 		for i := range fe.SubProcesses {
 			if err := walk(&fe.SubProcesses[i].FlowElements); err != nil {

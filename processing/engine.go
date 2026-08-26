@@ -133,6 +133,7 @@ func (e *Engine) CreateInstance(ctx context.Context, deploymentID string, vars m
 	}
 
 	inst := projection.NewInstance(instanceID, deploymentID, dep.Version)
+	inst.ProcessID = dep.ProcessID()
 	lock := &sync.Mutex{}
 	e.mu.Lock()
 	e.instances[instanceID] = inst

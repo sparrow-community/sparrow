@@ -206,8 +206,17 @@ func (BoundaryEventHandler) OnComplete(in CompleteInput) (*Effect, error) {
 		&eventv1.Element{Intent: eventv1.Element_INTENT_COMPLETING, Type: in.Type, Id: in.ElementID, TokenId: in.TokenID},
 		&eventv1.Element{Intent: eventv1.Element_INTENT_COMPLETED, Type: in.Type, Id: in.ElementID, TokenId: in.TokenID},
 	)
-	return &Effect{
+	effect := &Effect{
 		Records:      records,
 		TakeOutgoing: true,
-	}, nil
+	}
+	if typ == eventv1.Element_TYPE_CALL_ACTIVITY && in.Token != nil && in.Token.CalledProcessInstanceID != "" {
+		effect.Publish = &Publication{
+			Kind:            PublicationTerminateChild,
+			ChildInstanceID: in.Token.CalledProcessInstanceID,
+			CallActivityID:  attached,
+			HostTokenID:     in.TokenID,
+		}
+	}
+	return effect, nil
 }

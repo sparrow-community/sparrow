@@ -110,7 +110,10 @@ func (x *Executor) propagateError(
 	if !ok {
 		return nil, fmt.Errorf("NOT_FOUND: scope for element %q", throwElementID)
 	}
-	processID := dep.ProcessID()
+	processID := inst.ProcessID
+	if processID == "" {
+		processID = dep.ProcessID()
+	}
 
 	for {
 		if scope != processID {
@@ -131,9 +134,9 @@ func (x *Executor) propagateError(
 			scope = parent
 			continue
 		}
-		return nil, x.terminateInstance(ctx, dep, inst, emit)
+		return x.terminateInstancePubs(ctx, dep, inst, emit)
 	}
-	return nil, x.terminateInstance(ctx, dep, inst, emit)
+	return x.terminateInstancePubs(ctx, dep, inst, emit)
 }
 
 func findScopeHostToken(dep *deploy.Deployment, inst *projection.Instance, scopeID string) (string, bool) {
@@ -177,6 +180,12 @@ func (x *Executor) fireActivityErrorBoundary(
 	if err != nil {
 		return nil, err
 	}
+	var pubs []handlers.Publication
+	if tok := inst.Tokens[activityTokenID]; tok != nil {
+		if pub := terminateChildPub(tok, activityID); pub != nil {
+			pubs = append(pubs, *pub)
+		}
+	}
 	records := append(handlers.CancelAttachedBoundaries(dep, activityID, activityTokenID),
 		&eventv1.Element{Intent: eventv1.Element_INTENT_TERMINATING, Type: typ, Id: activityID, TokenId: activityTokenID},
 		&eventv1.Element{Intent: eventv1.Element_INTENT_TERMINATED, Type: typ, Id: activityID, TokenId: activityTokenID},
@@ -185,14 +194,16 @@ func (x *Executor) fireActivityErrorBoundary(
 	)
 	for _, rec := range records {
 		if err := emit(rec); err != nil {
-			return nil, err
+			return pubs, err
 		}
 	}
 	next, err := x.takeOutgoing(dep, activityTokenID, boundaryID, "", emit)
 	if err != nil {
-		return nil, err
+		return pubs, err
 	}
-	return x.Enter(ctx, dep, inst, activityTokenID, next, emit)
+	more, err := x.Enter(ctx, dep, inst, activityTokenID, next, emit)
+	pubs = append(pubs, more...)
+	return pubs, err
 }
 
 func (x *Executor) fireScopeErrorBoundary(
@@ -262,9 +273,19 @@ func (x *Executor) terminateScope(ctx context.Context, dep *deploy.Deployment, i
 }
 
 func (x *Executor) terminateInstance(ctx context.Context, dep *deploy.Deployment, inst *projection.Instance, emit Emitter) error {
+	pubs, err := x.terminateInstancePubs(ctx, dep, inst, emit)
+	_ = pubs
+	return err
+}
+
+func (x *Executor) terminateInstancePubs(ctx context.Context, dep *deploy.Deployment, inst *projection.Instance, emit Emitter) ([]handlers.Publication, error) {
+	var pubs []handlers.Publication
 	for tid, tok := range inst.Tokens {
 		if tok == nil {
 			continue
+		}
+		if pub := terminateChildPub(tok, tok.ElementID); pub != nil {
+			pubs = append(pubs, *pub)
 		}
 		typ, err := dep.TypeOf(tok.ElementID)
 		if err != nil {
@@ -280,20 +301,45 @@ func (x *Executor) terminateInstance(ctx context.Context, dep *deploy.Deployment
 				Id:      tok.ElementID,
 				TokenId: tid,
 			}); err != nil {
-				return err
+				return pubs, err
 			}
 		}
 	}
-	if err := emit(&eventv1.Element{
-		Intent: eventv1.Element_INTENT_TERMINATING,
-		Type:   eventv1.Element_TYPE_PROCESS,
-		Id:     dep.ProcessID(),
-	}); err != nil {
-		return err
+	pid := inst.ProcessID
+	if pid == "" {
+		pid = dep.ProcessID()
 	}
-	return emit(&eventv1.Element{
-		Intent: eventv1.Element_INTENT_TERMINATED,
-		Type:   eventv1.Element_TYPE_PROCESS,
-		Id:     dep.ProcessID(),
-	})
+	pp := &eventv1.ProcessPayload{}
+	if inst.ParentProcessInstanceID != "" {
+		pp.ParentProcessInstanceId = inst.ParentProcessInstanceID
+		pp.ParentElementId = inst.ParentElementID
+		pp.ParentTokenId = inst.ParentTokenID
+	}
+	for _, intent := range []eventv1.Element_Intent{
+		eventv1.Element_INTENT_TERMINATING,
+		eventv1.Element_INTENT_TERMINATED,
+	} {
+		el := &eventv1.Element{
+			Intent: intent,
+			Type:   eventv1.Element_TYPE_PROCESS,
+			Id:     pid,
+		}
+		if inst.ParentProcessInstanceID != "" {
+			el.Payload = &eventv1.Element_ProcessPayload{ProcessPayload: pp}
+		}
+		if err := emit(el); err != nil {
+			return pubs, err
+		}
+	}
+	if inst.ParentProcessInstanceID != "" {
+		pubs = append(pubs, handlers.Publication{
+			Kind:             handlers.PublicationResumeParent,
+			ParentInstanceID: inst.ParentProcessInstanceID,
+			CallActivityID:   inst.ParentElementID,
+			HostTokenID:      inst.ParentTokenID,
+			ChildInstanceID:  inst.ID,
+			Completed:        false,
+		})
+	}
+	return pubs, nil
 }

@@ -203,7 +203,7 @@ Deploy validation rejects unsupported elements. The following is the current sem
 | `INCLUSIVE_GATEWAY` | OR-split / OR-join（可达 token 防死锁） |
 | `EVENT_BASED_GATEWAY` | 先到 cancel 兄弟，或 Parallel 保留兄弟；instantiate 不支持 |
 | `SUB_PROCESS` | 嵌入式子流程；Event Sub-Process（`triggeredByEvent`）可挂在流程或嵌入式子流程上 |
-| `CALL_ACTIVITY` | 同一定义内 `calledElement` → 另一 process；同一实例 host token 停在 CallActivity、child 进被调流程；被调流程内 Event Sub-Process 在进入时武装 |
+| `CALL_ACTIVITY` | 同一定义内 `calledElement` → 另一 process；**独立子 process instance**；host token 停在 CallActivity（`called_process_instance_id`）；被调流程完成/终止后经锁外投递 resume/terminate 父 CallActivity；进入子实例时武装被调流程 Event Sub-Process |
 | `SEQUENCE_FLOW` | `SEQUENCE_FLOW_TAKEN`（经 transit，不走 OnEnter） |
 
 **统一完成入口**：等待点（UserTask / ServiceTask / catch / 部分 throw·compensate）都走 `Complete`；类型来自部署，不按类型拆 API。
@@ -269,5 +269,5 @@ Deploy validation rejects unsupported elements. The following is the current sem
 
 下列不是阻塞缺陷，但是当前模型下需要注意的不合理点 / 技术债；后续可重构时优先处理。已还清的条目直接删除，不保留「已还清」坟场。
 
-1. **CallActivity v1 = 同实例内联，不是子 process instance**  
-   当前 CallActivity 在**同一** `process_instance_id` 上把 token 送入同一定义文件中的被调 process；host token 停在 CallActivity，内部用 child token（与嵌入式 SubProcess 同构）。被调流程 scope 的 host 解析与打断/终止、以及进入时按 called process id 武装 Event Sub-Process，已与嵌入式 SubProcess 对齐。这与 BPMN「独立 called process instance」不完全一致。限制：同一被调 process 仅允许一个 CallActivity、禁止递归 CallActivity、元素 id 必须在 Definitions 内全局唯一、尚无 IO 映射 / 跨部署 calledElement / 版本选择；CallActivity 上的 boundary / 补偿订阅仍弱于嵌入式 SubProcess。独立子实例与版本管理见 [`specs/001-engine-completeness/`](../specs/001-engine-completeness/)，不在本文展开实现步骤。
+1. **CallActivity boundary / compensation still thinner than embedded SubProcess**  
+   Independent child instances and same-definition IO name mapping are in place (`specs/001-engine-completeness/`). CallActivity boundary/compensation parity with SubProcess, cross-deployment `calledElement`, and live version migration remain follow-ups.
