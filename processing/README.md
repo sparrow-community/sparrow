@@ -14,7 +14,9 @@ Sparrow 运行时模块：单节点、事件驱动的 BPMN 执行引擎。
 ## 文档
 
 - **设计**（模型、架构、语义契约）：[DESIGN.md](./DESIGN.md)
-- **规划与现状**（路线图、已实现、下一步）：[../STATUS.md](../STATUS.md)
+- **Roadmap / implemented snapshot**: [../AGENTS.md](../AGENTS.md)
+- **Active increment** (spec / plan / tasks): [../specs/001-engine-completeness/](../specs/001-engine-completeness/)
+- **Governance**: [../.specify/memory/constitution.md](../.specify/memory/constitution.md)
 
 ## 端到端夹具
 

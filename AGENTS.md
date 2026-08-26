@@ -1,104 +1,69 @@
 # Sparrow
 
-Apache-2.0 Go workspace for a lightweight, functionally complete BPMN workflow engine.
+Apache-2.0 Go workspace for a lightweight, functionally complete BPMN **execution engine** (not a Camunda-style product suite). Single-node; append-only Protobuf event log as source of truth. Event = behavior; Element = subject. End state is engine completeness, not a permanent minimal subset.
 
-Sparrow is a single-node execution engine in early development. The intended core is an append-only event log (Protocol Buffers) as the source of truth for process execution and audit. The aim is a lean runtime with full executable BPMN semantics—not a Camunda-style product suite (modeler, ops UI, etc.). Coverage lands milestone by milestone; the end state is engine completeness, not a permanent minimal subset.
+Why it exists: [`AI-Driven-BPMN.md`](./AI-Driven-BPMN.md).
 
-Why this project exists in an AI-first world: see [`AI-Driven-BPMN.md`](./AI-Driven-BPMN.md).
+| | |
+|--|--|
+| Governance | [`.specify/memory/constitution.md`](./.specify/memory/constitution.md) |
+| Active increment | [`specs/001-engine-completeness/`](./specs/001-engine-completeness/) (spec → plan → tasks) |
+| Runtime design | [`processing/DESIGN.md`](./processing/DESIGN.md) |
+| Fixtures | [`processing/README.md`](./processing/README.md) |
 
-**Plan and status** (roadmap, what works, next steps): see [`STATUS.md`](./STATUS.md). Core runtime design: [`processing/DESIGN.md`](./processing/DESIGN.md).
+New work: Spec Kit skills in `.cursor/skills/` (`/speckit-specify` → `/speckit-plan` → `/speckit-tasks` → `/speckit-implement`).
+
+```text
+@AGENTS.md @.specify/memory/constitution.md @specs/001-engine-completeness/
+This session: <one thing; prefer next unchecked US in tasks.md>
+```
+
+## Roadmap
+
+**Done (M1–M4c):** Start/UserTask/XOR/End; ServiceTask/Job; timer/message/signal catch & boundary; gateways; SubProcess; Event Sub-Process (message/timer/signal, incl. nested in SubProcess); throw/compensation; error boundary/end/ThrowError; CallActivity (same-definition, **inline** on one instance).
+
+**Next:** [`001-engine-completeness`](./specs/001-engine-completeness/tasks.md) — US1 child CallActivity instance → US2 IO mapping → US3 Error Event Sub-Process → US4 revision coexistence. Task order only; do not invent a second backlog here.
+
+**Deferred:** cross-deployment CallActivity; live migration; ≥3 same-kind waiting boundaries on one activity; Incident; instantiate EBG; compensation into unfinished SubProcess; ESP nested in ESP; cluster; product suite. (One timer + one message + one signal boundary may coexist.)
+
+## Implemented elements (snapshot)
+
+Process; Start (none); End (none/error/compensate); SequenceFlow; UserTask; ServiceTask (+ Job Activate/Fail/Heartbeat); Exclusive/Inclusive/Parallel/EventBased gateways; embedded SubProcess; CallActivity (inline); Event Sub-Process (message/timer/signal); intermediate catch/throw (timer/message/signal/compensate); Boundary (timer/message/signal/compensate/error); Association (compensation).
+
+**Gaps covered by active spec:** CallActivity child instance + IO mapping; Error Event Sub-Process; process revision coexistence. **Still out of scope:** Escalation/Link/Conditional/Terminate; Send/Receive/Manual/BusinessRule Task; Multi-instance; cross-deployment CallActivity.
+
+## Runtime surface
+
+- API: `Deploy` / `CreateInstance` / `Complete` / `ThrowError` / `FireDue` / `PublishMessage` / `PublishSignal` / Job trio; `GetInstance` / `ListEvents`
+- Persist: `EventLog` + `deploy.Store` + optional `runtime.Store`; `Recover` / `Open`
+- Transport: `gateway` only (`engine.v1` + `job.v1`) — not in `processing`
 
 ## Workspace
 
-Go **1.26.5** workspace (`go.work`) with four modules:
+Go **1.26.5** (`go.work`; commit it, ignore `go.work.sum`). Module prefix `github.com/sparrow-community/sparrow/...`. Local `replace` for sibling modules.
 
-| Module | Path | Role | Maturity |
-|--------|------|------|----------|
-| `bpmn` | `./bpmn` | BPMN 2.0 XML model parse/export | Most complete |
-| `protocol` | `./protocol` | Protobuf: ledger + job/engine RPC | event / job / engine v1 |
-| `processing` | `./processing` | Runtime / event handlers | M1 + Job pull |
-| `gateway` | `./gateway` | gRPC adapter + `cmd/sparrow` | JobService + EngineService |
+| Module | Role |
+|--------|------|
+| `bpmn` | BPMN 2.0 XML → `element` types; MIWG tests |
+| `protocol` | Protobuf only: `event.v1` ledger, `job.v1` / `engine.v1` RPC (not Event types). Generated Go committed under `protocol/gen/go` |
+| `processing` | Engine: `deploy` / `handlers` / `executor` / `projection` / `log`; UUIDv7 ids; no parallel graph |
+| `gateway` | gRPC adapter + `cmd/sparrow` |
 
-```text
-sparrow/
-├── go.work                 # committed
-├── bpmn/                   # model layer
-├── protocol/
-│   ├── proto/              # .proto sources + Buf config
-│   └── gen/go/             # generated Go (committed)
-├── processing/             # engine
-└── gateway/                # gRPC + cmd/sparrow
-```
+**protocol:** change `.proto`, run `cd protocol/proto && ./build.sh` (`buf lint` + generate). Never hand-edit `*.pb.go`. Keep `buf` FILE wire compatibility.
 
-- Commit `go.work`; ignore `go.work.sum` (see root `.gitignore`).
-- Module path prefix: `github.com/sparrow-community/sparrow/...`.
-- `processing` uses local `replace` for `bpmn` and `protocol`.
-- `gateway` uses local `replace` for `processing`, `protocol`, and `bpmn`.
-
-## bpmn
-
-- Entry: `bpmn.Bpmn` — load Definitions from bytes/file/stream; `FindElementByID`.
-- Types: `bpmn/element` (large BPMN element set with XML tags).
-- Schemas: `bpmn/schema` (BPMN 2.0 XSD).
-- Tests: BPMN MIWG-oriented roundtrip/export suites under `bpmn/` and `bpmn/test`.
-
-## protocol
-
-Event messages only use **Protocol Buffers**. There is no FlatBuffers path.
-
-- Sources: `protocol/proto/event/v1/*.proto`, `protocol/proto/job/v1/*.proto`, `protocol/proto/engine/v1/*.proto`
-- Generated Go: `event/v1` (`eventv1`), `job/v1` (`jobv1`), `engine/v1` (`enginev1`) under `protocol/gen/go`
-
-`event.v1` is the append-only ledger. `job.v1` (`JobService`) is the worker command RPC. `engine.v1` (`EngineService`) is the process-client RPC (Deploy / CreateInstance / Complete / query). Neither RPC package is an Event record type.
-
-Current `Event` shape (high level):
-
-- `RecordType`: COMMAND / EVENT / REJECTION
-- Instance fields: `deployment_id`, `process_instance_id`, `process_version` (ids are UUIDv7 strings)
-- Causation: `source_record_id`; rejections carry `Rejection{code,message}`
-- Nested `Element`: `Intent`, `Type`, `id`, `token_id` (token id is UUIDv7 string)
-- `Element.Type` = one value per independent BPMN element (`PROCESS` + `FlowElements` concrete types); no generic TASK/GATEWAY + kind
-- Payloads are data-only groups: process / event / activity / gateway / sequence-flow / data
-- `EventPayload` may carry `due_unix_ms` + original timer text (`duration` field, timeDuration / timeDate / timeCycle) for timer catch ACTIVATED, `message_name` for message catch/throw ACTIVATED, `signal_name` for signal catch/throw ACTIVATED, `compensation_handler_id` on compensation boundary ACTIVATED after host COMPLETED, `error_code` on ERROR_THROWN, `token_wait` on ACTIVATED when the token must wait for Complete (e.g. compensate end), and `variables` on catch COMPLETING. `ActivityPayload` may carry `boundary_id` plus either `due_unix_ms` / `duration` (interrupting timer) or `message_name` (interrupting message) when a boundary is armed on a waiting activity.
-
-### Regenerate
-
-Requires Buf CLI (project targets current stable; e.g. 1.72.x).
-
-```shell
-cd protocol/proto && ./build.sh
-```
-
-`build.sh` runs `buf lint` then `buf generate`. Plugins are pinned in `buf.gen.yaml` (`buf.build/protocolbuffers/go:v1.36.11`, `buf.build/grpc/go:v1.6.2`). Managed mode sets `go_package_prefix` to `github.com/sparrow-community/sparrow/protocol/gen/go`.
-
-`protocol/gen` is committed. Do not hand-edit `*.pb.go`; change `.proto` and regenerate. Generated output must match `./build.sh`.
-
-## processing
-
-- Runtime module: see `processing/README.md`; design `processing/DESIGN.md`; plan/status `STATUS.md`.
-- M1 engine available: Deploy / CreateInstance / Complete with in-memory or file event log.
-- Waiting activities (UserTask, ServiceTask, intermediate timer catch, intermediate message catch, intermediate signal catch) complete via one `Complete` API; type comes from the deployment. ServiceTask job type is `ActivityPayload.job_type`. Timer due is `EventPayload.due_unix_ms` from `timeDuration`, `timeDate`, or `timeCycle` (first due only); `FireDue` completes expired timer catches. An interrupting timer, message, or signal boundary on UserTask/ServiceTask (and SubProcess scopes) stores `ActivityPayload.boundary_id` (timer also `due_unix_ms`; message also `message_name`; signal also `signal_name`); up to one of each waiting kind per activity (timer + message + signal may coexist via `message_boundary_id` / `signal_boundary_id`). `FireDue` / `PublishMessage` / `PublishSignal` completes the boundary (interrupting: activity TERMINATED; non-interrupting: spawned token). Message catch name is `EventPayload.message_name`; `PublishMessage` completes matching waiters by name plus optional `correlation_keys` (instance variable JSON match). Late messages are buffered in memory until a catch or message boundary waits (not an EventLog record; empty after Recover unless `runtime.Store`). Signal catch / signal boundary name is `EventPayload.signal_name` or `ActivityPayload.signal_name`; `PublishSignal` completes matching waiters by name (no buffer). Intermediate throw (none / message / signal) is instantaneous; message/signal throws are delivered after the instance lock is released via `PublishMessage` / `PublishSignal`. Process-level Event Sub-Process (`triggeredByEvent`) is armed after process start; message/timer (and signal) starts may interrupt or run non-interrupting alongside the parent. `cmd/sparrow` ticks `FireDue`.
-- Workers pull ServiceTask jobs with `Activate` (in-memory lease; not an EventLog record). `Fail` keeps the token waiting and releases the lease; `Heartbeat` extends it. Complete still finishes the waiting token.
-- External clients use `gateway` (`engine.v1` + `job.v1` gRPC). Process entry is `gateway/cmd/sparrow` (`Open` + Serve). Do not put transport in `processing`.
-- Durable open: `processing.Recover(ctx, eventLog, deploymentStore, runtimeStore)` rebuilds projections and finishes any COMMAND whose EVENT chain was interrupted. `Open(ctx, dataDir)` is the file-backed convenience (includes `runtime/state.json`).
-- Persistence is pluggable: `log.EventLog` + `deploy.Store` (Memory/File in-tree; swap in your own) + optional `runtime.Store`.
-- Layout: `deploy` (holds `element.Process`, no parallel graph), `handlers/` (one file per element type), `executor`, `projection`, `log`.
-- IDs via UUIDv7 (`NextID` / `MustNextID`).
+**processing:** semantics live in handlers + DESIGN; waiting work uses one `Complete`; Job leases / late message buffers are runtime store, not ledger subjects.
 
 ## Commands
 
-From repo root (with `go.work`):
-
 ```shell
 go test ./processing/ ./gateway/ ./protocol/proto/event/v1/
-go test ./bpmn/ # large MIWG suite; slower
+go test ./bpmn/   # MIWG; slower
 cd protocol/proto && ./build.sh
 go run ./gateway/cmd/sparrow -data-dir ./data -listen :50051
 ```
 
 ## Conventions
 
-- License headers: Apache-2.0 (Sparrow community).
-- Prefer extending the existing module layout over adding new top-level modules without need (`gateway` is the transport adapter; do not put gRPC in `processing`).
-- Protocol evolution: keep wire compatibility in mind (`buf` breaking category is `FILE`).
-- AI / custom behavior, if added later, should map onto existing BPMN constructs (e.g. Service Task + extensions), not invent non-standard core element types in the OMG sense.
+- Apache-2.0 (Sparrow community) license headers.
+- Do not add top-level modules without need; do not put gRPC in `processing`.
+- AI/custom behavior maps onto existing BPMN constructs (e.g. Service Task + extensions), not new OMG-core element types.

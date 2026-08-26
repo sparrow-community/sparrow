@@ -1,7 +1,7 @@
 # processing 程序设计
 
 `processing` 是 Sparrow 的 BPMN 执行内核。本文只描述**核心设计**：模型、架构、语义契约与模块边界。  
-**里程碑、已实现清单与下一步**见仓库根目录 [`STATUS.md`](../STATUS.md)。
+**Milestone / implemented snapshot**: [`AGENTS.md`](../AGENTS.md). **Active increment** (child CallActivity instance / IO mapping / Error Event Sub-Process / revision coexistence): [`specs/001-engine-completeness/`](../specs/001-engine-completeness/). **Governance**: [`.specify/memory/constitution.md`](../.specify/memory/constitution.md).
 
 实现以本文的语义为准；协议字段变更在 `protocol` 中进行。约定：**Event = 元素行为**，**Element = 行为主语**。
 
@@ -23,7 +23,7 @@
 - 为「整洁」堆叠无必要的 adapter / Node / Flow 包装类型
 - Camunda 类产品套件、DMN / CMMN（非本引擎本体）
 
-规划上暂缓的能力（版本管理、集群等）见 `STATUS.md`，不在本文展开。
+Deferred capabilities (version migration, cluster, etc.) are listed in `AGENTS.md` and the active spec Assumptions; not expanded here.
 
 ---
 
@@ -185,7 +185,7 @@ runtime 加载时丢弃过期/无效 lease 与过期/死实例消息缓冲；实
 
 ## 5. 可执行语义（契约）
 
-部署校验拒绝尚未支持的元素。下列为当前语义契约的要点（实现进度见 `STATUS.md`）。
+Deploy validation rejects unsupported elements. The following is the current semantic contract (implementation progress: `AGENTS.md`).
 
 ### 5.1 元素与行为
 
@@ -270,4 +270,4 @@ runtime 加载时丢弃过期/无效 lease 与过期/死实例消息缓冲；实
 下列不是阻塞缺陷，但是当前模型下需要注意的不合理点 / 技术债；后续可重构时优先处理。已还清的条目直接删除，不保留「已还清」坟场。
 
 1. **CallActivity v1 = 同实例内联，不是子 process instance**  
-   当前 CallActivity 在**同一** `process_instance_id` 上把 token 送入同一定义文件中的被调 process；host token 停在 CallActivity，内部用 child token（与嵌入式 SubProcess 同构）。被调流程 scope 的 host 解析与打断/终止、以及进入时按 called process id 武装 Event Sub-Process，已与嵌入式 SubProcess 对齐。这与 BPMN「独立 called process instance」不完全一致。限制：同一被调 process 仅允许一个 CallActivity、禁止递归 CallActivity、元素 id 必须在 Definitions 内全局唯一、尚无 IO 映射 / 跨部署 calledElement / 版本选择；CallActivity 上的 boundary / 补偿订阅仍弱于嵌入式 SubProcess。独立子实例与版本管理应作为后续功能里程碑。
+   当前 CallActivity 在**同一** `process_instance_id` 上把 token 送入同一定义文件中的被调 process；host token 停在 CallActivity，内部用 child token（与嵌入式 SubProcess 同构）。被调流程 scope 的 host 解析与打断/终止、以及进入时按 called process id 武装 Event Sub-Process，已与嵌入式 SubProcess 对齐。这与 BPMN「独立 called process instance」不完全一致。限制：同一被调 process 仅允许一个 CallActivity、禁止递归 CallActivity、元素 id 必须在 Definitions 内全局唯一、尚无 IO 映射 / 跨部署 calledElement / 版本选择；CallActivity 上的 boundary / 补偿订阅仍弱于嵌入式 SubProcess。独立子实例与版本管理见 [`specs/001-engine-completeness/`](../specs/001-engine-completeness/)，不在本文展开实现步骤。

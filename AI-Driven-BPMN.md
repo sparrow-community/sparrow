@@ -1,6 +1,6 @@
 # AI Driven BPMN
 
-核心定义：Sparrow 为何存在、站在哪一层。工作区见 `AGENTS.md`；规划与现状见 `STATUS.md`；运行时设计见 `processing/DESIGN.md`。
+核心定义：Sparrow 为何存在、站在哪一层。工作区与路线图见 `AGENTS.md`；治理原则见 `.specify/memory/constitution.md`；当前增量见 `specs/001-engine-completeness/`；运行时设计见 `processing/DESIGN.md`。
 
 ---
 
