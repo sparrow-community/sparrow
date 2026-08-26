@@ -8,8 +8,7 @@ Why it exists: [`AI-Driven-BPMN.md`](./AI-Driven-BPMN.md).
 |--|--|
 | Governance | [`.specify/memory/constitution.md`](./.specify/memory/constitution.md) |
 | Active increment | [`specs/001-engine-completeness/`](./specs/001-engine-completeness/) (spec → plan → tasks) |
-| Runtime design | [`processing/DESIGN.md`](./processing/DESIGN.md) |
-| Fixtures | [`processing/README.md`](./processing/README.md) |
+| Runtime design | [`processing/README.md`](./processing/README.md) |
 
 New work: Spec Kit skills in `.cursor/skills/` (`/speckit-specify` → `/speckit-plan` → `/speckit-tasks` → `/speckit-implement`).
 
@@ -51,7 +50,7 @@ Go **1.26.5** (`go.work`; commit it, ignore `go.work.sum`). Module prefix `githu
 
 **protocol:** change `.proto`, run `cd protocol/proto && ./build.sh` (`buf lint` + generate). Never hand-edit `*.pb.go`. Keep `buf` FILE wire compatibility.
 
-**processing:** semantics live in handlers + DESIGN; waiting work uses one `Complete`; Job leases / late message buffers are runtime store, not ledger subjects.
+**processing:** semantics live in handlers + `processing/README.md`; waiting work uses one `Complete`; Job leases / late message buffers are runtime store, not ledger subjects.
 
 ## Commands
 

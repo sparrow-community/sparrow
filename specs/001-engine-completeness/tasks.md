@@ -58,7 +58,7 @@ description: "Task list for engine completeness next increment"
 - [x] T009 [US1] Change `handlers.CallActivityHandler` in `processing/handlers/call_activity.go` to park the host token and request child start (payload: `called_process_instance_id`) instead of `EnterChild` on the same instance
 - [x] T010 [US1] Implement child CreateInstance under the child lock and parent Complete/Terminate of the Call Activity after child PROCESS COMPLETED/TERMINATED in `processing/engine.go` / `processing/executor.go`
 - [x] T011 [US1] Map parent/called fields through `gateway/engine_server.go` `GetInstance` snapshots
-- [x] T012 [US1] Update Call Activity semantics in `processing/DESIGN.md` §5.1 / §8 to match independent instances (remove v1 inline debt note)
+- [x] T012 [US1] Update Call Activity semantics in `processing/README.md` to match independent instances (remove v1 inline debt note)
 
 **Checkpoint**: Story 1 quickstart passes; embedded SubProcess tests still pass
 

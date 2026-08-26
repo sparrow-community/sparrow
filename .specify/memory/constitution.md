@@ -69,7 +69,7 @@ License headers MUST remain Apache-2.0 (Sparrow community). Protocol changes MUS
 
 ## Governance
 
-This constitution supersedes informal notes when they conflict. Runtime design details live in `processing/DESIGN.md` and MUST remain consistent with these principles; if they diverge, amend this document or the design in the same change.
+This constitution supersedes informal notes when they conflict. Runtime design details live in `processing/README.md` and MUST remain consistent with these principles; if they diverge, amend this document or the design in the same change.
 
 Amendments:
 

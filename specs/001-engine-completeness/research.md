@@ -4,7 +4,7 @@
 
 **Decision**: Replace in-definition inline Call Activity with a real child `process_instance_id`. The caller host token stays parked on the Call Activity (`ScopeHost`). Child tokens live only on the child instance.
 
-**Rationale**: Spec FR-001/FR-004 require independent query, variables, and audit. DESIGN.md already names inline Call Activity as v1 debt. Embedded SubProcess stays inline (same instance) — that construct is a different BPMN element.
+**Rationale**: Spec FR-001/FR-004 require independent query, variables, and audit. Earlier inline Call Activity was documented as design debt in `processing/README.md`. Embedded SubProcess stays inline (same instance) — that construct is a different BPMN element.
 
 **Alternatives considered**:
 
