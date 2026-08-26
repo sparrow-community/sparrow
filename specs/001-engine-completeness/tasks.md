@@ -92,14 +92,14 @@ description: "Task list for engine completeness next increment"
 
 ### Tests for User Story 3
 
-- [ ] T017 [P] [US3] Add `processing/testdata/m5_error_esp.bpmn`, `m5_error_esp_ni.bpmn`, `m5_error_esp_code_miss.bpmn`, `m5_error_esp_nested.bpmn`
-- [ ] T018 [US3] Add `processing/error_event_subprocess_test.go` covering the four fixtures and Recover while the ESP is armed
+- [x] T017 [P] [US3] Add `processing/testdata/m5_error_event_subprocess.bpmn`, `m5_error_event_subprocess_ni.bpmn`, `m5_error_event_subprocess_code_miss.bpmn`, `m5_error_event_subprocess_nested.bpmn`
+- [x] T018 [US3] Add `processing/error_event_subprocess_test.go` covering the four fixtures and Recover while the Event Sub-Process is armed
 
 ### Implementation for User Story 3
 
-- [ ] T019 [P] [US3] Extend `deploy.CatchKind` / `EventSubProcess` with error in `processing/deploy/timer.go` and `processing/deploy/event_subprocess.go`; set `EventPayload.error_code` on START_EVENT ACTIVATED
-- [ ] T020 [US3] Route unmatched/bubbling errors to matching ESP in `processing/errors.go` and `processing/event_subprocess.go` (innermost: activity boundary, then scope ESP)
-- [ ] T021 [US3] Arm error ESP when opening a process or embedded sub-process in `processing/event_subprocess.go` (same place message/timer/signal arms are created)
+- [x] T019 [P] [US3] Extend `deploy.CatchKind` / `EventSubProcess` with error in `processing/deploy/timer.go` and `processing/deploy/event_subprocess.go`; set `EventPayload.error_code` on START_EVENT ACTIVATED
+- [x] T020 [US3] Route unmatched/bubbling errors to matching Event Sub-Process in `processing/errors.go` and `processing/event_subprocess.go` (innermost: activity boundary, then scope Event Sub-Process)
+- [x] T021 [US3] Arm error Event Sub-Process when opening a process or embedded sub-process in `processing/event_subprocess.go` (same place message/timer/signal arms are created)
 
 **Checkpoint**: Existing error boundary / ThrowError tests still pass; Story 3 fixtures pass
 
@@ -113,14 +113,14 @@ description: "Task list for engine completeness next increment"
 
 ### Tests for User Story 4
 
-- [ ] T022 [P] [US4] Add `processing/testdata/m5_version_v1.bpmn` and `processing/testdata/m5_version_v2.bpmn`
-- [ ] T023 [US4] Add `processing/version_test.go` (latest start, explicit old version, unknown version rejected, in-flight instance stays on v1)
+- [x] T022 [P] [US4] Add `processing/testdata/m5_version_v1.bpmn` and `processing/testdata/m5_version_v2.bpmn`
+- [x] T023 [US4] Add `processing/version_test.go` (latest start, explicit old version, unknown version rejected, in-flight instance stays on v1)
 
 ### Implementation for User Story 4
 
-- [ ] T024 [US4] Assign `process_version` per process id and keep a revision index in `processing/deploy/deploy.go`; load it on Recover from `deploy.Store`
-- [ ] T025 [US4] Extend `Engine.CreateInstance` in `processing/engine.go` to accept `process_id` + optional version; keep `deployment_id` path
-- [ ] T026 [US4] Map new Deploy/CreateInstance fields in `gateway/engine_server.go` and cover them in `gateway/engine_server_test.go`
+- [x] T024 [US4] Assign `process_version` per process id and keep a revision index in `processing/deploy/deploy.go`; load it on Recover from `deploy.Store`
+- [x] T025 [US4] Extend `Engine.CreateInstance` in `processing/engine.go` to accept `process_id` + optional version; keep `deployment_id` path
+- [x] T026 [US4] Map new Deploy/CreateInstance fields in `gateway/engine_server.go` and cover them in `gateway/engine_server_test.go`
 
 **Checkpoint**: Stories 1–3 still pass when started via `deployment_id`
 
@@ -130,7 +130,7 @@ description: "Task list for engine completeness next increment"
 
 - [x] T027 [P] Merge roadmap / implemented snapshot into `AGENTS.md` and point next steps at this feature’s `tasks.md` (no separate `STATUS.md`)
 - [x] T028 [P] Keep Spec Kit constitution / active spec links in `AGENTS.md` (do not duplicate DESIGN)
-- [ ] T029 Run `go test ./processing/ ./gateway/ ./protocol/proto/event/v1/` and the Story 1 Recover path from `specs/001-engine-completeness/quickstart.md`
+- [x] T029 Run `go test ./processing/ ./gateway/ ./protocol/proto/event/v1/` and the Story 1 Recover path from `specs/001-engine-completeness/quickstart.md`
 
 ---
 

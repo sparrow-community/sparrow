@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             id="Definitions_version_v1"
+             targetNamespace="http://sparrow.example/version-v1">
+  <process id="Process_version" name="M5 Version V1" isExecutable="true">
+    <startEvent id="StartEvent_1">
+      <outgoing>Flow_start_to_task</outgoing>
+    </startEvent>
+    <userTask id="TaskA" name="Task A">
+      <incoming>Flow_start_to_task</incoming>
+      <outgoing>Flow_task_to_end</outgoing>
+    </userTask>
+    <endEvent id="EndEvent_1">
+      <incoming>Flow_task_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_task" sourceRef="StartEvent_1" targetRef="TaskA"/>
+    <sequenceFlow id="Flow_task_to_end" sourceRef="TaskA" targetRef="EndEvent_1"/>
+  </process>
+</definitions>

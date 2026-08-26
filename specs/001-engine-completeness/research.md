@@ -35,13 +35,13 @@
 
 ## 4. Error Event Sub-Process
 
-**Decision**: Extend existing Event Sub-Process arming (`EventSubProcessArm`) with `error_code` (empty = catch-all). On ERROR_THROWN / uncaught bubble, resolve like error boundaries (innermost first: activity boundary, then scope ESP, then parent). Reuse interrupting vs `isInterrupting=false` behavior already used for message/timer/signal ESP.
+**Decision**: Extend existing Event Sub-Process arming (`EventSubProcessArm`) with `error_code` (empty = catch-all). On ERROR_THROWN / uncaught bubble, resolve like error boundaries (innermost first: activity boundary, then scope Event Sub-Process, then parent). Reuse interrupting vs `isInterrupting=false` behavior already used for message/timer/signal Event Sub-Process.
 
 **Rationale**: Spec FR-011–FR-013; M4 error boundary/end/throw already exist. This is the missing start kind.
 
 **Alternatives considered**:
 
-- Treat error ESP as a rewritten error boundary on the process — loses non-interrupting ESP semantics.
+- Treat error Event Sub-Process as a rewritten error boundary on the process — loses non-interrupting Event Sub-Process semantics.
 
 ## 5. Version coexistence
 

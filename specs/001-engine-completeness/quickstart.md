@@ -37,8 +37,8 @@ No-mapping fixture: child starts empty; caller variables unchanged after the cal
 1. Process with an error end (`E1`) on the default path and an interrupting Event Sub-Process whose error start names `E1`, then a user task.
 2. Start: default path interrupted; wait in the Event Sub-Process.
 3. Complete the handler user task; process completes.
-4. Add a fixture where `E2` is thrown and only `E1` is caught: instance terminates (or bubbles) without starting the ESP.
-5. Non-interrupting fixture: waiting user task on the default path remains while the ESP runs.
+4. Add a fixture where `E2` is thrown and only `E1` is caught: instance terminates (or bubbles) without starting the Event Sub-Process.
+5. Non-interrupting fixture: waiting user task on the default path remains while the Event Sub-Process runs.
 
 ## Story 4 — Revisions
 
@@ -51,4 +51,4 @@ No-mapping fixture: child starts empty; caller variables unchanged after the cal
 
 ## Expected test layout
 
-Fixtures under `processing/testdata/` (`m5_call_instance*.bpmn`, `m5_call_io*.bpmn`, `m5_error_esp*.bpmn`, `m5_version*.bpmn`). Tests in `processing/call_activity_test.go` (extend), new `processing/error_event_subprocess_test.go`, `processing/version_test.go`. Gateway mapping covered in `gateway/engine_server_test.go`.
+Fixtures under `processing/testdata/` (`m5_call_instance*.bpmn`, `m5_call_io*.bpmn`, `m5_error_event_subprocess*.bpmn`, `m5_version*.bpmn`). Tests in `processing/call_activity_test.go` (extend), new `processing/error_event_subprocess_test.go`, `processing/version_test.go`. Gateway mapping covered in `gateway/engine_server_test.go`.

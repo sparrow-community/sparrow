@@ -65,7 +65,7 @@ bpmn/                     # XML model (IO associations already on Activity)
 protocol/proto/           # event.v1 payloads + engine.v1 query/start fields
 protocol/gen/go/          # generated; via protocol/proto/build.sh
 processing/
-├── deploy/               # CallActivity spec, mappings, version index, error ESP
+├── deploy/               # CallActivity spec, mappings, version index, error Event Sub-Process
 ├── handlers/             # call_activity.go, start_event.go, end_event.go
 ├── projection/           # parent/child fields, called instance id on host token
 ├── executor.go           # spawn child instance; resume parent after child settle

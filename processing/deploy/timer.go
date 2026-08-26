@@ -16,6 +16,7 @@ const (
 	CatchKindTimer   CatchKind = "timer"
 	CatchKindMessage CatchKind = "message"
 	CatchKindSignal  CatchKind = "signal"
+	CatchKindError   CatchKind = "error"
 )
 
 type timerCatch struct {

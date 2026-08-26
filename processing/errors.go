@@ -116,6 +116,12 @@ func (x *Executor) propagateError(
 	}
 
 	for {
+		if eventSubProcessID, ok := dep.MatchErrorEventSubProcess(scope, errorCode, func(id string) bool {
+			_, armed := inst.EventSubProcesses[id]
+			return armed
+		}); ok {
+			return x.fireErrorEventSubProcess(ctx, dep, inst, throwElementID, throwTokenID, eventSubProcessID, emit)
+		}
 		if scope != processID {
 			if bid, ok := dep.MatchErrorBoundary(scope, errorCode); ok {
 				hostTokenID, ok := findScopeHostToken(dep, inst, scope)
@@ -137,6 +143,65 @@ func (x *Executor) propagateError(
 		return x.terminateInstancePubs(ctx, dep, inst, emit)
 	}
 	return x.terminateInstancePubs(ctx, dep, inst, emit)
+}
+
+func (x *Executor) fireErrorEventSubProcess(
+	ctx context.Context,
+	dep *deploy.Deployment,
+	inst *projection.Instance,
+	throwElementID, throwTokenID, eventSubProcessElementID string,
+	emit Emitter,
+) ([]handlers.Publication, error) {
+	if _, ok := inst.EventSubProcesses[eventSubProcessElementID]; !ok {
+		return nil, nil
+	}
+	spec, ok := dep.EventSubProcessSpec(eventSubProcessElementID)
+	if !ok {
+		return nil, fmt.Errorf("NOT_FOUND: event subProcess %q", eventSubProcessElementID)
+	}
+
+	tokenID, err := NextID()
+	if err != nil {
+		return nil, err
+	}
+
+	if spec.Interrupting {
+		if err := emitEventSubProcessStartDisarmInScope(dep, spec.ParentScopeID, inst, emit); err != nil {
+			return nil, err
+		}
+		if err := terminateScopeTokens(dep, inst, spec.ParentScopeID, emit, scopeTerminateOpts{
+			IncludeHost: true,
+			DropTokens:  true,
+		}); err != nil {
+			return nil, err
+		}
+		inst.RemoveScopeBoundariesForScope(spec.ParentScopeID)
+	} else {
+		if err := emitEventSubProcessStartDisarm(dep, eventSubProcessElementID, emit); err != nil {
+			return nil, err
+		}
+		// Consume the thrower so it does not leave a dangling waiting/active token.
+		if throwTokenID != "" && inst.Tokens[throwTokenID] != nil {
+			typ, typeErr := dep.TypeOf(throwElementID)
+			if typeErr == nil {
+				for _, intent := range []eventv1.Element_Intent{
+					eventv1.Element_INTENT_TERMINATING,
+					eventv1.Element_INTENT_TERMINATED,
+				} {
+					if err := emit(&eventv1.Element{
+						Intent:  intent,
+						Type:    typ,
+						Id:      throwElementID,
+						TokenId: throwTokenID,
+					}); err != nil {
+						return nil, err
+					}
+				}
+			}
+		}
+	}
+
+	return x.Enter(ctx, dep, inst, tokenID, eventSubProcessElementID, emit)
 }
 
 func findScopeHostToken(dep *deploy.Deployment, inst *projection.Instance, scopeID string) (string, bool) {

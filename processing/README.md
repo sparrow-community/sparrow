@@ -49,7 +49,7 @@ eng, err := processing.Recover(ctx, eventLog, deploymentStore, runtimeStore)
 | Type | Behavior |
 |------|----------|
 | `PROCESS` | Start / complete (or terminate) |
-| `START_EVENT` | Instant; ESP starts arm on scope open (`ACTIVATED`) |
+| `START_EVENT` | Instant; Event Sub-Process starts arm on scope open (`ACTIVATED`; message/timer/signal/error) |
 | `END_EVENT` | Then try complete scope/process |
 | `USER_TASK` / `SERVICE_TASK` | Wait → `Complete`; ServiceTask `job_type` |
 | Catch / timer·message·signal | Wait → `FireDue` / `Publish*` / `Complete` |
@@ -60,9 +60,9 @@ eng, err := processing.Recover(ctx, eventLog, deploymentStore, runtimeStore)
 | `CALL_ACTIVITY` | Same-definition `calledElement` → **child process instance**; host waits with `called_process_instance_id`; IO name mappings optional |
 | `SEQUENCE_FLOW` | `SEQUENCE_FLOW_TAKEN` |
 
-APIs: `Deploy`, `CreateInstance`, `Complete`, `ThrowError`, `FireDue`, `PublishMessage`, `PublishSignal`, Job `Activate`/`Fail`/`Heartbeat`, `GetInstance`, `ListEvents`. Transport is `gateway` only.
+APIs: `Deploy`, `CreateInstance` (by `deployment_id` or `process_id` + optional version), `Complete`, `ThrowError`, `FireDue`, `PublishMessage`, `PublishSignal`, Job `Activate`/`Fail`/`Heartbeat`, `GetInstance`, `ListEvents`. Transport is `gateway` only.
 
-**Open debt:** CallActivity boundary/compensation thinner than SubProcess; cross-deployment call; live version migration — see active spec.
+**Open debt:** CallActivity boundary/compensation thinner than SubProcess; cross-deployment call; live version migration — see deferred list in `AGENTS.md`.
 
 ## Test
 

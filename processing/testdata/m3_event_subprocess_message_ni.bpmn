@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
-             id="Definitions_esp_message_ni"
-             targetNamespace="http://sparrow.example/esp-message-ni">
+             id="Definitions_event_subprocess_message_ni"
+             targetNamespace="http://sparrow.example/event-subprocess-message-ni">
   <message id="message_1" name="notify"/>
-  <process id="Process_esp_message_ni" name="M3 Event SubProcess Non-Interrupting" isExecutable="true">
+  <process id="Process_event_subprocess_message_ni" name="M3 Event SubProcess Non-Interrupting" isExecutable="true">
     <startEvent id="StartEvent_1">
       <outgoing>Flow_start_to_task</outgoing>
     </startEvent>
@@ -18,14 +18,14 @@
     <sequenceFlow id="Flow_task_to_end" sourceRef="UserTask_1" targetRef="EndEvent_1"/>
 
     <subProcess id="Event_SubProcess_1" name="On Notify" triggeredByEvent="true">
-      <startEvent id="ESP_Start_1" isInterrupting="false">
-        <outgoing>Flow_esp_start_to_end</outgoing>
-        <messageEventDefinition id="ESP_MsgDef_1" messageRef="message_1"/>
+      <startEvent id="Start_EventSubProcess_1" isInterrupting="false">
+        <outgoing>Flow_event_subprocess_start_to_end</outgoing>
+        <messageEventDefinition id="MsgDef_EventSubProcess_1" messageRef="message_1"/>
       </startEvent>
-      <endEvent id="ESP_End_1">
-        <incoming>Flow_esp_start_to_end</incoming>
+      <endEvent id="End_EventSubProcess_1">
+        <incoming>Flow_event_subprocess_start_to_end</incoming>
       </endEvent>
-      <sequenceFlow id="Flow_esp_start_to_end" sourceRef="ESP_Start_1" targetRef="ESP_End_1"/>
+      <sequenceFlow id="Flow_event_subprocess_start_to_end" sourceRef="Start_EventSubProcess_1" targetRef="End_EventSubProcess_1"/>
     </subProcess>
   </process>
 </definitions>

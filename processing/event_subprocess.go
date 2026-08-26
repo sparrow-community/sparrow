@@ -58,6 +58,8 @@ func eventSubProcessStartActivated(dep *deploy.Deployment, spec deploy.EventSubP
 		payload.MessageName = spec.MessageName
 	case deploy.CatchKindSignal:
 		payload.SignalName = spec.SignalName
+	case deploy.CatchKindError:
+		payload.ErrorCode = spec.ErrorCode
 	case deploy.CatchKindTimer:
 		if now.IsZero() {
 			now = time.Now()

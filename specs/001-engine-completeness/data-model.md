@@ -78,8 +78,8 @@ parent: CALL_ACTIVITY COMPLETING → COMPLETED (on child COMPLETED)
 
 ```text
 scope open → START_EVENT ACTIVATED (arm, error_code)
-ERROR_THROWN matches → interrupting: terminate remaining scope work, enter ESP
-                    → non-interrupting: mint ESP token, keep remaining work
+ERROR_THROWN matches → interrupting: terminate remaining scope work, enter Event Sub-Process
+                    → non-interrupting: mint Event Sub-Process token, keep remaining work
 ```
 
 ### Revision
@@ -96,4 +96,4 @@ CreateInstance(process_id, version) → bind that snapshot or reject NOT_FOUND
 - Missing mapping source: skip (no copy), do not reject at runtime.
 - CreateInstance against unknown process id or version: `NOT_FOUND`.
 - Call Activity with unresolved `calledElement`: `UNSUPPORTED_ELEMENT` at deploy.
-- Error ESP start with a definition other than error/message/timer/signal: still unsupported.
+- Error Event Sub-Process start with a definition other than error/message/timer/signal: still unsupported.

@@ -75,6 +75,7 @@ type EventSubProcessArm struct {
 	StartEventID string
 	MessageName  string
 	SignalName   string
+	ErrorCode    string // set for error Event Sub-Process (empty = catch-all)
 	DueUnixMs    int64
 	TimerText    string
 }
@@ -528,6 +529,7 @@ func applyEventSubProcessStart(inst *Instance, el *eventv1.Element) {
 			StartEventID: el.GetId(),
 			MessageName:  p.GetMessageName(),
 			SignalName:   p.GetSignalName(),
+			ErrorCode:    p.GetErrorCode(),
 			DueUnixMs:    p.GetDueUnixMs(),
 			TimerText:    p.GetDuration(),
 		}

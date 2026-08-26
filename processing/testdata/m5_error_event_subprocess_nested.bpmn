@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             id="Definitions_error_event_subprocess_nested"
+             targetNamespace="http://sparrow.example/error-event-subprocess-nested">
+  <error id="Error_e1" errorCode="E1" name="Error E1"/>
+  <process id="Process_error_event_subprocess_nested" name="M5 Nested Error Event SubProcess" isExecutable="true">
+    <startEvent id="StartEvent_1">
+      <outgoing>Flow_start_to_sp</outgoing>
+    </startEvent>
+    <subProcess id="SubProcess_1" name="Inner">
+      <incoming>Flow_start_to_sp</incoming>
+      <outgoing>Flow_sp_to_ok</outgoing>
+      <startEvent id="StartEvent_sp">
+        <outgoing>Flow_sp_start_to_task</outgoing>
+      </startEvent>
+      <userTask id="UserTask_sp" name="Inner work">
+        <incoming>Flow_sp_start_to_task</incoming>
+        <outgoing>Flow_sp_task_to_err</outgoing>
+      </userTask>
+      <endEvent id="EndEvent_sp_err">
+        <incoming>Flow_sp_task_to_err</incoming>
+        <errorEventDefinition id="ErrorDef_sp" errorRef="Error_e1"/>
+      </endEvent>
+      <sequenceFlow id="Flow_sp_start_to_task" sourceRef="StartEvent_sp" targetRef="UserTask_sp"/>
+      <sequenceFlow id="Flow_sp_task_to_err" sourceRef="UserTask_sp" targetRef="EndEvent_sp_err"/>
+
+      <subProcess id="Event_SubProcess_nested" name="On E1 inner" triggeredByEvent="true">
+        <startEvent id="Start_EventSubProcess_1" isInterrupting="true">
+          <outgoing>Flow_event_subprocess_start_to_task</outgoing>
+          <errorEventDefinition id="ErrorDef_EventSubProcess_1" errorRef="Error_e1"/>
+        </startEvent>
+        <userTask id="UserTask_EventSubProcess_1" name="Handle inner error">
+          <incoming>Flow_event_subprocess_start_to_task</incoming>
+          <outgoing>Flow_event_subprocess_task_to_end</outgoing>
+        </userTask>
+        <endEvent id="End_EventSubProcess_1">
+          <incoming>Flow_event_subprocess_task_to_end</incoming>
+        </endEvent>
+        <sequenceFlow id="Flow_event_subprocess_start_to_task" sourceRef="Start_EventSubProcess_1" targetRef="UserTask_EventSubProcess_1"/>
+        <sequenceFlow id="Flow_event_subprocess_task_to_end" sourceRef="UserTask_EventSubProcess_1" targetRef="End_EventSubProcess_1"/>
+      </subProcess>
+    </subProcess>
+    <endEvent id="EndEvent_ok">
+      <incoming>Flow_sp_to_ok</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_sp" sourceRef="StartEvent_1" targetRef="SubProcess_1"/>
+    <sequenceFlow id="Flow_sp_to_ok" sourceRef="SubProcess_1" targetRef="EndEvent_ok"/>
+  </process>
+</definitions>

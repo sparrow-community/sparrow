@@ -35,7 +35,12 @@ func (s *EngineServer) Deploy(ctx context.Context, req *enginev1.DeployRequest) 
 	if err != nil {
 		return nil, statusFromEngine(err)
 	}
-	return &enginev1.DeployResponse{DeploymentId: id}, nil
+	out := &enginev1.DeployResponse{DeploymentId: id}
+	if dep, ok := s.engine.GetDeployment(id); ok {
+		out.ProcessId = dep.ProcessID()
+		out.ProcessVersion = dep.Version
+	}
+	return out, nil
 }
 
 func (s *EngineServer) CreateInstance(ctx context.Context, req *enginev1.CreateInstanceRequest) (*enginev1.CreateInstanceResponse, error) {
@@ -46,7 +51,12 @@ func (s *EngineServer) CreateInstance(ctx context.Context, req *enginev1.CreateI
 	if err != nil {
 		return nil, statusFromEngine(err)
 	}
-	id, err := s.engine.CreateInstance(ctx, req.GetDeploymentId(), vars)
+	id, err := s.engine.CreateInstanceRequest(ctx, processing.CreateInstanceRequest{
+		DeploymentID:   req.GetDeploymentId(),
+		ProcessID:      req.GetProcessId(),
+		ProcessVersion: req.GetProcessVersion(),
+		Variables:      vars,
+	})
 	if err != nil {
 		return nil, statusFromEngine(err)
 	}

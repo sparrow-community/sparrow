@@ -26,6 +26,7 @@ type Engine struct {
 
 	mu          sync.Mutex
 	deployments map[string]*deploy.Deployment
+	revisions   map[string][]deploy.Revision // process id -> ordered revisions
 	instances   map[string]*projection.Instance
 	instMu      map[string]*sync.Mutex
 
@@ -49,6 +50,7 @@ func NewEngine(l eventlog.EventLog) *Engine {
 	e := &Engine{
 		log:         l,
 		deployments: make(map[string]*deploy.Deployment),
+		revisions:   make(map[string][]deploy.Revision),
 		instances:   make(map[string]*projection.Instance),
 		instMu:      make(map[string]*sync.Mutex),
 		leases:      make(map[string]jobLease),
@@ -76,17 +78,34 @@ func (e *Engine) Deploy(_ context.Context, bpmnXML []byte) (string, error) {
 
 	e.mu.Lock()
 	e.deployments[id] = dep
+	e.revisions = deploy.AssignProcessVersions(e.deployments)
 	e.mu.Unlock()
 	return id, nil
 }
 
+// CreateInstanceRequest selects a deployment by id and/or process revision.
+type CreateInstanceRequest struct {
+	DeploymentID   string
+	ProcessID      string
+	ProcessVersion int32 // with ProcessID; 0 means latest
+	Variables      map[string]any
+}
+
 func (e *Engine) CreateInstance(ctx context.Context, deploymentID string, vars map[string]any) (string, error) {
+	return e.CreateInstanceRequest(ctx, CreateInstanceRequest{
+		DeploymentID: deploymentID,
+		Variables:    vars,
+	})
+}
+
+func (e *Engine) CreateInstanceRequest(ctx context.Context, req CreateInstanceRequest) (string, error) {
 	e.mu.Lock()
-	dep := e.deployments[deploymentID]
+	dep, err := e.resolveDeploymentLocked(req.DeploymentID, req.ProcessID, req.ProcessVersion)
 	e.mu.Unlock()
-	if dep == nil {
-		return "", fmt.Errorf("NOT_FOUND: deployment %q", deploymentID)
+	if err != nil {
+		return "", err
 	}
+	deploymentID := dep.ID
 
 	startID, err := dep.StartEventID()
 	if err != nil {
@@ -106,7 +125,7 @@ func (e *Engine) CreateInstance(ctx context.Context, deploymentID string, vars m
 		return "", err
 	}
 
-	pv, err := projection.VariablesFromMap(vars)
+	pv, err := projection.VariablesFromMap(req.Variables)
 	if err != nil {
 		return "", err
 	}
@@ -164,6 +183,45 @@ func (e *Engine) CreateInstance(ctx context.Context, deploymentID string, vars m
 		return "", err
 	}
 	return instanceID, nil
+}
+
+func (e *Engine) resolveDeploymentLocked(deploymentID, processID string, version int32) (*deploy.Deployment, error) {
+	if deploymentID != "" {
+		dep := e.deployments[deploymentID]
+		if dep == nil {
+			return nil, fmt.Errorf("NOT_FOUND: deployment %q", deploymentID)
+		}
+		if processID != "" && dep.ProcessID() != processID {
+			return nil, fmt.Errorf("INVALID_ARGUMENT: deployment %q process_id %q does not match %q", deploymentID, dep.ProcessID(), processID)
+		}
+		if version != 0 && dep.Version != version {
+			return nil, fmt.Errorf("INVALID_ARGUMENT: deployment %q process_version %d does not match %d", deploymentID, dep.Version, version)
+		}
+		return dep, nil
+	}
+	if processID == "" {
+		return nil, fmt.Errorf("INVALID_ARGUMENT: deployment_id or process_id is required")
+	}
+	id, ok := deploy.ResolveRevision(e.revisions, processID, version)
+	if !ok {
+		if version > 0 {
+			return nil, fmt.Errorf("NOT_FOUND: process %q version %d", processID, version)
+		}
+		return nil, fmt.Errorf("NOT_FOUND: process %q", processID)
+	}
+	dep := e.deployments[id]
+	if dep == nil {
+		return nil, fmt.Errorf("NOT_FOUND: deployment %q", id)
+	}
+	return dep, nil
+}
+
+// GetDeployment returns a compiled deployment by id.
+func (e *Engine) GetDeployment(deploymentID string) (*deploy.Deployment, bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	dep, ok := e.deployments[deploymentID]
+	return dep, ok
 }
 
 func (e *Engine) Complete(ctx context.Context, instanceID, elementID, tokenID string, vars map[string]any) error {

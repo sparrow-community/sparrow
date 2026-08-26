@@ -22,7 +22,7 @@ Additive Protobuf fields only. Regenerate with `cd protocol/proto && ./build.sh`
 
 | Field | Type | When |
 |-------|------|------|
-| `error_code` | string | already used on ERROR_THROWN; also on error ESP START_EVENT ACTIVATED (arm) |
+| `error_code` | string | already used on ERROR_THROWN; also on error Event Sub-Process START_EVENT ACTIVATED (arm) |
 
 No new `Element.Type`. No new Intent required for the happy path (reuse ACTIVATED/COMPLETED/TERMINATED). Child start is a PROCESS on the child instance id.
 

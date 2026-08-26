@@ -16,10 +16,11 @@ type EventSubProcess struct {
 	Kind          CatchKind
 	MessageName   string
 	SignalName    string
+	ErrorCode     string // empty = catch-all when Kind == CatchKindError
 	// Timer facts live in timerCatch[StartEventID] when Kind == CatchKindTimer.
 }
 
-func validateEventSubProcess(sp *element.SubProcess, messages []element.Message, signals []element.Signal) error {
+func validateEventSubProcess(sp *element.SubProcess, messages []element.Message, signals []element.Signal, errors []element.Error) error {
 	if !sp.TriggeredByEvent {
 		return nil
 	}
@@ -30,20 +31,20 @@ func validateEventSubProcess(sp *element.SubProcess, messages []element.Message,
 		return fmt.Errorf("UNSUPPORTED_ELEMENT: event subProcess %q needs exactly one startEvent", sp.ID)
 	}
 	start := sp.StartEvents[0]
-	if _, err := eventSubProcessStartSpec(sp.ID, start, messages, signals); err != nil {
+	if _, err := eventSubProcessStartSpec(sp.ID, start, messages, signals, errors); err != nil {
 		return err
 	}
 	return nil
 }
 
-func eventSubProcessStartSpec(subProcessID string, start element.StartEvent, messages []element.Message, signals []element.Signal) (EventSubProcess, error) {
+func eventSubProcessStartSpec(subProcessID string, start element.StartEvent, messages []element.Message, signals []element.Signal, errors []element.Error) (EventSubProcess, error) {
 	spec := EventSubProcess{
 		ID:           subProcessID,
 		StartEventID: start.ID,
 		// BPMN default for event sub-process start is interrupting when attribute absent.
 		Interrupting: start.IsInterrupting(),
 	}
-	// Prefer message, then signal, then timer.
+	// Prefer message, then signal, then timer, then error.
 	if len(start.MessageEventDefinitions) > 0 {
 		mc, err := messageCatchFromDefs(start.ID, start.EventDefinitions, messages, strings.TrimSpace(start.Name))
 		if err != nil {
@@ -69,7 +70,51 @@ func eventSubProcessStartSpec(subProcessID string, start element.StartEvent, mes
 		spec.Kind = CatchKindTimer
 		return spec, nil
 	}
-	return EventSubProcess{}, fmt.Errorf("UNSUPPORTED_ELEMENT: event subProcess %q startEvent must be message, signal, or timer", subProcessID)
+	if len(start.ErrorEventDefinitions) > 0 {
+		code, err := errorStartCatchFromDefs(start.ID, start.EventDefinitions, errors)
+		if err != nil {
+			return EventSubProcess{}, fmt.Errorf("UNSUPPORTED_ELEMENT: event subProcess %q startEvent: %v", subProcessID, err)
+		}
+		spec.Kind = CatchKindError
+		spec.ErrorCode = code
+		return spec, nil
+	}
+	return EventSubProcess{}, fmt.Errorf("UNSUPPORTED_ELEMENT: event subProcess %q startEvent must be message, signal, timer, or error", subProcessID)
+}
+
+func errorStartCatchFromDefs(startEventID string, defs element.EventDefinitions, errors []element.Error) (string, error) {
+	if len(defs.ErrorEventDefinitions) != 1 {
+		return "", fmt.Errorf("startEvent %q must have exactly one errorEventDefinition", startEventID)
+	}
+	other := extraCatchDefinitions(defs) - len(defs.ErrorEventDefinitions)
+	if other > 0 {
+		return "", fmt.Errorf("startEvent %q must be an error start", startEventID)
+	}
+	return resolveErrorCode(defs.ErrorEventDefinitions[0].ErrorRef, errors), nil
+}
+
+// MatchErrorEventSubProcess returns an armed error event sub-process in scopeID that catches errorCode.
+// Prefers an exact code match over a catch-all (empty ErrorCode).
+func (d *Deployment) MatchErrorEventSubProcess(scopeID, errorCode string, isArmed func(eventSubProcessID string) bool) (string, bool) {
+	var catchAll string
+	for _, sp := range d.EventSubProcessesInScope(scopeID) {
+		if sp.Kind != CatchKindError {
+			continue
+		}
+		if isArmed != nil && !isArmed(sp.ID) {
+			continue
+		}
+		if sp.ErrorCode == errorCode {
+			return sp.ID, true
+		}
+		if sp.ErrorCode == "" && catchAll == "" {
+			catchAll = sp.ID
+		}
+	}
+	if catchAll != "" {
+		return catchAll, true
+	}
+	return "", false
 }
 
 // EventSubProcessByStartEvent returns the event sub-process whose start event is startEventID.

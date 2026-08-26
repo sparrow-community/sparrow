@@ -19,17 +19,17 @@ This session: <one thing; prefer next unchecked US in tasks.md>
 
 ## Roadmap
 
-**Done (M1–M4c + CallActivity child instance + IO mapping):** Start/UserTask/XOR/End; ServiceTask/Job; timer/message/signal catch & boundary; gateways; SubProcess; Event Sub-Process (message/timer/signal); throw/compensation; error boundary/end/ThrowError; CallActivity as **independent child instance** with optional IO name mappings.
+**Done (M1–M4c + CallActivity child instance + IO mapping + error Event Sub-Process + process revisions):** Start/UserTask/XOR/End; ServiceTask/Job; timer/message/signal catch & boundary; gateways; SubProcess; Event Sub-Process (message/timer/signal/error); throw/compensation; error boundary/end/ThrowError; CallActivity as **independent child instance** with optional IO name mappings; same `process_id` revision coexistence (`CreateInstance` by deployment or process id/version).
 
-**Next:** [`tasks.md`](./specs/001-engine-completeness/tasks.md) T017+ — US3 Error Event Sub-Process → US4 revision coexistence.
+**Next:** New feature increment via Spec Kit (`/speckit-specify`) — deferred items below stay out of scope until specified.
 
-**Deferred:** cross-deployment CallActivity; live migration; ≥3 same-kind waiting boundaries on one activity; Incident; instantiate EBG; compensation into unfinished SubProcess; ESP nested in ESP; cluster; product suite. (One timer + one message + one signal boundary may coexist.)
+**Deferred:** cross-deployment CallActivity; live migration; ≥3 same-kind waiting boundaries on one activity; Incident; instantiate EBG; compensation into unfinished SubProcess; Event Sub-Process nested in Event Sub-Process; cluster; product suite. (One timer + one message + one signal boundary may coexist.)
 
 ## Implemented elements (snapshot)
 
-Process; Start (none); End (none/error/compensate); SequenceFlow; UserTask; ServiceTask (+ Job Activate/Fail/Heartbeat); Exclusive/Inclusive/Parallel/EventBased gateways; embedded SubProcess; CallActivity | Same-definition `calledElement`; **child process instance**; host parked with `called_process_instance_id`; optional IO name mappings; Event Sub-Process (message/timer/signal); intermediate catch/throw (timer/message/signal/compensate); Boundary (timer/message/signal/compensate/error); Association (compensation).
+Process; Start (none); End (none/error/compensate); SequenceFlow; UserTask; ServiceTask (+ Job Activate/Fail/Heartbeat); Exclusive/Inclusive/Parallel/EventBased gateways; embedded SubProcess; CallActivity | Same-definition `calledElement`; **child process instance**; host parked with `called_process_instance_id`; optional IO name mappings; Event Sub-Process (message/timer/signal/error); intermediate catch/throw (timer/message/signal/compensate); Boundary (timer/message/signal/compensate/error); Association (compensation); process revision index (latest or explicit version at start).
 
-**Gaps covered by active spec:** CallActivity child instance + IO mapping; Error Event Sub-Process; process revision coexistence. **Still out of scope:** Escalation/Link/Conditional/Terminate; Send/Receive/Manual/BusinessRule Task; Multi-instance; cross-deployment CallActivity.
+**Gaps covered by active spec:** CallActivity child instance + IO mapping; Error Event Sub-Process; process revision coexistence — **implemented**. **Still out of scope:** Escalation/Link/Conditional/Terminate; Send/Receive/Manual/BusinessRule Task; Multi-instance; cross-deployment CallActivity.
 
 ## Runtime surface
 

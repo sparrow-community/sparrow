@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
-             id="Definitions_nested_esp"
+             id="Definitions_nested_event_subprocess"
              targetNamespace="http://sparrow.example/nested-esp">
   <message id="message_1" name="cancel.inner"/>
-  <process id="Process_nested_esp" name="M4 Nested Event SubProcess" isExecutable="true">
+  <process id="Process_nested_event_subprocess" name="M4 Nested Event SubProcess" isExecutable="true">
     <startEvent id="StartEvent_1">
       <outgoing>Flow_start_to_sp</outgoing>
     </startEvent>
@@ -24,14 +24,14 @@
       <sequenceFlow id="Flow_sp_task_to_end" sourceRef="UserTask_sp" targetRef="End_sp"/>
 
       <subProcess id="Event_SubProcess_nested" name="On Cancel Inner" triggeredByEvent="true">
-        <startEvent id="ESP_Start_1" isInterrupting="true">
-          <outgoing>Flow_esp_start_to_end</outgoing>
-          <messageEventDefinition id="ESP_MsgDef_1" messageRef="message_1"/>
+        <startEvent id="Start_EventSubProcess_1" isInterrupting="true">
+          <outgoing>Flow_event_subprocess_start_to_end</outgoing>
+          <messageEventDefinition id="MsgDef_EventSubProcess_1" messageRef="message_1"/>
         </startEvent>
-        <endEvent id="ESP_End_1">
-          <incoming>Flow_esp_start_to_end</incoming>
+        <endEvent id="End_EventSubProcess_1">
+          <incoming>Flow_event_subprocess_start_to_end</incoming>
         </endEvent>
-        <sequenceFlow id="Flow_esp_start_to_end" sourceRef="ESP_Start_1" targetRef="ESP_End_1"/>
+        <sequenceFlow id="Flow_event_subprocess_start_to_end" sourceRef="Start_EventSubProcess_1" targetRef="End_EventSubProcess_1"/>
       </subProcess>
     </subProcess>
     <endEvent id="EndEvent_ok">

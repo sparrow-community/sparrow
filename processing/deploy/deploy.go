@@ -77,7 +77,7 @@ func Compile(bpmnXML []byte) (*Deployment, error) {
 	if proc == nil {
 		return nil, fmt.Errorf("process not found")
 	}
-	if err := validateM1(proc); err != nil {
+	if err := validateM1(proc, model.Definitions.Errors); err != nil {
 		return nil, err
 	}
 	if _, err := StartEventID(proc); err != nil {
@@ -203,7 +203,7 @@ func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messag
 		sp := &fe.SubProcesses[i]
 		reg(sp.ID, eventv1.Element_TYPE_SUB_PROCESS, sp.Outgoing, sp.Incoming)
 		if sp.TriggeredByEvent {
-			spec, err := eventSubProcessStartSpec(sp.ID, sp.StartEvents[0], messages, signals)
+			spec, err := eventSubProcessStartSpec(sp.ID, sp.StartEvents[0], messages, signals, errors)
 			if err == nil {
 				spec.ParentScopeID = scopeID
 				d.eventSubProcesses[sp.ID] = spec
@@ -235,7 +235,7 @@ func (d *Deployment) indexCallActivities(fe *element.FlowElements, catalog map[s
 				return fmt.Errorf("UNSUPPORTED_ELEMENT: callActivity %q cannot call the root process", ca.ID)
 			}
 			called := catalog[spec.CalledProcessID]
-			if err := validateM1(called); err != nil {
+			if err := validateM1(called, errors); err != nil {
 				return fmt.Errorf("UNSUPPORTED_ELEMENT: called process %q: %v", spec.CalledProcessID, err)
 			}
 			d.callActivities[spec.ID] = spec
@@ -265,14 +265,14 @@ func (d *Deployment) indexCallActivities(fe *element.FlowElements, catalog map[s
 	return walk(fe)
 }
 
-func validateM1(proc *element.Process) error {
+func validateM1(proc *element.Process, errors []element.Error) error {
 	unsupported := 0
 	unsupported += len(proc.Tasks) + len(proc.ManualTasks)
 	unsupported += len(proc.SendTasks) + len(proc.ReceiveTasks) + len(proc.BusinessRuleTasks)
 	if unsupported > 0 {
 		return fmt.Errorf("UNSUPPORTED_ELEMENT: process contains elements outside M1 subset")
 	}
-	if err := validateSubProcesses(&proc.FlowElements); err != nil {
+	if err := validateSubProcesses(&proc.FlowElements, errors); err != nil {
 		return err
 	}
 	if err := validateEventBasedGateways(&proc.FlowElements); err != nil {
@@ -771,18 +771,18 @@ func validateBoundaryHost(proc *element.Process, activityID string) error {
 	return fmt.Errorf("UNSUPPORTED_ELEMENT: boundary must attach to a userTask, serviceTask, or subProcess (%q)", activityID)
 }
 
-func validateSubProcesses(fe *element.FlowElements) error {
-	return validateSubProcessesAt(fe, false, false)
+func validateSubProcesses(fe *element.FlowElements, errors []element.Error) error {
+	return validateSubProcessesAt(fe, false, false, errors)
 }
 
-func validateSubProcessesAt(fe *element.FlowElements, insideEmbedded, insideEventSubProcess bool) error {
+func validateSubProcessesAt(fe *element.FlowElements, insideEmbedded, insideEventSubProcess bool, errors []element.Error) error {
 	for i := range fe.SubProcesses {
 		sp := &fe.SubProcesses[i]
 		if sp.TriggeredByEvent {
 			if insideEventSubProcess {
 				return fmt.Errorf("UNSUPPORTED_ELEMENT: event subProcess %q nested in event subProcess is not supported", sp.ID)
 			}
-			if err := validateEventSubProcess(sp, nil, nil); err != nil {
+			if err := validateEventSubProcess(sp, nil, nil, errors); err != nil {
 				return err
 			}
 			for _, f := range fe.SequenceFlows {
@@ -790,7 +790,7 @@ func validateSubProcessesAt(fe *element.FlowElements, insideEmbedded, insideEven
 					return fmt.Errorf("UNSUPPORTED_ELEMENT: event subProcess %q must not have sequence flow connections", sp.ID)
 				}
 			}
-			if err := validateSubProcessesAt(&sp.FlowElements, false, true); err != nil {
+			if err := validateSubProcessesAt(&sp.FlowElements, false, true, errors); err != nil {
 				return err
 			}
 			continue
@@ -798,7 +798,7 @@ func validateSubProcessesAt(fe *element.FlowElements, insideEmbedded, insideEven
 		if len(sp.StartEvents) == 0 {
 			return fmt.Errorf("UNSUPPORTED_ELEMENT: subProcess %q must have a startEvent", sp.ID)
 		}
-		if err := validateSubProcessesAt(&sp.FlowElements, true, insideEventSubProcess); err != nil {
+		if err := validateSubProcessesAt(&sp.FlowElements, true, insideEventSubProcess, errors); err != nil {
 			return err
 		}
 	}

@@ -301,6 +301,109 @@ func TestEngineServiceThrowError(t *testing.T) {
 	}
 }
 
+func TestEngineServiceProcessVersionCoexistence(t *testing.T) {
+	_, conn, stop := startGRPC(t)
+	defer stop()
+	ctx := context.Background()
+	client := enginev1.NewEngineServiceClient(conn)
+
+	v1, err := os.ReadFile(filepath.Join("..", "processing", "testdata", "m5_version_v1.bpmn"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	v2, err := os.ReadFile(filepath.Join("..", "processing", "testdata", "m5_version_v2.bpmn"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dep1, err := client.Deploy(ctx, &enginev1.DeployRequest{BpmnXml: v1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dep1.GetProcessId() != "Process_version" || dep1.GetProcessVersion() != 1 {
+		t.Fatalf("dep1=%v", dep1)
+	}
+	createdA, err := client.CreateInstance(ctx, &enginev1.CreateInstanceRequest{DeploymentId: dep1.GetDeploymentId()})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dep2, err := client.Deploy(ctx, &enginev1.DeployRequest{BpmnXml: v2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dep2.GetProcessVersion() != 2 {
+		t.Fatalf("dep2 version=%d", dep2.GetProcessVersion())
+	}
+
+	createdB, err := client.CreateInstance(ctx, &enginev1.CreateInstanceRequest{ProcessId: "Process_version"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotB, err := client.GetInstance(ctx, &enginev1.GetInstanceRequest{ProcessInstanceId: createdB.GetProcessInstanceId()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotB.GetInstance().GetProcessVersion() != 2 {
+		t.Fatalf("B version=%d", gotB.GetInstance().GetProcessVersion())
+	}
+	waitingB := ""
+	for _, tok := range gotB.GetInstance().GetTokens() {
+		if tok.GetStatus() == string(projection.TokenWaiting) {
+			waitingB = tok.GetElementId()
+		}
+	}
+	if waitingB != "TaskB" {
+		t.Fatalf("B waiting=%s", waitingB)
+	}
+
+	gotA, err := client.GetInstance(ctx, &enginev1.GetInstanceRequest{ProcessInstanceId: createdA.GetProcessInstanceId()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotA.GetInstance().GetProcessVersion() != 1 {
+		t.Fatalf("A version=%d", gotA.GetInstance().GetProcessVersion())
+	}
+	waitingA := ""
+	for _, tok := range gotA.GetInstance().GetTokens() {
+		if tok.GetStatus() == string(projection.TokenWaiting) {
+			waitingA = tok.GetElementId()
+		}
+	}
+	if waitingA != "TaskA" {
+		t.Fatalf("A waiting=%s", waitingA)
+	}
+
+	createdC, err := client.CreateInstance(ctx, &enginev1.CreateInstanceRequest{
+		ProcessId:      "Process_version",
+		ProcessVersion: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotC, err := client.GetInstance(ctx, &enginev1.GetInstanceRequest{ProcessInstanceId: createdC.GetProcessInstanceId()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitingC := ""
+	for _, tok := range gotC.GetInstance().GetTokens() {
+		if tok.GetStatus() == string(projection.TokenWaiting) {
+			waitingC = tok.GetElementId()
+		}
+	}
+	if waitingC != "TaskA" || gotC.GetInstance().GetProcessVersion() != 1 {
+		t.Fatalf("C waiting=%s version=%d", waitingC, gotC.GetInstance().GetProcessVersion())
+	}
+
+	_, err = client.CreateInstance(ctx, &enginev1.CreateInstanceRequest{
+		ProcessId:      "Process_version",
+		ProcessVersion: 99,
+	})
+	if status.Code(err) != codes.NotFound {
+		t.Fatalf("unknown version code=%v err=%v", status.Code(err), err)
+	}
+}
+
 func startGRPC(t *testing.T) (*processing.Engine, *grpc.ClientConn, func()) {
 	t.Helper()
 	eng := processing.NewEngine(eventlog.NewMemory())

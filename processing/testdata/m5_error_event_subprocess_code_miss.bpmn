@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             id="Definitions_error_event_subprocess_code_miss"
+             targetNamespace="http://sparrow.example/error-event-subprocess-code-miss">
+  <error id="Error_e1" errorCode="E1" name="Error E1"/>
+  <error id="Error_e2" errorCode="E2" name="Error E2"/>
+  <process id="Process_error_event_subprocess_code_miss" name="M5 Error Event Sub-Process Code Miss" isExecutable="true">
+    <startEvent id="StartEvent_1">
+      <outgoing>Flow_start_to_err</outgoing>
+    </startEvent>
+    <endEvent id="EndEvent_err">
+      <incoming>Flow_start_to_err</incoming>
+      <errorEventDefinition id="ErrorDef_end" errorRef="Error_e2"/>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_err" sourceRef="StartEvent_1" targetRef="EndEvent_err"/>
+
+    <subProcess id="Event_SubProcess_1" name="On E1 only" triggeredByEvent="true">
+      <startEvent id="Start_EventSubProcess_1" isInterrupting="true">
+        <outgoing>Flow_event_subprocess_start_to_end</outgoing>
+        <errorEventDefinition id="ErrorDef_EventSubProcess_1" errorRef="Error_e1"/>
+      </startEvent>
+      <endEvent id="End_EventSubProcess_1">
+        <incoming>Flow_event_subprocess_start_to_end</incoming>
+      </endEvent>
+      <sequenceFlow id="Flow_event_subprocess_start_to_end" sourceRef="Start_EventSubProcess_1" targetRef="End_EventSubProcess_1"/>
+    </subProcess>
+  </process>
+</definitions>

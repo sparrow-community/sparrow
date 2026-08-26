@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/sparrow-community/sparrow/processing"
+	"github.com/sparrow-community/sparrow/processing/deploy"
 	eventlog "github.com/sparrow-community/sparrow/processing/log"
 	"github.com/sparrow-community/sparrow/processing/projection"
 	eventv1 "github.com/sparrow-community/sparrow/protocol/gen/go/event/v1"
@@ -70,6 +71,55 @@ func TestCallActivityCompletesChildThenCaller(t *testing.T) {
 	}
 }
 
+func TestCallActivityRecoverMidCall(t *testing.T) {
+	xml := readTestdataCall(t, "m5_call_instance.bpmn")
+	ctx := context.Background()
+	memLog := eventlog.NewMemory()
+	store := deploy.NewMemoryStore()
+	eng1, err := processing.Recover(ctx, memLog, store, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	depID, err := eng1.Deploy(ctx, xml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	callerID, err := eng1.CreateInstance(ctx, depID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caller := mustInstance(t, eng1, callerID)
+	_, hostTok := waitingAt(caller)
+	childID := caller.Tokens[hostTok].CalledProcessInstanceID
+	if childID == "" {
+		t.Fatal("expected called process instance id before recover")
+	}
+
+	eng2, err := processing.Recover(ctx, memLog, store, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caller = mustInstance(t, eng2, callerID)
+	_, hostTok = waitingAt(caller)
+	host := caller.Tokens[hostTok]
+	if host == nil || host.CalledProcessInstanceID != childID {
+		t.Fatalf("caller link lost after recover: tok=%#v", host)
+	}
+	child := mustInstance(t, eng2, childID)
+	if child.ParentProcessInstanceID != callerID {
+		t.Fatalf("child parent=%q after recover", child.ParentProcessInstanceID)
+	}
+	elemID, tokenID := waitingAt(child)
+	if err := eng2.Complete(ctx, childID, elemID, tokenID, nil); err != nil {
+		t.Fatal(err)
+	}
+	child = mustInstance(t, eng2, childID)
+	caller = mustInstance(t, eng2, callerID)
+	if child.Status != projection.StatusCompleted || caller.Status != projection.StatusCompleted {
+		t.Fatalf("after recover complete: child=%s caller=%s", child.Status, caller.Status)
+	}
+}
+
 func TestCallActivityEventSubProcessInterrupting(t *testing.T) {
 	xml := readTestdataCall(t, "m4_call_activity_event_subprocess.bpmn")
 	eng := processing.NewEngine(eventlog.NewMemory())
@@ -118,7 +168,7 @@ func TestCallActivityEventSubProcessInterrupting(t *testing.T) {
 	}
 	events, _ := eng.ListEvents(ctx, callerID)
 	if !sawElementIntent(events, eventv1.Element_TYPE_CALL_ACTIVITY, "CallActivity_1", eventv1.Element_INTENT_COMPLETED) {
-		t.Fatal("expected CallActivity COMPLETED after child ESP finishes the called process")
+		t.Fatal("expected CallActivity COMPLETED after child Event Sub-Process finishes the called process")
 	}
 }
 

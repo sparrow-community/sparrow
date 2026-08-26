@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
-             id="Definitions_call_activity_esp"
+             id="Definitions_call_activity_event_subprocess"
              targetNamespace="http://sparrow.example/call-activity-esp">
   <message id="message_cancel_called" name="cancel.called"/>
-  <process id="Process_caller_esp" name="Caller with CallActivity" isExecutable="true">
+  <process id="Process_caller_event_subprocess" name="Caller with CallActivity" isExecutable="true">
     <startEvent id="Start_caller">
       <outgoing>Flow_start_to_call</outgoing>
     </startEvent>
-    <callActivity id="CallActivity_1" name="Call child" calledElement="Process_called_esp">
+    <callActivity id="CallActivity_1" name="Call child" calledElement="Process_called_event_subprocess">
       <incoming>Flow_start_to_call</incoming>
       <outgoing>Flow_call_to_end</outgoing>
     </callActivity>
@@ -17,7 +17,7 @@
     <sequenceFlow id="Flow_start_to_call" sourceRef="Start_caller" targetRef="CallActivity_1"/>
     <sequenceFlow id="Flow_call_to_end" sourceRef="CallActivity_1" targetRef="End_caller_ok"/>
   </process>
-  <process id="Process_called_esp" name="Called with Event Sub-Process" isExecutable="false">
+  <process id="Process_called_event_subprocess" name="Called with Event Sub-Process" isExecutable="false">
     <startEvent id="Start_called">
       <outgoing>Flow_called_start_to_task</outgoing>
     </startEvent>
@@ -32,14 +32,14 @@
     <sequenceFlow id="Flow_called_task_to_end" sourceRef="Task_called" targetRef="End_called"/>
 
     <subProcess id="Event_SubProcess_called" name="On Cancel" triggeredByEvent="true">
-      <startEvent id="ESP_Start_called" isInterrupting="true">
-        <outgoing>Flow_esp_to_end</outgoing>
-        <messageEventDefinition id="ESP_MsgDef_called" messageRef="message_cancel_called"/>
+      <startEvent id="Start_EventSubProcess_called" isInterrupting="true">
+        <outgoing>Flow_event_subprocess_to_end</outgoing>
+        <messageEventDefinition id="MsgDef_EventSubProcess_called" messageRef="message_cancel_called"/>
       </startEvent>
-      <endEvent id="ESP_End_called">
-        <incoming>Flow_esp_to_end</incoming>
+      <endEvent id="End_EventSubProcess_called">
+        <incoming>Flow_event_subprocess_to_end</incoming>
       </endEvent>
-      <sequenceFlow id="Flow_esp_to_end" sourceRef="ESP_Start_called" targetRef="ESP_End_called"/>
+      <sequenceFlow id="Flow_event_subprocess_to_end" sourceRef="Start_EventSubProcess_called" targetRef="End_EventSubProcess_called"/>
     </subProcess>
   </process>
 </definitions>

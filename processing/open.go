@@ -92,6 +92,7 @@ func (e *Engine) loadDeployments() error {
 		dep.ID = id
 		e.deployments[id] = dep
 	}
+	e.revisions = deploy.AssignProcessVersions(e.deployments)
 	return nil
 }
 
