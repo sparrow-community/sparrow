@@ -19,14 +19,15 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	EngineService_Deploy_FullMethodName         = "/engine.v1.EngineService/Deploy"
-	EngineService_CreateInstance_FullMethodName = "/engine.v1.EngineService/CreateInstance"
-	EngineService_Complete_FullMethodName       = "/engine.v1.EngineService/Complete"
-	EngineService_PublishMessage_FullMethodName = "/engine.v1.EngineService/PublishMessage"
-	EngineService_PublishSignal_FullMethodName  = "/engine.v1.EngineService/PublishSignal"
-	EngineService_ThrowError_FullMethodName     = "/engine.v1.EngineService/ThrowError"
-	EngineService_GetInstance_FullMethodName    = "/engine.v1.EngineService/GetInstance"
-	EngineService_ListEvents_FullMethodName     = "/engine.v1.EngineService/ListEvents"
+	EngineService_Deploy_FullMethodName          = "/engine.v1.EngineService/Deploy"
+	EngineService_CreateInstance_FullMethodName  = "/engine.v1.EngineService/CreateInstance"
+	EngineService_Complete_FullMethodName        = "/engine.v1.EngineService/Complete"
+	EngineService_PublishMessage_FullMethodName  = "/engine.v1.EngineService/PublishMessage"
+	EngineService_PublishSignal_FullMethodName   = "/engine.v1.EngineService/PublishSignal"
+	EngineService_ThrowError_FullMethodName      = "/engine.v1.EngineService/ThrowError"
+	EngineService_ResolveIncident_FullMethodName = "/engine.v1.EngineService/ResolveIncident"
+	EngineService_GetInstance_FullMethodName     = "/engine.v1.EngineService/GetInstance"
+	EngineService_ListEvents_FullMethodName      = "/engine.v1.EngineService/ListEvents"
 )
 
 // EngineServiceClient is the client API for EngineService service.
@@ -48,6 +49,8 @@ type EngineServiceClient interface {
 	PublishSignal(ctx context.Context, in *PublishSignalRequest, opts ...grpc.CallOption) (*PublishSignalResponse, error)
 	// ThrowError maps to Engine.ThrowError for a waiting UserTask or ServiceTask.
 	ThrowError(ctx context.Context, in *ThrowErrorRequest, opts ...grpc.CallOption) (*ThrowErrorResponse, error)
+	// ResolveIncident closes an open Service Task incident and restores job waiting.
+	ResolveIncident(ctx context.Context, in *ResolveIncidentRequest, opts ...grpc.CallOption) (*ResolveIncidentResponse, error)
 	// GetInstance returns a projection snapshot.
 	GetInstance(ctx context.Context, in *GetInstanceRequest, opts ...grpc.CallOption) (*GetInstanceResponse, error)
 	// ListEvents returns the instance audit timeline.
@@ -122,6 +125,16 @@ func (c *engineServiceClient) ThrowError(ctx context.Context, in *ThrowErrorRequ
 	return out, nil
 }
 
+func (c *engineServiceClient) ResolveIncident(ctx context.Context, in *ResolveIncidentRequest, opts ...grpc.CallOption) (*ResolveIncidentResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ResolveIncidentResponse)
+	err := c.cc.Invoke(ctx, EngineService_ResolveIncident_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *engineServiceClient) GetInstance(ctx context.Context, in *GetInstanceRequest, opts ...grpc.CallOption) (*GetInstanceResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetInstanceResponse)
@@ -161,6 +174,8 @@ type EngineServiceServer interface {
 	PublishSignal(context.Context, *PublishSignalRequest) (*PublishSignalResponse, error)
 	// ThrowError maps to Engine.ThrowError for a waiting UserTask or ServiceTask.
 	ThrowError(context.Context, *ThrowErrorRequest) (*ThrowErrorResponse, error)
+	// ResolveIncident closes an open Service Task incident and restores job waiting.
+	ResolveIncident(context.Context, *ResolveIncidentRequest) (*ResolveIncidentResponse, error)
 	// GetInstance returns a projection snapshot.
 	GetInstance(context.Context, *GetInstanceRequest) (*GetInstanceResponse, error)
 	// ListEvents returns the instance audit timeline.
@@ -192,6 +207,9 @@ func (UnimplementedEngineServiceServer) PublishSignal(context.Context, *PublishS
 }
 func (UnimplementedEngineServiceServer) ThrowError(context.Context, *ThrowErrorRequest) (*ThrowErrorResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ThrowError not implemented")
+}
+func (UnimplementedEngineServiceServer) ResolveIncident(context.Context, *ResolveIncidentRequest) (*ResolveIncidentResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ResolveIncident not implemented")
 }
 func (UnimplementedEngineServiceServer) GetInstance(context.Context, *GetInstanceRequest) (*GetInstanceResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetInstance not implemented")
@@ -328,6 +346,24 @@ func _EngineService_ThrowError_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _EngineService_ResolveIncident_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ResolveIncidentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EngineServiceServer).ResolveIncident(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EngineService_ResolveIncident_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EngineServiceServer).ResolveIncident(ctx, req.(*ResolveIncidentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _EngineService_GetInstance_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetInstanceRequest)
 	if err := dec(in); err != nil {
@@ -394,6 +430,10 @@ var EngineService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ThrowError",
 			Handler:    _EngineService_ThrowError_Handler,
+		},
+		{
+			MethodName: "ResolveIncident",
+			Handler:    _EngineService_ResolveIncident_Handler,
 		},
 		{
 			MethodName: "GetInstance",

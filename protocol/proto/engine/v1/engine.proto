@@ -26,6 +26,10 @@ message Token {
   string called_process_instance_id = 9;
   // Multi-instance inner iteration index (0-based); -1 for loop host or non-MI tokens.
   int32 loop_instance_index = 10;
+  // Worker error snapshot when status is blocked; empty otherwise.
+  string incident_error_message = 11;
+  // Consecutive job failures since last activation or resolve; informational.
+  int32 job_fail_count = 12;
 }
 
 // Instance is a read-only projection snapshot. It is not an EventLog record.
@@ -169,6 +173,19 @@ message ThrowErrorRequest {
 // ThrowErrorResponse is empty on success.
 message ThrowErrorResponse {}
 
+// ResolveIncidentRequest closes an open incident and restores waiting job semantics.
+message ResolveIncidentRequest {
+  // Process instance id (UUIDv7).
+  string process_instance_id = 1;
+  // BPMN element id from the process definition.
+  string element_id = 2;
+  // Execution token id (UUIDv7).
+  string token_id = 3;
+}
+
+// ResolveIncidentResponse is empty on success.
+message ResolveIncidentResponse {}
+
 // ListEventsRequest reads the audit timeline for one instance.
 message ListEventsRequest {
   // Process instance id (UUIDv7).
@@ -196,6 +213,8 @@ service EngineService {
   rpc PublishSignal(PublishSignalRequest) returns (PublishSignalResponse);
   // ThrowError maps to Engine.ThrowError for a waiting UserTask or ServiceTask.
   rpc ThrowError(ThrowErrorRequest) returns (ThrowErrorResponse);
+  // ResolveIncident closes an open Service Task incident and restores job waiting.
+  rpc ResolveIncident(ResolveIncidentRequest) returns (ResolveIncidentResponse);
   // GetInstance returns a projection snapshot.
   rpc GetInstance(GetInstanceRequest) returns (GetInstanceResponse);
   // ListEvents returns the instance audit timeline.

@@ -308,8 +308,12 @@ type ActivityPayload struct {
 	LoopCompletedInstances int32 `protobuf:"varint,14,opt,name=loop_completed_instances,json=loopCompletedInstances,proto3" json:"loop_completed_instances,omitempty"`
 	// True when the loop host ACTIVATED starts a sequential multi-instance.
 	LoopSequential bool `protobuf:"varint,15,opt,name=loop_sequential,json=loopSequential,proto3" json:"loop_sequential,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Consecutive job failures since last ACTIVATED or INCIDENT_RESOLVED.
+	JobFailCount int32 `protobuf:"varint,16,opt,name=job_fail_count,json=jobFailCount,proto3" json:"job_fail_count,omitempty"`
+	// When true on a FAILED command, open an incident after this fail regardless of count.
+	NoRetry       bool `protobuf:"varint,17,opt,name=no_retry,json=noRetry,proto3" json:"no_retry,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ActivityPayload) Reset() {
@@ -443,6 +447,20 @@ func (x *ActivityPayload) GetLoopCompletedInstances() int32 {
 func (x *ActivityPayload) GetLoopSequential() bool {
 	if x != nil {
 		return x.LoopSequential
+	}
+	return false
+}
+
+func (x *ActivityPayload) GetJobFailCount() int32 {
+	if x != nil {
+		return x.JobFailCount
+	}
+	return 0
+}
+
+func (x *ActivityPayload) GetNoRetry() bool {
+	if x != nil {
+		return x.NoRetry
 	}
 	return false
 }
@@ -607,7 +625,7 @@ const file_event_v1_payloads_proto_rawDesc = "" +
 	"error_code\x18\a \x01(\tR\terrorCode\x12\x1d\n" +
 	"\n" +
 	"token_wait\x18\b \x01(\bR\ttokenWait\x12>\n" +
-	"\x1cevent_sub_process_element_id\x18\t \x01(\tR\x18eventSubProcessElementId\"\x84\x05\n" +
+	"\x1cevent_sub_process_element_id\x18\t \x01(\tR\x18eventSubProcessElementId\"\xc5\x05\n" +
 	"\x0fActivityPayload\x120\n" +
 	"\tvariables\x18\x01 \x03(\v2\x12.event.v1.VariableR\tvariables\x12\x19\n" +
 	"\bjob_type\x18\x02 \x01(\tR\ajobType\x12#\n" +
@@ -626,7 +644,9 @@ const file_event_v1_payloads_proto_rawDesc = "" +
 	"\x13loop_instance_index\x18\f \x01(\x05R\x11loopInstanceIndex\x120\n" +
 	"\x14loop_total_instances\x18\r \x01(\x05R\x12loopTotalInstances\x128\n" +
 	"\x18loop_completed_instances\x18\x0e \x01(\x05R\x16loopCompletedInstances\x12'\n" +
-	"\x0floop_sequential\x18\x0f \x01(\bR\x0eloopSequential\"E\n" +
+	"\x0floop_sequential\x18\x0f \x01(\bR\x0eloopSequential\x12$\n" +
+	"\x0ejob_fail_count\x18\x10 \x01(\x05R\fjobFailCount\x12\x19\n" +
+	"\bno_retry\x18\x11 \x01(\bR\anoRetry\"E\n" +
 	"\x0eGatewayPayload\x123\n" +
 	"\x16taken_sequence_flow_id\x18\x01 \x01(\tR\x13takenSequenceFlowId\"O\n" +
 	"\x13SequenceFlowPayload\x12\x1b\n" +

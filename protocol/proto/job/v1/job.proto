@@ -68,6 +68,8 @@ message FailJobRequest {
   string token_id = 3;
   // Worker-reported reason; stored on the FAILED event payload.
   string error_message = 4;
+  // When true, open an incident after this fail regardless of retry count.
+  bool no_retry = 5;
 }
 
 // FailJobResponse is empty on success.

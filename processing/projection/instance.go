@@ -19,6 +19,7 @@ type TokenStatus string
 const (
 	TokenActive  TokenStatus = "active"
 	TokenWaiting TokenStatus = "waiting"
+	TokenBlocked TokenStatus = "blocked"
 )
 
 type Token struct {
@@ -63,6 +64,10 @@ type Token struct {
 	MultiInstanceHost bool
 	// ScopeHostTokenID links an embedded SubProcess child token to its parked scope-host token.
 	ScopeHostTokenID string
+	// JobFailCount is consecutive FAILED events since last ACTIVATED or INCIDENT_RESOLVED.
+	JobFailCount int32
+	// IncidentErrorMessage is the worker error snapshot while blocked.
+	IncidentErrorMessage string
 }
 
 // ScopeBoundary tracks a boundary armed on a SubProcess scope.
@@ -387,6 +392,8 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 				tok.SignalName = p.GetSignalName()
 				tok.SignalBoundaryID = p.GetSignalBoundaryId()
 				tok.CalledProcessInstanceID = p.GetCalledProcessInstanceId()
+				tok.JobFailCount = 0
+				tok.IncidentErrorMessage = ""
 			}
 		}
 		if p := el.GetEventPayload(); p != nil {
@@ -435,9 +442,36 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 		tok.CalledProcessInstanceID = ""
 		tok.MultiInstanceHost = false
 		tok.LoopInstanceIndex = -1
+		tok.JobFailCount = 0
+		tok.IncidentErrorMessage = ""
 	case eventv1.Element_INTENT_FAILED:
-		// Job failure does not complete the activity; worker may retry.
+		// Job failure does not complete the activity; worker may retry until incident opens.
 		tok.Status = TokenWaiting
+		if p := el.GetActivityPayload(); p != nil {
+			if p.GetJobType() != "" {
+				tok.JobType = p.GetJobType()
+			}
+			if p.GetJobFailCount() > 0 {
+				tok.JobFailCount = p.GetJobFailCount()
+			} else {
+				tok.JobFailCount++
+			}
+		}
+	case eventv1.Element_INTENT_INCIDENT_OPENED:
+		tok.Status = TokenBlocked
+		if p := el.GetActivityPayload(); p != nil {
+			if p.GetJobType() != "" {
+				tok.JobType = p.GetJobType()
+			}
+			if p.GetJobFailCount() > 0 {
+				tok.JobFailCount = p.GetJobFailCount()
+			}
+			tok.IncidentErrorMessage = p.GetErrorMessage()
+		}
+	case eventv1.Element_INTENT_INCIDENT_RESOLVED:
+		tok.Status = TokenWaiting
+		tok.JobFailCount = 0
+		tok.IncidentErrorMessage = ""
 		if p := el.GetActivityPayload(); p != nil && p.GetJobType() != "" {
 			tok.JobType = p.GetJobType()
 		}

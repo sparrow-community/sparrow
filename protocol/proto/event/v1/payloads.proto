@@ -84,6 +84,10 @@ message ActivityPayload {
   int32 loop_completed_instances = 14;
   // True when the loop host ACTIVATED starts a sequential multi-instance.
   bool loop_sequential = 15;
+  // Consecutive job failures since last ACTIVATED or INCIDENT_RESOLVED.
+  int32 job_fail_count = 16;
+  // When true on a FAILED command, open an incident after this fail regardless of count.
+  bool no_retry = 17;
 }
 
 message GatewayPayload {

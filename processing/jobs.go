@@ -196,10 +196,10 @@ func (e *Engine) releaseLease(instanceID, tokenID string) {
 	e.persistReleaseLease(instanceID, tokenID)
 }
 
-// Fail records SERVICE_TASK FAILED, keeps the token waiting, and drops the
-// lease so another Activate can claim the job. UserTask and non-waiting
-// elements are rejected. Completing the activity is still Engine.Complete.
-func (e *Engine) Fail(ctx context.Context, instanceID, elementID, tokenID, message string) error {
+// Fail records SERVICE_TASK FAILED, keeps the token waiting (or opens an incident),
+// and drops the lease so another Activate can claim the job when retriable.
+// UserTask and non-waiting elements are rejected. Completing the activity is Engine.Complete.
+func (e *Engine) Fail(ctx context.Context, instanceID, elementID, tokenID, message string, noRetry bool) error {
 	e.mu.Lock()
 	inst := e.instances[instanceID]
 	lock := e.instMu[instanceID]
@@ -221,7 +221,13 @@ func (e *Engine) Fail(ctx context.Context, instanceID, elementID, tokenID, messa
 	}
 
 	tok := inst.Tokens[tokenID]
-	if tok == nil || tok.ElementID != elementID || tok.Status != projection.TokenWaiting {
+	if tok == nil || tok.ElementID != elementID {
+		return e.reject(ctx, inst, elementID, tokenID, typ, eventv1.Element_INTENT_FAILED, "INVALID_STATE", "element is not waiting for completion")
+	}
+	if tok.Status == projection.TokenBlocked {
+		return e.reject(ctx, inst, elementID, tokenID, typ, eventv1.Element_INTENT_FAILED, "INCIDENT_OPEN", "incident is open")
+	}
+	if tok.Status != projection.TokenWaiting {
 		return e.reject(ctx, inst, elementID, tokenID, typ, eventv1.Element_INTENT_FAILED, "INVALID_STATE", "element is not waiting for completion")
 	}
 	if typeErr != nil {
@@ -231,10 +237,12 @@ func (e *Engine) Fail(ctx context.Context, instanceID, elementID, tokenID, messa
 		return e.reject(ctx, inst, elementID, tokenID, typ, eventv1.Element_INTENT_FAILED, "INVALID_STATE", "element is not a job")
 	}
 
+	failCount := tok.JobFailCount + 1
 	cmdID, err := NextID()
 	if err != nil {
 		return err
 	}
+	cmdPayload := jobFailActivityPayload(tok, message, failCount, noRetry)
 	cmd := &eventv1.Event{
 		Id:                cmdID,
 		Timestamp:         nowMillis(),
@@ -247,12 +255,7 @@ func (e *Engine) Fail(ctx context.Context, instanceID, elementID, tokenID, messa
 			Type:    typ,
 			Id:      elementID,
 			TokenId: tokenID,
-			Payload: &eventv1.Element_ActivityPayload{
-				ActivityPayload: &eventv1.ActivityPayload{
-					JobType:      tok.JobType,
-					ErrorMessage: message,
-				},
-			},
+			Payload: &eventv1.Element_ActivityPayload{ActivityPayload: cmdPayload},
 		},
 	}
 	if _, err := e.log.Append(ctx, cmd); err != nil {
@@ -260,18 +263,7 @@ func (e *Engine) Fail(ctx context.Context, instanceID, elementID, tokenID, messa
 	}
 
 	emit := e.emitter(ctx, inst, cmdID)
-	if err := emit(&eventv1.Element{
-		Intent:  eventv1.Element_INTENT_FAILED,
-		Type:    typ,
-		Id:      elementID,
-		TokenId: tokenID,
-		Payload: &eventv1.Element_ActivityPayload{
-			ActivityPayload: &eventv1.ActivityPayload{
-				JobType:      tok.JobType,
-				ErrorMessage: message,
-			},
-		},
-	}); err != nil {
+	if err := emitJobFailChain(dep, inst, typ, elementID, tokenID, message, failCount, noRetry, emit); err != nil {
 		return err
 	}
 

@@ -65,6 +65,9 @@ message Element {
     INTENT_SUSPENDED = 11;
     INTENT_RESUMING = 12;
     INTENT_RESUMED = 13;
+
+    INTENT_INCIDENT_OPENED = 14;
+    INTENT_INCIDENT_RESOLVED = 15;
   }
 
   // Type mirrors independent BPMN elements.

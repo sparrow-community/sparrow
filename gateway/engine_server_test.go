@@ -13,6 +13,7 @@ import (
 	"github.com/sparrow-community/sparrow/processing/projection"
 	enginev1 "github.com/sparrow-community/sparrow/protocol/gen/go/engine/v1"
 	eventv1 "github.com/sparrow-community/sparrow/protocol/gen/go/event/v1"
+	jobv1 "github.com/sparrow-community/sparrow/protocol/gen/go/job/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -440,6 +441,91 @@ func TestEngineServiceLoopInstanceIndex(t *testing.T) {
 	if len(seen) != 3 {
 		t.Fatalf("loop indexes=%v want 0,1,2", seen)
 	}
+}
+
+func TestEngineServiceResolveIncident(t *testing.T) {
+	eng, conn, stop := startGRPC(t)
+	defer stop()
+	ctx := context.Background()
+	engineClient := enginev1.NewEngineServiceClient(conn)
+	jobClient := jobv1.NewJobServiceClient(conn)
+
+	xml, err := os.ReadFile(filepath.Join("..", "processing", "testdata", "m7_incident_service.bpmn"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dep, err := engineClient.Deploy(ctx, &enginev1.DeployRequest{BpmnXml: xml})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := engineClient.CreateInstance(ctx, &enginev1.CreateInstanceRequest{DeploymentId: dep.GetDeploymentId()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	instanceID := created.GetProcessInstanceId()
+
+	for i := 0; i < 3; i++ {
+		act, err := jobClient.ActivateJobs(ctx, &jobv1.ActivateJobsRequest{JobType: "work.v1", WorkerId: "gw"})
+		if err != nil || len(act.GetJobs()) != 1 {
+			t.Fatalf("activate i=%d jobs=%v err=%v", i, act.GetJobs(), err)
+		}
+		job := act.GetJobs()[0]
+		if _, err := jobClient.FailJob(ctx, &jobv1.FailJobRequest{
+			ProcessInstanceId: job.GetProcessInstanceId(),
+			ElementId:         job.GetElementId(),
+			TokenId:           job.GetTokenId(),
+			ErrorMessage:      "err",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := engineClient.GetInstance(ctx, &enginev1.GetInstanceRequest{ProcessInstanceId: instanceID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var elementID, tokenID string
+	for _, tok := range got.GetInstance().GetTokens() {
+		if tok.GetStatus() == string(projection.TokenBlocked) {
+			elementID, tokenID = tok.GetElementId(), tok.GetId()
+			if tok.GetIncidentErrorMessage() != "err" {
+				t.Fatalf("token=%v", tok)
+			}
+			break
+		}
+	}
+	if elementID == "" {
+		t.Fatalf("tokens=%v", got.GetInstance().GetTokens())
+	}
+
+	if _, err := engineClient.ResolveIncident(ctx, &enginev1.ResolveIncidentRequest{
+		ProcessInstanceId: instanceID,
+		ElementId:         elementID,
+		TokenId:           tokenID,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	act, err := jobClient.ActivateJobs(ctx, &jobv1.ActivateJobsRequest{JobType: "work.v1", WorkerId: "gw2"})
+	if err != nil || len(act.GetJobs()) != 1 {
+		t.Fatalf("activate after resolve=%v err=%v", act.GetJobs(), err)
+	}
+	job := act.GetJobs()[0]
+	if _, err := jobClient.CompleteJob(ctx, &jobv1.CompleteJobRequest{
+		ProcessInstanceId: job.GetProcessInstanceId(),
+		ElementId:         job.GetElementId(),
+		TokenId:           job.GetTokenId(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, err = engineClient.GetInstance(ctx, &enginev1.GetInstanceRequest{ProcessInstanceId: instanceID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.GetInstance().GetStatus() != string(projection.StatusCompleted) {
+		t.Fatalf("status=%s", got.GetInstance().GetStatus())
+	}
+	_ = eng
 }
 
 func startGRPC(t *testing.T) (*processing.Engine, *grpc.ClientConn, func()) {

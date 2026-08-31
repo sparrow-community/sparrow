@@ -31,6 +31,7 @@ type Deployment struct {
 	calledProcessOwner  map[string]string      // called process id -> callActivity id
 	calledProcesses     map[string]element.Process
 	multiInstances      map[string]MultiInstanceSpec
+	incidentThresholds  map[string]int
 	elements            map[string]*elemEntry // flat index of all elements (recursive into subprocesses)
 	seqFlows            map[string]*seqFlowEntry
 }
@@ -156,6 +157,9 @@ func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messag
 	for _, e := range fe.ServiceTasks {
 		reg(e.ID, eventv1.Element_TYPE_SERVICE_TASK, e.Outgoing, e.Incoming)
 		if err := indexMultiInstance(d, e.ID, e.LoopCharacteristicsElements); err != nil {
+			return err
+		}
+		if err := indexIncidentThreshold(d, e.ID, e.ExtensionElements); err != nil {
 			return err
 		}
 	}

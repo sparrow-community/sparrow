@@ -234,7 +234,7 @@ func TestFailReleasesLeaseAndKeepsWaiting(t *testing.T) {
 		t.Fatalf("activate=%#v err=%v", jobs, err)
 	}
 	job := jobs[0]
-	if err := eng.Fail(ctx, job.ProcessInstanceID, job.ElementID, job.TokenID, "boom"); err != nil {
+	if err := eng.Fail(ctx, job.ProcessInstanceID, job.ElementID, job.TokenID, "boom", false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -303,7 +303,7 @@ func TestFailRejectsUserTask(t *testing.T) {
 			break
 		}
 	}
-	err = eng.Fail(ctx, instanceID, elementID, tokenID, "nope")
+	err = eng.Fail(ctx, instanceID, elementID, tokenID, "nope", false)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -336,7 +336,7 @@ func TestFailWakesWaitingActivate(t *testing.T) {
 	}()
 
 	time.Sleep(30 * time.Millisecond)
-	if err := eng.Fail(ctx, held[0].ProcessInstanceID, held[0].ElementID, held[0].TokenID, "retry"); err != nil {
+	if err := eng.Fail(ctx, held[0].ProcessInstanceID, held[0].ElementID, held[0].TokenID, "retry", false); err != nil {
 		t.Fatal(err)
 	}
 	select {

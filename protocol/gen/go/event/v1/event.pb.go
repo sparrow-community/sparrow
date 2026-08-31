@@ -90,6 +90,8 @@ const (
 	Element_INTENT_SUSPENDED           Element_Intent = 11
 	Element_INTENT_RESUMING            Element_Intent = 12
 	Element_INTENT_RESUMED             Element_Intent = 13
+	Element_INTENT_INCIDENT_OPENED     Element_Intent = 14
+	Element_INTENT_INCIDENT_RESOLVED   Element_Intent = 15
 )
 
 // Enum value maps for Element_Intent.
@@ -109,6 +111,8 @@ var (
 		11: "INTENT_SUSPENDED",
 		12: "INTENT_RESUMING",
 		13: "INTENT_RESUMED",
+		14: "INTENT_INCIDENT_OPENED",
+		15: "INTENT_INCIDENT_RESOLVED",
 	}
 	Element_Intent_value = map[string]int32{
 		"INTENT_UNSPECIFIED":         0,
@@ -125,6 +129,8 @@ var (
 		"INTENT_SUSPENDED":           11,
 		"INTENT_RESUMING":            12,
 		"INTENT_RESUMED":             13,
+		"INTENT_INCIDENT_OPENED":     14,
+		"INTENT_INCIDENT_RESOLVED":   15,
 	}
 )
 
@@ -662,7 +668,7 @@ const file_event_v1_event_proto_rawDesc = "" +
 	"\x15RECORD_TYPE_REJECTION\x10\x03\"9\n" +
 	"\tRejection\x12\x12\n" +
 	"\x04code\x18\x01 \x01(\tR\x04code\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage\"\xba\f\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\"\xf4\f\n" +
 	"\aElement\x120\n" +
 	"\x06intent\x18\x01 \x01(\x0e2\x18.event.v1.Element.IntentR\x06intent\x12*\n" +
 	"\x04type\x18\x02 \x01(\x0e2\x16.event.v1.Element.TypeR\x04type\x12\x0e\n" +
@@ -674,7 +680,7 @@ const file_event_v1_event_proto_rawDesc = "" +
 	"\x0fgateway_payload\x18\b \x01(\v2\x18.event.v1.GatewayPayloadH\x00R\x0egatewayPayload\x12S\n" +
 	"\x15sequence_flow_payload\x18\t \x01(\v2\x1d.event.v1.SequenceFlowPayloadH\x00R\x13sequenceFlowPayload\x12:\n" +
 	"\fdata_payload\x18\n" +
-	" \x01(\v2\x15.event.v1.DataPayloadH\x00R\vdataPayload\"\xcb\x02\n" +
+	" \x01(\v2\x15.event.v1.DataPayloadH\x00R\vdataPayload\"\x85\x03\n" +
 	"\x06Intent\x12\x16\n" +
 	"\x12INTENT_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11INTENT_ACTIVATING\x10\x01\x12\x14\n" +
@@ -690,7 +696,9 @@ const file_event_v1_event_proto_rawDesc = "" +
 	"\x12\x14\n" +
 	"\x10INTENT_SUSPENDED\x10\v\x12\x13\n" +
 	"\x0fINTENT_RESUMING\x10\f\x12\x12\n" +
-	"\x0eINTENT_RESUMED\x10\r\"\xaa\x05\n" +
+	"\x0eINTENT_RESUMED\x10\r\x12\x1a\n" +
+	"\x16INTENT_INCIDENT_OPENED\x10\x0e\x12\x1c\n" +
+	"\x18INTENT_INCIDENT_RESOLVED\x10\x0f\"\xaa\x05\n" +
 	"\x04Type\x12\x14\n" +
 	"\x10TYPE_UNSPECIFIED\x10\x00\x12\x10\n" +
 	"\fTYPE_PROCESS\x10\x01\x12\x14\n" +

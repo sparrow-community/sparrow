@@ -379,7 +379,9 @@ type FailJobRequest struct {
 	// Execution token id (UUIDv7).
 	TokenId string `protobuf:"bytes,3,opt,name=token_id,json=tokenId,proto3" json:"token_id,omitempty"`
 	// Worker-reported reason; stored on the FAILED event payload.
-	ErrorMessage  string `protobuf:"bytes,4,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
+	ErrorMessage string `protobuf:"bytes,4,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
+	// When true, open an incident after this fail regardless of retry count.
+	NoRetry       bool `protobuf:"varint,5,opt,name=no_retry,json=noRetry,proto3" json:"no_retry,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -440,6 +442,13 @@ func (x *FailJobRequest) GetErrorMessage() string {
 		return x.ErrorMessage
 	}
 	return ""
+}
+
+func (x *FailJobRequest) GetNoRetry() bool {
+	if x != nil {
+		return x.NoRetry
+	}
+	return false
 }
 
 // FailJobResponse is empty on success.
@@ -624,13 +633,14 @@ const file_job_v1_job_proto_rawDesc = "" +
 	"\x0eVariablesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x15\n" +
-	"\x13CompleteJobResponse\"\x9f\x01\n" +
+	"\x13CompleteJobResponse\"\xba\x01\n" +
 	"\x0eFailJobRequest\x12.\n" +
 	"\x13process_instance_id\x18\x01 \x01(\tR\x11processInstanceId\x12\x1d\n" +
 	"\n" +
 	"element_id\x18\x02 \x01(\tR\telementId\x12\x19\n" +
 	"\btoken_id\x18\x03 \x01(\tR\atokenId\x12#\n" +
-	"\rerror_message\x18\x04 \x01(\tR\ferrorMessage\"\x11\n" +
+	"\rerror_message\x18\x04 \x01(\tR\ferrorMessage\x12\x19\n" +
+	"\bno_retry\x18\x05 \x01(\bR\anoRetry\"\x11\n" +
 	"\x0fFailJobResponse\"\xa4\x01\n" +
 	"\x10HeartbeatRequest\x12.\n" +
 	"\x13process_instance_id\x18\x01 \x01(\tR\x11processInstanceId\x12\x19\n" +

@@ -68,7 +68,7 @@ func (s *JobServer) FailJob(ctx context.Context, req *jobv1.FailJobRequest) (*jo
 	if s.engine == nil {
 		return nil, status.Error(codes.FailedPrecondition, "engine is required")
 	}
-	if err := s.engine.Fail(ctx, req.GetProcessInstanceId(), req.GetElementId(), req.GetTokenId(), req.GetErrorMessage()); err != nil {
+	if err := s.engine.Fail(ctx, req.GetProcessInstanceId(), req.GetElementId(), req.GetTokenId(), req.GetErrorMessage(), req.GetNoRetry()); err != nil {
 		return nil, statusFromEngine(err)
 	}
 	return &jobv1.FailJobResponse{}, nil
@@ -130,6 +130,8 @@ func statusFromEngine(err error) error {
 	case strings.HasPrefix(msg, "INVALID_ARGUMENT"):
 		return status.Error(codes.InvalidArgument, msg)
 	case strings.HasPrefix(msg, "INVALID_STATE"):
+		return status.Error(codes.FailedPrecondition, msg)
+	case strings.HasPrefix(msg, "INCIDENT_OPEN"), strings.HasPrefix(msg, "NO_INCIDENT"):
 		return status.Error(codes.FailedPrecondition, msg)
 	default:
 		return status.Error(codes.Internal, msg)

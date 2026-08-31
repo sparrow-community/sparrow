@@ -14,9 +14,9 @@ New work: `/speckit-specify` → plan → tasks → implement (`.cursor/skills/`
 
 ## Implemented
 
-Process lifecycle; UserTask; ServiceTask + Job; XOR/AND/Inclusive/EventBased (catch) gateways; SubProcess; CallActivity (child instance, IO mapping); Event Sub-Process; catch/throw/boundary (timer, message, signal, error, compensate); compensation; **multi-instance** on User Task, Service Task, SubProcess; process revision coexistence.
+Process lifecycle; UserTask; ServiceTask + Job; XOR/AND/Inclusive/EventBased (catch) gateways; SubProcess; CallActivity (child instance, IO mapping); Event Sub-Process; catch/throw/boundary (timer, message, signal, error, compensate); compensation; **multi-instance** on User Task, Service Task, SubProcess; **incident** (blocked job failure, resolve/retry); process revision coexistence.
 
-Shipped: M1–M4c, [`001`](./specs/001-engine-completeness/), [`002`](./specs/002-multi-instance/).
+Shipped: M1–M4c, [`001`](./specs/001-engine-completeness/), [`002`](./specs/002-multi-instance/), [`003`](./specs/003-incident/).
 
 ## Remaining
 
@@ -25,7 +25,6 @@ Pick next via `/speckit-specify`. Order flexible until a plan sets dependencies.
 | P | Topic |
 |---|--------|
 | 1 | Cross-deployment CallActivity |
-| 1 | Incident (blocked state, retry/resume via COMMAND) |
 | 2 | Live instance migration |
 | 2 | Multi-instance Call Activity |
 | 2 | CallActivity boundary & compensation (parity with SubProcess) |
@@ -43,7 +42,7 @@ After engine work above: agents use the same APIs and ledger — deploy, start, 
 
 ## API & persist
 
-`Deploy` · `CreateInstance` · `Complete` · `ThrowError` · `FireDue` · `PublishMessage` · `PublishSignal` · Job Activate/Fail/Heartbeat · `GetInstance` · `ListEvents`
+`Deploy` · `CreateInstance` · `Complete` · `ThrowError` · `ResolveIncident` · `FireDue` · `PublishMessage` · `PublishSignal` · Job Activate/Fail/Heartbeat · `GetInstance` · `ListEvents`
 
 `EventLog` + `deploy.Store` + optional `runtime.Store` · `Recover` / `Open` · gRPC in `gateway` only
 

@@ -393,3 +393,126 @@ func countIntent(t *testing.T, eng *processing.Engine, instanceID string, typ ev
 	}
 	return n
 }
+
+func TestRecoverRebuildsBlockedIncident(t *testing.T) {
+	xml, err := os.ReadFile(filepath.Join("testdata", "m7_incident_service.bpmn"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	memLog := eventlog.NewMemory()
+	store := deploy.NewMemoryStore()
+	eng1, err := processing.Recover(ctx, memLog, store, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	depID, err := eng1.Deploy(ctx, xml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instanceID, err := eng1.CreateInstance(ctx, depID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inst1, _ := eng1.GetInstance(instanceID)
+	elementID, tokenID := waitingAt(inst1)
+	for i := 0; i < deploy.DefaultIncidentThreshold; i++ {
+		jobs, err := eng1.Activate(ctx, processing.ActivateRequest{JobType: "work.v1", WorkerID: "w1"})
+		if err != nil || len(jobs) != 1 {
+			t.Fatalf("activate=%#v err=%v", jobs, err)
+		}
+		if err := eng1.Fail(ctx, jobs[0].ProcessInstanceID, jobs[0].ElementID, jobs[0].TokenID, "err", false); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	eng2, err := processing.Recover(ctx, memLog, store, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inst, _ := eng2.GetInstance(instanceID)
+	tok := inst.Tokens[tokenID]
+	if tok == nil || tok.Status != projection.TokenBlocked || tok.IncidentErrorMessage != "err" {
+		t.Fatalf("token=%#v", tok)
+	}
+
+	if err := eng2.ResolveIncident(ctx, instanceID, elementID, tokenID); err != nil {
+		t.Fatal(err)
+	}
+	jobs, err := eng2.Activate(ctx, processing.ActivateRequest{JobType: "work.v1", WorkerID: "w2"})
+	if err != nil || len(jobs) != 1 {
+		t.Fatalf("activate=%#v err=%v", jobs, err)
+	}
+	if err := eng2.Complete(ctx, jobs[0].ProcessInstanceID, jobs[0].ElementID, jobs[0].TokenID, nil); err != nil {
+		t.Fatal(err)
+	}
+	inst, _ = eng2.GetInstance(instanceID)
+	if inst.Status != projection.StatusCompleted {
+		t.Fatalf("status=%s", inst.Status)
+	}
+}
+
+func TestRecoverRedrivesFailIncidentOpen(t *testing.T) {
+	xml, err := os.ReadFile(filepath.Join("testdata", "m7_incident_service.bpmn"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	memLog := eventlog.NewMemory()
+	store := deploy.NewMemoryStore()
+	eng1, err := processing.Recover(ctx, memLog, store, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	depID, err := eng1.Deploy(ctx, xml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instanceID, err := eng1.CreateInstance(ctx, depID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inst, _ := eng1.GetInstance(instanceID)
+	elementID, tokenID := waitingAt(inst)
+
+	cmdID := processing.MustNextID()
+	if _, err := memLog.Append(ctx, &eventv1.Event{
+		Id:                cmdID,
+		Timestamp:         1,
+		RecordType:        eventv1.Event_RECORD_TYPE_COMMAND,
+		DeploymentId:      depID,
+		ProcessInstanceId: instanceID,
+		ProcessVersion:    1,
+		Element: &eventv1.Element{
+			Intent:  eventv1.Element_INTENT_FAILED,
+			Type:    eventv1.Element_TYPE_SERVICE_TASK,
+			Id:      elementID,
+			TokenId: tokenID,
+			Payload: &eventv1.Element_ActivityPayload{
+				ActivityPayload: &eventv1.ActivityPayload{
+					JobType:      "work.v1",
+					ErrorMessage: "down",
+					JobFailCount: int32(deploy.DefaultIncidentThreshold),
+				},
+			},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	eng2, err := processing.Recover(ctx, memLog, store, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inst, _ = eng2.GetInstance(instanceID)
+	tok := inst.Tokens[tokenID]
+	if tok == nil || tok.Status != projection.TokenBlocked {
+		t.Fatalf("token=%#v", tok)
+	}
+	if n := countIntent(t, eng2, instanceID, eventv1.Element_TYPE_SERVICE_TASK, eventv1.Element_INTENT_FAILED); n != 1 {
+		t.Fatalf("FAILED count=%d", n)
+	}
+	if n := countIntent(t, eng2, instanceID, eventv1.Element_TYPE_SERVICE_TASK, eventv1.Element_INTENT_INCIDENT_OPENED); n != 1 {
+		t.Fatalf("INCIDENT_OPENED count=%d", n)
+	}
+}

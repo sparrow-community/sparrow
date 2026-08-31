@@ -134,6 +134,16 @@ func (s *EngineServer) ThrowError(ctx context.Context, req *enginev1.ThrowErrorR
 	return &enginev1.ThrowErrorResponse{}, nil
 }
 
+func (s *EngineServer) ResolveIncident(ctx context.Context, req *enginev1.ResolveIncidentRequest) (*enginev1.ResolveIncidentResponse, error) {
+	if s.engine == nil {
+		return nil, status.Error(codes.FailedPrecondition, "engine is required")
+	}
+	if err := s.engine.ResolveIncident(ctx, req.GetProcessInstanceId(), req.GetElementId(), req.GetTokenId()); err != nil {
+		return nil, statusFromEngine(err)
+	}
+	return &enginev1.ResolveIncidentResponse{}, nil
+}
+
 func (s *EngineServer) GetInstance(_ context.Context, req *enginev1.GetInstanceRequest) (*enginev1.GetInstanceResponse, error) {
 	if s.engine == nil {
 		return nil, status.Error(codes.FailedPrecondition, "engine is required")
@@ -192,6 +202,8 @@ func instanceToProto(inst *projection.Instance) *enginev1.Instance {
 			SignalName:              tok.SignalName,
 			CalledProcessInstanceId: tok.CalledProcessInstanceID,
 			LoopInstanceIndex:       tok.LoopInstanceIndex,
+			IncidentErrorMessage:    tok.IncidentErrorMessage,
+			JobFailCount:            tok.JobFailCount,
 		})
 	}
 	return out

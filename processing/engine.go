@@ -249,6 +249,81 @@ func (e *Engine) Complete(ctx context.Context, instanceID, elementID, tokenID st
 	return e.tryDeliverBuffered(ctx, instanceID)
 }
 
+// ResolveIncident closes an open Service Task incident and restores waiting job semantics.
+func (e *Engine) ResolveIncident(ctx context.Context, instanceID, elementID, tokenID string) error {
+	e.mu.Lock()
+	inst := e.instances[instanceID]
+	lock := e.instMu[instanceID]
+	var dep *deploy.Deployment
+	if inst != nil {
+		dep = e.deployments[inst.DeploymentID]
+	}
+	e.mu.Unlock()
+	if inst == nil || dep == nil {
+		return fmt.Errorf("NOT_FOUND: instance %q", instanceID)
+	}
+	if inst.Status == projection.StatusCompleted || inst.Status == projection.StatusTerminated {
+		return fmt.Errorf("INVALID_STATE: instance is not active")
+	}
+
+	lock.Lock()
+	defer lock.Unlock()
+
+	typ, typeErr := dep.TypeOf(elementID)
+	if typeErr != nil {
+		typ = eventv1.Element_TYPE_UNSPECIFIED
+	}
+
+	tok := inst.Tokens[tokenID]
+	if tok == nil || tok.ElementID != elementID {
+		return e.reject(ctx, inst, elementID, tokenID, typ, eventv1.Element_INTENT_INCIDENT_RESOLVED, "NO_INCIDENT", "no open incident on token")
+	}
+	if tok.Status != projection.TokenBlocked {
+		return e.reject(ctx, inst, elementID, tokenID, typ, eventv1.Element_INTENT_INCIDENT_RESOLVED, "NO_INCIDENT", "no open incident on token")
+	}
+	if typeErr != nil {
+		return e.reject(ctx, inst, elementID, tokenID, typ, eventv1.Element_INTENT_INCIDENT_RESOLVED, "NOT_FOUND", "element not found")
+	}
+
+	cmdID, err := NextID()
+	if err != nil {
+		return err
+	}
+	resolvePayload := &eventv1.ActivityPayload{JobType: tok.JobType}
+	cmd := &eventv1.Event{
+		Id:                cmdID,
+		Timestamp:         nowMillis(),
+		RecordType:        eventv1.Event_RECORD_TYPE_COMMAND,
+		DeploymentId:      inst.DeploymentID,
+		ProcessInstanceId: instanceID,
+		ProcessVersion:    inst.Version,
+		Element: &eventv1.Element{
+			Intent:  eventv1.Element_INTENT_INCIDENT_RESOLVED,
+			Type:    typ,
+			Id:      elementID,
+			TokenId: tokenID,
+			Payload: &eventv1.Element_ActivityPayload{ActivityPayload: resolvePayload},
+		},
+	}
+	if _, err := e.log.Append(ctx, cmd); err != nil {
+		return err
+	}
+
+	emit := e.emitter(ctx, inst, cmdID)
+	if err := emit(&eventv1.Element{
+		Intent:  eventv1.Element_INTENT_INCIDENT_RESOLVED,
+		Type:    typ,
+		Id:      elementID,
+		TokenId: tokenID,
+		Payload: &eventv1.Element_ActivityPayload{ActivityPayload: resolvePayload},
+	}); err != nil {
+		return err
+	}
+
+	e.notifyJobs()
+	return nil
+}
+
 func (e *Engine) completeLocked(ctx context.Context, dep *deploy.Deployment, inst *projection.Instance, instanceID, elementID, tokenID string, vars map[string]any) ([]handlers.Publication, error) {
 	typ, typeErr := dep.TypeOf(elementID)
 	if typeErr != nil {
@@ -256,7 +331,10 @@ func (e *Engine) completeLocked(ctx context.Context, dep *deploy.Deployment, ins
 	}
 
 	tok := inst.Tokens[tokenID]
-	waiting := tok != nil && tok.Status == projection.TokenWaiting
+	if tok != nil && tok.Status == projection.TokenBlocked && tok.ElementID == elementID {
+		return nil, e.reject(ctx, inst, elementID, tokenID, typ, eventv1.Element_INTENT_COMPLETING, "INCIDENT_OPEN", "incident is open")
+	}
+	waiting := tok != nil && (tok.Status == projection.TokenWaiting || tok.Status == projection.TokenBlocked)
 	if waiting && typ == eventv1.Element_TYPE_BOUNDARY_EVENT {
 		attached, ok := dep.AttachedActivity(elementID)
 		waiting = ok && tok.ElementID == attached && (tok.BoundaryID == elementID || tok.MessageBoundaryID == elementID || tok.SignalBoundaryID == elementID)

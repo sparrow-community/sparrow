@@ -110,7 +110,7 @@ func (e *Engine) collectDue(nowUnixMs int64) []dueWait {
 		}
 		lock.Lock()
 		for _, tok := range inst.Tokens {
-			if tok == nil || tok.Status != projection.TokenWaiting {
+			if tok == nil || (tok.Status != projection.TokenWaiting && tok.Status != projection.TokenBlocked) {
 				continue
 			}
 			if tok.DueUnixMs > 0 && tok.DueUnixMs <= nowUnixMs {

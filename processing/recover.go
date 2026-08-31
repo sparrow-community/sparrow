@@ -71,7 +71,7 @@ func (e *Engine) maybeRedrive(ctx context.Context, cmd *eventv1.Event, hasEvent 
 	}
 
 	lock.Lock()
-	if hasEvent && instanceStable(inst) && !completeCommandUnfinished(inst, cmd) && !errorCommandUnfinished(inst, cmd) {
+	if hasEvent && instanceStable(inst) && !completeCommandUnfinished(inst, cmd) && !errorCommandUnfinished(inst, cmd) && !failCommandUnfinished(inst, cmd, dep) && !incidentResolveCommandUnfinished(inst, cmd) {
 		lock.Unlock()
 		return nil
 	}
@@ -104,6 +104,37 @@ func errorCommandUnfinished(inst *projection.Instance, cmd *eventv1.Event) bool 
 	return tok != nil && tok.ElementID == el.GetId() && tok.Status == projection.TokenWaiting
 }
 
+func failCommandUnfinished(inst *projection.Instance, cmd *eventv1.Event, dep *deploy.Deployment) bool {
+	el := cmd.GetElement()
+	if el == nil || el.GetIntent() != eventv1.Element_INTENT_FAILED {
+		return false
+	}
+	tok := inst.Tokens[el.GetTokenId()]
+	if tok == nil || tok.ElementID != el.GetId() || tok.Status != projection.TokenWaiting {
+		return false
+	}
+	p := el.GetActivityPayload()
+	failCount := tok.JobFailCount
+	if p != nil && p.GetJobFailCount() > 0 {
+		failCount = p.GetJobFailCount()
+	}
+	noRetry := p != nil && p.GetNoRetry()
+	threshold := deploy.DefaultIncidentThreshold
+	if dep != nil {
+		threshold = dep.IncidentThreshold(el.GetId())
+	}
+	return shouldOpenIncident(threshold, failCount, noRetry)
+}
+
+func incidentResolveCommandUnfinished(inst *projection.Instance, cmd *eventv1.Event) bool {
+	el := cmd.GetElement()
+	if el == nil || el.GetIntent() != eventv1.Element_INTENT_INCIDENT_RESOLVED {
+		return false
+	}
+	tok := inst.Tokens[el.GetTokenId()]
+	return tok != nil && tok.ElementID == el.GetId() && tok.Status == projection.TokenBlocked
+}
+
 func instanceStable(inst *projection.Instance) bool {
 	if inst == nil {
 		return false
@@ -112,7 +143,7 @@ func instanceStable(inst *projection.Instance) bool {
 		return true
 	}
 	for _, tok := range inst.Tokens {
-		if tok != nil && tok.Status == projection.TokenWaiting {
+		if tok != nil && (tok.Status == projection.TokenWaiting || tok.Status == projection.TokenBlocked) {
 			return true
 		}
 	}
@@ -134,7 +165,9 @@ func (e *Engine) redriveCommand(ctx context.Context, dep *deploy.Deployment, ins
 	case eventv1.Element_INTENT_COMPLETING:
 		return e.redriveComplete(ctx, dep, inst, cmd, emit)
 	case eventv1.Element_INTENT_FAILED:
-		return nil, e.redriveFail(inst, cmd, emit)
+		return nil, e.redriveFail(ctx, dep, inst, cmd, emit)
+	case eventv1.Element_INTENT_INCIDENT_RESOLVED:
+		return nil, e.redriveResolveIncident(inst, cmd, emit)
 	case eventv1.Element_INTENT_ERROR_THROWN:
 		return e.redriveThrowError(ctx, dep, inst, cmd, emit)
 	default:
@@ -191,19 +224,44 @@ func (e *Engine) redriveComplete(ctx context.Context, dep *deploy.Deployment, in
 	return pubs, nil
 }
 
-func (e *Engine) redriveFail(inst *projection.Instance, cmd *eventv1.Event, emit Emitter) error {
+func (e *Engine) redriveFail(_ context.Context, dep *deploy.Deployment, inst *projection.Instance, cmd *eventv1.Event, emit Emitter) error {
 	el := cmd.GetElement()
-	failed := &eventv1.Element{
-		Intent:  eventv1.Element_INTENT_FAILED,
+	p := el.GetActivityPayload()
+	message := ""
+	var failCount int32
+	noRetry := false
+	if p != nil {
+		message = p.GetErrorMessage()
+		failCount = p.GetJobFailCount()
+		noRetry = p.GetNoRetry()
+	}
+	if failCount == 0 {
+		if tok := inst.Tokens[el.GetTokenId()]; tok != nil {
+			failCount = tok.JobFailCount + 1
+		} else {
+			failCount = 1
+		}
+	}
+	if err := emitJobFailChain(dep, inst, el.GetType(), el.GetId(), el.GetTokenId(), message, failCount, noRetry, emit); err != nil {
+		return err
+	}
+	e.releaseLease(inst.ID, el.GetTokenId())
+	e.notifyJobs()
+	return nil
+}
+
+func (e *Engine) redriveResolveIncident(inst *projection.Instance, cmd *eventv1.Event, emit Emitter) error {
+	el := cmd.GetElement()
+	resolved := &eventv1.Element{
+		Intent:  eventv1.Element_INTENT_INCIDENT_RESOLVED,
 		Type:    el.GetType(),
 		Id:      el.GetId(),
 		TokenId: el.GetTokenId(),
 		Payload: el.GetPayload(),
 	}
-	if err := emit(failed); err != nil {
+	if err := emit(resolved); err != nil {
 		return err
 	}
-	e.releaseLease(inst.ID, el.GetTokenId())
 	e.notifyJobs()
 	return nil
 }
