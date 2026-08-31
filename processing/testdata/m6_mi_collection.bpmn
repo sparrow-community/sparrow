@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             id="Definitions_mi_collection"
+             targetNamespace="http://sparrow.example/m6">
+  <process id="Process_mi_collection" isExecutable="true">
+    <startEvent id="StartEvent_1">
+      <outgoing>Flow_start_to_task</outgoing>
+    </startEvent>
+    <userTask id="UserTask_mi" name="For each item">
+      <incoming>Flow_start_to_task</incoming>
+      <outgoing>Flow_task_to_end</outgoing>
+      <multiInstanceLoopCharacteristics loopDataInputRef="items" loopDataOutputRef="results">
+        <inputDataItem name="item"/>
+        <outputDataItem name="result"/>
+      </multiInstanceLoopCharacteristics>
+    </userTask>
+    <endEvent id="EndEvent_1">
+      <incoming>Flow_task_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_task" sourceRef="StartEvent_1" targetRef="UserTask_mi"/>
+    <sequenceFlow id="Flow_task_to_end" sourceRef="UserTask_mi" targetRef="EndEvent_1"/>
+  </process>
+</definitions>

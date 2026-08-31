@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             id="Definitions_mi_subprocess"
+             targetNamespace="http://sparrow.example/m6">
+  <process id="Process_mi_subprocess" isExecutable="true">
+    <startEvent id="StartEvent_1">
+      <outgoing>Flow_start_to_sub</outgoing>
+    </startEvent>
+    <subProcess id="SubProcess_mi">
+      <incoming>Flow_start_to_sub</incoming>
+      <outgoing>Flow_sub_to_end</outgoing>
+      <multiInstanceLoopCharacteristics>
+        <loopCardinality xsi:type="tFormalExpression">2</loopCardinality>
+      </multiInstanceLoopCharacteristics>
+      <startEvent id="SubStart_1">
+        <outgoing>Flow_sub_start_to_task</outgoing>
+      </startEvent>
+      <userTask id="SubTask_1">
+        <incoming>Flow_sub_start_to_task</incoming>
+        <outgoing>Flow_sub_task_to_end</outgoing>
+      </userTask>
+      <endEvent id="SubEnd_1">
+        <incoming>Flow_sub_task_to_end</incoming>
+      </endEvent>
+      <sequenceFlow id="Flow_sub_start_to_task" sourceRef="SubStart_1" targetRef="SubTask_1"/>
+      <sequenceFlow id="Flow_sub_task_to_end" sourceRef="SubTask_1" targetRef="SubEnd_1"/>
+    </subProcess>
+    <endEvent id="EndEvent_1">
+      <incoming>Flow_sub_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_sub" sourceRef="StartEvent_1" targetRef="SubProcess_mi"/>
+    <sequenceFlow id="Flow_sub_to_end" sourceRef="SubProcess_mi" targetRef="EndEvent_1"/>
+  </process>
+</definitions>

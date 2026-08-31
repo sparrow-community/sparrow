@@ -46,6 +46,12 @@ type Effect struct {
 	AdvanceCompensation bool
 	// ThrowError propagates a BPMN error after ACTIVATED (error end) or ERROR_THROWN.
 	ThrowError *ThrowErrorEffect
+	// MultiInstanceStart spawns inner instances after the loop host ACTIVATED.
+	MultiInstanceStart *MultiInstanceStart
+	// MultiInstanceInnerComplete completes one inner instance and joins via the executor.
+	MultiInstanceInnerComplete bool
+	// MultiInstanceCancel terminates all inner instances and loop state for the element.
+	MultiInstanceCancel string
 }
 
 // ThrowErrorEffect requests error propagation from the throwing element.
@@ -93,6 +99,8 @@ type EnterInput struct {
 	Type       eventv1.Element_Type
 	TokenID    string
 	Now        time.Time
+	// LoopInstanceIndex is set when entering a multi-instance inner iteration.
+	LoopInstanceIndex int32
 }
 
 // CompleteInput is the context for an external completion command.

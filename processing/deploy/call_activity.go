@@ -35,6 +35,9 @@ func validateCallActivity(ca element.CallActivity, catalog map[string]*element.P
 	if err != nil {
 		return CallActivity{}, fmt.Errorf("UNSUPPORTED_ELEMENT: callActivity %q called process %q: %v", ca.ID, called, err)
 	}
+	if len(ca.MultielementLoopCharacteristics) > 0 {
+		return CallActivity{}, fmt.Errorf("UNSUPPORTED_ELEMENT: multi-instance callActivity %q not supported", ca.ID)
+	}
 	inputs, err := compileInputMappings(ca.DataInputAssociations, ca.ID)
 	if err != nil {
 		return CallActivity{}, err

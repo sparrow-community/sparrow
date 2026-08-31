@@ -24,6 +24,8 @@ message Token {
   string signal_name = 8;
   // Child process instance id when waiting on a Call Activity host; empty otherwise.
   string called_process_instance_id = 9;
+  // Multi-instance inner iteration index (0-based); -1 for loop host or non-MI tokens.
+  int32 loop_instance_index = 10;
 }
 
 // Instance is a read-only projection snapshot. It is not an EventLog record.

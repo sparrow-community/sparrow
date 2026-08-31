@@ -12,6 +12,19 @@ type SubProcessHandler struct{}
 func (SubProcessHandler) Type() eventv1.Element_Type { return eventv1.Element_TYPE_SUB_PROCESS }
 
 func (SubProcessHandler) OnEnter(in EnterInput) (*Effect, error) {
+	if spec, ok := in.Deployment.MultiInstanceSpec(in.ElementID); ok && !in.Deployment.IsEventSubProcess(in.ElementID) && !isMultiInstanceInner(in) {
+		total, err := spec.InstanceCount(in.Instance.Variables)
+		if err != nil {
+			return nil, err
+		}
+		return multiInstanceHostEnter(in, spec, total, func(_ int32, p *eventv1.ActivityPayload) *eventv1.Element {
+			activated := &eventv1.Element{Intent: eventv1.Element_INTENT_ACTIVATED, Type: in.Type, Id: in.ElementID, TokenId: in.TokenID}
+			if p != nil {
+				activated.Payload = &eventv1.Element_ActivityPayload{ActivityPayload: p}
+			}
+			return activated
+		})
+	}
 	var startID string
 	var err error
 	if spec, ok := in.Deployment.EventSubProcessSpec(in.ElementID); ok {
@@ -23,9 +36,25 @@ func (SubProcessHandler) OnEnter(in EnterInput) (*Effect, error) {
 		}
 	}
 	activated := &eventv1.Element{Intent: eventv1.Element_INTENT_ACTIVATED, Type: in.Type, Id: in.ElementID, TokenId: in.TokenID}
+	idx := in.LoopInstanceIndex
+	if idx < 0 && in.Instance != nil {
+		if tok := in.Instance.Tokens[in.TokenID]; tok != nil {
+			idx = tok.LoopInstanceIndex
+		}
+	}
 	p, err := attachScopeBoundary(in.Deployment, in.ElementID, in.Now)
 	if err != nil {
 		return nil, err
+	}
+	if p == nil {
+		p = &eventv1.ActivityPayload{}
+	}
+	p = activityPayloadWithIndex(p, idx)
+	if p.GetBoundaryId() == "" && p.GetMessageBoundaryId() == "" && p.GetSignalBoundaryId() == "" &&
+		p.GetDueUnixMs() == 0 && idx < 0 {
+		p = nil
+	} else if idx >= 0 && p.GetBoundaryId() == "" && p.GetMessageBoundaryId() == "" && p.GetSignalBoundaryId() == "" && p.GetDueUnixMs() == 0 {
+		p = activityPayloadWithIndex(nil, idx)
 	}
 	if p != nil {
 		activated.Payload = &eventv1.Element_ActivityPayload{ActivityPayload: p}
@@ -110,6 +139,13 @@ func (SubProcessHandler) OnComplete(in CompleteInput) (*Effect, error) {
 		effect.DiscardToken = true
 		effect.TryCompleteProcess = true
 		return effect, nil
+	}
+	if _, ok := in.Deployment.MultiInstanceSpec(in.ElementID); ok && in.Token != nil && in.Token.ScopeHost && !in.Token.MultiInstanceHost {
+		idx := in.Token.LoopInstanceIndex
+		ap := activityPayloadWithIndex(nil, idx)
+		effect.Records[0].Payload = &eventv1.Element_ActivityPayload{ActivityPayload: ap}
+		effect.Records[1].Payload = &eventv1.Element_ActivityPayload{ActivityPayload: ap}
+		return multiInstanceInnerComplete(in, effect.Records), nil
 	}
 	effect.Records = append(effect.Records, cancelAttachedBoundary(in.Deployment, in.ElementID, in.TokenID)...)
 	effect.Records = append(effect.Records, subscribeCompensation(in.Deployment, in.ElementID, in.TokenID)...)

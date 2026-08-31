@@ -34,6 +34,20 @@ func (x *Executor) now() time.Time {
 	return time.Now()
 }
 
+func spawnScopeChildToken(inst *projection.Instance, hostTokenID string) (string, error) {
+	childTokenID, err := NextID()
+	if err != nil {
+		return "", err
+	}
+	child := inst.Tokens[childTokenID]
+	if child == nil {
+		child = &projection.Token{ID: childTokenID, LoopInstanceIndex: -1}
+		inst.Tokens[childTokenID] = child
+	}
+	child.ScopeHostTokenID = hostTokenID
+	return childTokenID, nil
+}
+
 func (x *Executor) Enter(
 	ctx context.Context,
 	dep *deploy.Deployment,
@@ -53,12 +67,13 @@ func (x *Executor) Enter(
 			return pubs, err
 		}
 		effect, err := h.OnEnter(handlers.EnterInput{
-			Deployment: dep,
-			Instance:   inst,
-			ElementID:  elementID,
-			Type:       typ,
-			TokenID:    tokenID,
-			Now:        x.now(),
+			Deployment:        dep,
+			Instance:          inst,
+			ElementID:         elementID,
+			Type:              typ,
+			TokenID:           tokenID,
+			Now:               x.now(),
+			LoopInstanceIndex: -1,
 		})
 		if err != nil {
 			return pubs, err
@@ -71,11 +86,16 @@ func (x *Executor) Enter(
 		if effect.Publish != nil {
 			pubs = append(pubs, *effect.Publish)
 		}
+		if effect.MultiInstanceStart != nil {
+			if err := x.runMultiInstanceStart(ctx, dep, inst, effect.MultiInstanceStart, emit); err != nil {
+				return pubs, err
+			}
+		}
 		if effect.EnterChild != "" {
 			childTokenID := tokenID
 			if effect.SpawnChildToken {
 				var err error
-				childTokenID, err = NextID()
+				childTokenID, err = spawnScopeChildToken(inst, tokenID)
 				if err != nil {
 					return pubs, err
 				}
@@ -189,6 +209,10 @@ func (x *Executor) Complete(
 	if err != nil {
 		return nil, err
 	}
+	innerIdx := int32(-1)
+	if tok := inst.Tokens[tokenID]; tok != nil {
+		innerIdx = tok.LoopInstanceIndex
+	}
 	var pubs []handlers.Publication
 	for _, rec := range effect.Records {
 		if err := emit(rec); err != nil {
@@ -197,6 +221,16 @@ func (x *Executor) Complete(
 	}
 	if effect.Publish != nil {
 		pubs = append(pubs, *effect.Publish)
+	}
+	if effect.MultiInstanceInnerComplete {
+		more, err := x.runMultiInstanceInnerComplete(ctx, dep, inst, elementID, tokenID, innerIdx, emit)
+		pubs = append(pubs, more...)
+		return pubs, err
+	}
+	if effect.MultiInstanceCancel != "" {
+		if err := x.cancelMultiInstanceActivity(dep, inst, effect.MultiInstanceCancel, emit); err != nil {
+			return pubs, err
+		}
 	}
 	if len(effect.TerminateWaitingAt) > 0 {
 		if err := x.terminateWaitingAt(inst, tokenID, effect.TerminateWaitingAt, emit); err != nil {
@@ -344,6 +378,11 @@ func (x *Executor) tryCompleteScope(ctx context.Context, dep *deploy.Deployment,
 	if scopeID == "" || scopeID == rootProcessID {
 		return x.tryCompleteProcessScope(dep, inst, emit)
 	}
+	_, miScope := dep.MultiInstanceSpec(scopeID)
+	iterationHostID := ""
+	if trigger := inst.Tokens[tokenID]; trigger != nil {
+		iterationHostID = trigger.ScopeHostTokenID
+	}
 	// SubProcess scope: ignore parked host; require children at EndEvents.
 	hostTokenID := ""
 	for tid, tok := range inst.Tokens {
@@ -351,7 +390,13 @@ func (x *Executor) tryCompleteScope(ctx context.Context, dep *deploy.Deployment,
 			continue
 		}
 		if tok.ElementID == scopeID {
+			if miScope && iterationHostID != "" && tid != iterationHostID {
+				continue
+			}
 			hostTokenID = tid
+			continue
+		}
+		if miScope && iterationHostID != "" && tok.ScopeHostTokenID != iterationHostID {
 			continue
 		}
 		tokScope, _ := dep.ScopeOf(tok.ElementID)
@@ -380,6 +425,9 @@ func (x *Executor) tryCompleteScope(ctx context.Context, dep *deploy.Deployment,
 		if tok.ElementID == scopeID {
 			continue
 		}
+		if miScope && iterationHostID != "" && tok.ScopeHostTokenID != iterationHostID {
+			continue
+		}
 		tokScope, _ := dep.ScopeOf(tok.ElementID)
 		if tokScope == scopeID || isInScope(dep, tokScope, scopeID) {
 			delete(inst.Tokens, tid)
@@ -405,9 +453,14 @@ func (x *Executor) tryCompleteScope(ctx context.Context, dep *deploy.Deployment,
 		ElementID:  completeID,
 		Type:       completeType,
 		TokenID:    completeTokenID,
+		Token:      inst.Tokens[completeTokenID],
 	})
 	if err != nil {
 		return nil, err
+	}
+	innerIdx := int32(-1)
+	if tok := inst.Tokens[completeTokenID]; tok != nil {
+		innerIdx = tok.LoopInstanceIndex
 	}
 	var pubs []handlers.Publication
 	for _, rec := range effect.Records {
@@ -417,6 +470,11 @@ func (x *Executor) tryCompleteScope(ctx context.Context, dep *deploy.Deployment,
 	}
 	if effect.Publish != nil {
 		pubs = append(pubs, *effect.Publish)
+	}
+	if effect.MultiInstanceInnerComplete {
+		more, err := x.runMultiInstanceInnerComplete(ctx, dep, inst, completeID, completeTokenID, innerIdx, emit)
+		pubs = append(pubs, more...)
+		return pubs, err
 	}
 	if effect.DiscardToken {
 		delete(inst.Tokens, completeTokenID)

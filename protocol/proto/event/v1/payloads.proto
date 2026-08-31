@@ -76,6 +76,14 @@ message ActivityPayload {
   // Child process instance id for a Call Activity host while the called instance exists.
   // Set on CALL_ACTIVITY ACTIVATED; may still appear on COMPLETED/TERMINATED for audit.
   string called_process_instance_id = 11;
+  // Multi-instance inner iteration index (0-based). -1 on the loop host ACTIVATED record.
+  int32 loop_instance_index = 12;
+  // Total inner instances when the loop host ACTIVATED.
+  int32 loop_total_instances = 13;
+  // Completed inner count snapshot on loop host COMPLETED.
+  int32 loop_completed_instances = 14;
+  // True when the loop host ACTIVATED starts a sequential multi-instance.
+  bool loop_sequential = 15;
 }
 
 message GatewayPayload {

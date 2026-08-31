@@ -22,9 +22,9 @@ description: "Task list for multi-instance activities increment"
 
 **Purpose**: Wire-compatible protocol fields used by every story
 
-- [ ] T001 Add `loop_instance_index`, `loop_total_instances`, and `loop_completed_instances` to `ActivityPayload` in `protocol/proto/event/v1/payloads.proto`
-- [ ] T002 [P] Add `loop_instance_index` to `Token` in `protocol/proto/engine/v1/engine.proto`
-- [ ] T003 Regenerate Go with `cd protocol/proto && ./build.sh` (do not hand-edit `protocol/gen/go`)
+- [x] T001 Add `loop_instance_index`, `loop_total_instances`, and `loop_completed_instances` to `ActivityPayload` in `protocol/proto/event/v1/payloads.proto`
+- [x] T002 [P] Add `loop_instance_index` to `Token` in `protocol/proto/engine/v1/engine.proto`
+- [x] T003 Regenerate Go with `cd protocol/proto && ./build.sh` (do not hand-edit `protocol/gen/go`)
 
 **Checkpoint**: `buf lint` clean; existing `go test ./protocol/proto/event/v1/` still passes
 
@@ -34,12 +34,12 @@ description: "Task list for multi-instance activities increment"
 
 **Purpose**: Deploy compile, projection, handler effects, and loop helpers every story needs; no user-visible MI behavior until US1
 
-- [ ] T004 Compile `MultiInstanceSpec` from `element.MultiInstanceLoopCharacteristics` in `processing/deploy/multi_instance.go`; wire into `processing/deploy/deploy.go`; reject `complexBehaviorDefinition`, none/one behavior event refs, and MI on unsupported element types
-- [ ] T005 Extend `projection.Token` with `LoopInstanceIndex` and `projection.Instance` with `MultiInstanceLoops` in `processing/projection/instance.go`
-- [ ] T006 Apply loop payload fields and rebuild `MultiInstanceLoops` counters in `ApplyEvent` in `processing/projection/instance.go`
-- [ ] T007 Extend `handlers.Effect` with multi-instance spawn, join, and cancel-straggler fields in `processing/handlers/handler.go`
-- [ ] T008 Add cardinality/collection resolution and loop-counter variable injection helpers in `processing/multi_instance.go`
-- [ ] T009 Expose `nrOfInstances`, `nrOfActiveInstances`, `nrOfCompletedInstances`, and `loopCounter` to `processing/expr` evaluation from `processing/multi_instance.go`
+- [x] T004 Compile `MultiInstanceSpec` from `element.MultiInstanceLoopCharacteristics` in `processing/deploy/multi_instance.go`; wire into `processing/deploy/deploy.go`; reject `complexBehaviorDefinition`, none/one behavior event refs, and MI on unsupported element types
+- [x] T005 Extend `projection.Token` with `LoopInstanceIndex` and `projection.Instance` with `MultiInstanceLoops` in `processing/projection/instance.go`
+- [x] T006 Apply loop payload fields and rebuild `MultiInstanceLoops` counters in `ApplyEvent` in `processing/projection/instance.go`
+- [x] T007 Extend `handlers.Effect` with multi-instance spawn, join, and cancel-straggler fields in `processing/handlers/handler.go`
+- [x] T008 Add cardinality/collection resolution and loop-counter variable injection helpers in `processing/multi_instance.go`
+- [x] T009 Expose `nrOfInstances`, `nrOfActiveInstances`, `nrOfCompletedInstances`, and `loopCounter` to `processing/expr` evaluation from `processing/multi_instance.go`
 
 **Checkpoint**: Existing `go test ./processing/` passes (no MI fixtures yet)
 
@@ -53,16 +53,16 @@ description: "Task list for multi-instance activities increment"
 
 ### Tests for User Story 1
 
-- [ ] T010 [P] [US1] Add `processing/testdata/m6_mi_parallel_cardinality.bpmn` and `processing/testdata/m6_mi_parallel_service.bpmn`
-- [ ] T011 [US1] Add `processing/multi_instance_test.go` with parallel user-task join, parallel service-task jobs, zero-cardinality immediate complete, and Recover with 1 of 3 completed
+- [x] T010 [P] [US1] Add `processing/testdata/m6_mi_parallel_cardinality.bpmn` and `processing/testdata/m6_mi_parallel_service.bpmn`
+- [x] T011 [US1] Add `processing/multi_instance_test.go` with parallel user-task join, parallel service-task jobs, zero-cardinality immediate complete, and Recover with 1 of 3 completed
 
 ### Implementation for User Story 1
 
-- [ ] T012 [US1] Branch `UserTaskHandler` `OnEnter`/`OnComplete` for parallel MI in `processing/handlers/user_task.go`
-- [ ] T013 [US1] Branch `ServiceTaskHandler` `OnEnter`/`OnComplete` for parallel MI in `processing/handlers/service_task.go`
-- [ ] T014 [US1] Implement parallel inner spawn, per-inner `Complete`, all-complete join, and single outgoing flow in `processing/executor.go`
-- [ ] T015 [US1] Map `loop_instance_index` on tokens through `gateway/engine_server.go` and cover in `gateway/engine_server_test.go`
-- [ ] T016 [US1] Treat zero or negative evaluated cardinality as zero instances with immediate host completion in `processing/multi_instance.go`
+- [x] T012 [US1] Branch `UserTaskHandler` `OnEnter`/`OnComplete` for parallel MI in `processing/handlers/user_task.go`
+- [x] T013 [US1] Branch `ServiceTaskHandler` `OnEnter`/`OnComplete` for parallel MI in `processing/handlers/service_task.go`
+- [x] T014 [US1] Implement parallel inner spawn, per-inner `Complete`, all-complete join, and single outgoing flow in `processing/executor.go`
+- [x] T015 [US1] Map `loop_instance_index` on tokens through `gateway/engine_server.go` and cover in `gateway/engine_server_test.go`
+- [x] T016 [US1] Treat zero or negative evaluated cardinality as zero instances with immediate host completion in `processing/multi_instance.go`
 
 **Checkpoint**: Story 1 quickstart passes including Recover; non-MI user/service task tests still pass
 
@@ -76,13 +76,13 @@ description: "Task list for multi-instance activities increment"
 
 ### Tests for User Story 2
 
-- [ ] T017 [P] [US2] Add `processing/testdata/m6_mi_sequential_cardinality.bpmn`
-- [ ] T018 [US2] Add sequential-only-waiting-token and ordered-completion tests to `processing/multi_instance_test.go`
+- [x] T017 [P] [US2] Add `processing/testdata/m6_mi_sequential_cardinality.bpmn`
+- [x] T018 [US2] Add sequential-only-waiting-token and ordered-completion tests to `processing/multi_instance_test.go`
 
 ### Implementation for User Story 2
 
-- [ ] T019 [US2] Activate the next `loop_instance_index` only after inner `COMPLETED` when `isSequential=true` in `processing/executor.go`
-- [ ] T020 [US2] Ensure completed inner indices do not re-open and sequential counters stay consistent in `processing/projection/instance.go`
+- [x] T019 [US2] Activate the next `loop_instance_index` only after inner `COMPLETED` when `isSequential=true` in `processing/executor.go`
+- [x] T020 [US2] Ensure completed inner indices do not re-open and sequential counters stay consistent in `processing/projection/instance.go`
 
 **Checkpoint**: Story 1 still passes; Story 2 sequential fixture passes
 
@@ -96,14 +96,14 @@ description: "Task list for multi-instance activities increment"
 
 ### Tests for User Story 3
 
-- [ ] T021 [P] [US3] Add `processing/testdata/m6_mi_collection.bpmn` and `processing/testdata/m6_mi_collection_empty.bpmn`
-- [ ] T022 [US3] Add collection input, output collection, and empty-collection tests to `processing/multi_instance_test.go`
+- [x] T021 [P] [US3] Add `processing/testdata/m6_mi_collection.bpmn` and `processing/testdata/m6_mi_collection_empty.bpmn`
+- [x] T022 [US3] Add collection input, output collection, and empty-collection tests to `processing/multi_instance_test.go`
 
 ### Implementation for User Story 3
 
-- [ ] T023 [US3] Resolve collection size and bind `inputDataItem` variable per inner instance in `processing/multi_instance.go`
-- [ ] T024 [US3] Append `outputDataItem` values and write `loopDataOutputRef` on host complete in `processing/executor.go`
-- [ ] T025 [US3] Treat missing or non-array collection variables as empty (zero instances) in `processing/multi_instance.go`
+- [x] T023 [US3] Resolve collection size and bind `inputDataItem` variable per inner instance in `processing/multi_instance.go`
+- [x] T024 [US3] Append `outputDataItem` values and write `loopDataOutputRef` on host complete in `processing/executor.go`
+- [x] T025 [US3] Treat missing or non-array collection variables as empty (zero instances) in `processing/multi_instance.go`
 
 **Checkpoint**: Stories 1–2 still pass; Story 3 collection fixtures pass
 
@@ -117,13 +117,13 @@ description: "Task list for multi-instance activities increment"
 
 ### Tests for User Story 4
 
-- [ ] T026 [P] [US4] Add `processing/testdata/m6_mi_completion_early.bpmn`
-- [ ] T027 [US4] Add early-completion, straggler-cancel, and default-all-complete regression tests to `processing/multi_instance_test.go`
+- [x] T026 [P] [US4] Add `processing/testdata/m6_mi_completion_early.bpmn`
+- [x] T027 [US4] Add early-completion, straggler-cancel, and default-all-complete regression tests to `processing/multi_instance_test.go`
 
 ### Implementation for User Story 4
 
-- [ ] T028 [US4] Evaluate `completionCondition` and map `behavior` One/All to default expressions after each inner complete in `processing/executor.go`
-- [ ] T029 [US4] Cancel remaining active inner tokens and complete host once when completion condition is satisfied in `processing/executor.go`
+- [x] T028 [US4] Evaluate `completionCondition` and map `behavior` One/All to default expressions after each inner complete in `processing/executor.go`
+- [x] T029 [US4] Cancel remaining active inner tokens and complete host once when completion condition is satisfied in `processing/executor.go`
 
 **Checkpoint**: Stories 1–3 still pass; Story 4 early-exit fixture passes
 
@@ -137,13 +137,13 @@ description: "Task list for multi-instance activities increment"
 
 ### Tests for User Story 5
 
-- [ ] T030 [P] [US5] Add `processing/testdata/m6_mi_subprocess.bpmn`
-- [ ] T031 [US5] Add MI sub-process parallel join and partial-completion-waits tests to `processing/multi_instance_test.go`
+- [x] T030 [P] [US5] Add `processing/testdata/m6_mi_subprocess.bpmn`
+- [x] T031 [US5] Add MI sub-process parallel join and partial-completion-waits tests to `processing/multi_instance_test.go`
 
 ### Implementation for User Story 5
 
-- [ ] T032 [US5] Integrate MI loop host with `SubProcessHandler` `OnEnter`/`OnComplete` in `processing/handlers/sub_process.go`
-- [ ] T033 [US5] Wire inner scope `COMPLETED` to loop counters and outer host join in `processing/executor.go`
+- [x] T032 [US5] Integrate MI loop host with `SubProcessHandler` `OnEnter`/`OnComplete` in `processing/handlers/sub_process.go`
+- [x] T033 [US5] Wire inner scope `COMPLETED` to loop counters and outer host join in `processing/executor.go`
 
 **Checkpoint**: Stories 1–4 still pass; embedded non-MI SubProcess tests still pass
 
@@ -151,10 +151,10 @@ description: "Task list for multi-instance activities increment"
 
 ## Phase 8: Polish & Cross-Cutting Concerns
 
-- [ ] T034 [P] Cancel all inner instances and loop host when an interrupting boundary fires on a multi-instance activity in `processing/handlers/boundary_event.go`
-- [ ] T035 [P] Document multi-instance semantics (parallel/sequential, collection, completion, recover) in `processing/README.md`
-- [ ] T036 [P] Update implemented-element snapshot and active increment pointer in `AGENTS.md`
-- [ ] T037 Run `go test ./processing/ ./gateway/ ./protocol/proto/event/v1/` and all paths in `specs/002-multi-instance/quickstart.md`
+- [x] T034 [P] Cancel all inner instances and loop host when an interrupting boundary fires on a multi-instance activity in `processing/handlers/boundary_event.go`
+- [x] T035 [P] Document multi-instance semantics (parallel/sequential, collection, completion, recover) in `processing/README.md`
+- [x] T036 [P] Update implemented-element snapshot and active increment pointer in `AGENTS.md`
+- [x] T037 Run `go test ./processing/ ./gateway/ ./protocol/proto/event/v1/` and all paths in `specs/002-multi-instance/quickstart.md`
 
 ---
 

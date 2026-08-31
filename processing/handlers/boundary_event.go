@@ -218,5 +218,8 @@ func (BoundaryEventHandler) OnComplete(in CompleteInput) (*Effect, error) {
 			HostTokenID:     in.TokenID,
 		}
 	}
+	if _, ok := in.Deployment.MultiInstanceSpec(attached); ok {
+		effect.MultiInstanceCancel = attached
+	}
 	return effect, nil
 }

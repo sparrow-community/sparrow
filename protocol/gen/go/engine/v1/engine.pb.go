@@ -43,8 +43,10 @@ type Token struct {
 	SignalName string `protobuf:"bytes,8,opt,name=signal_name,json=signalName,proto3" json:"signal_name,omitempty"`
 	// Child process instance id when waiting on a Call Activity host; empty otherwise.
 	CalledProcessInstanceId string `protobuf:"bytes,9,opt,name=called_process_instance_id,json=calledProcessInstanceId,proto3" json:"called_process_instance_id,omitempty"`
-	unknownFields           protoimpl.UnknownFields
-	sizeCache               protoimpl.SizeCache
+	// Multi-instance inner iteration index (0-based); -1 for loop host or non-MI tokens.
+	LoopInstanceIndex int32 `protobuf:"varint,10,opt,name=loop_instance_index,json=loopInstanceIndex,proto3" json:"loop_instance_index,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *Token) Reset() {
@@ -138,6 +140,13 @@ func (x *Token) GetCalledProcessInstanceId() string {
 		return x.CalledProcessInstanceId
 	}
 	return ""
+}
+
+func (x *Token) GetLoopInstanceIndex() int32 {
+	if x != nil {
+		return x.LoopInstanceIndex
+	}
+	return 0
 }
 
 // Instance is a read-only projection snapshot. It is not an EventLog record.
@@ -1140,7 +1149,7 @@ var File_engine_v1_engine_proto protoreflect.FileDescriptor
 
 const file_engine_v1_engine_proto_rawDesc = "" +
 	"\n" +
-	"\x16engine/v1/engine.proto\x12\tengine.v1\x1a\x14event/v1/event.proto\"\xab\x02\n" +
+	"\x16engine/v1/engine.proto\x12\tengine.v1\x1a\x14event/v1/event.proto\"\xdb\x02\n" +
 	"\x05Token\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -1153,7 +1162,9 @@ const file_engine_v1_engine_proto_rawDesc = "" +
 	"boundaryId\x12\x1f\n" +
 	"\vsignal_name\x18\b \x01(\tR\n" +
 	"signalName\x12;\n" +
-	"\x1acalled_process_instance_id\x18\t \x01(\tR\x17calledProcessInstanceId\"\xb2\x03\n" +
+	"\x1acalled_process_instance_id\x18\t \x01(\tR\x17calledProcessInstanceId\x12.\n" +
+	"\x13loop_instance_index\x18\n" +
+	" \x01(\x05R\x11loopInstanceIndex\"\xb2\x03\n" +
 	"\bInstance\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12#\n" +
 	"\rdeployment_id\x18\x02 \x01(\tR\fdeploymentId\x12'\n" +

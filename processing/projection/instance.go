@@ -57,6 +57,12 @@ type Token struct {
 	ScopeHost bool
 	// CalledProcessInstanceID is set on a Call Activity host while the child instance lives.
 	CalledProcessInstanceID string
+	// LoopInstanceIndex is the 0-based multi-instance inner index; -1 for host or non-MI tokens.
+	LoopInstanceIndex int32
+	// MultiInstanceHost is true while the incoming token is parked on a multi-instance loop host.
+	MultiInstanceHost bool
+	// ScopeHostTokenID links an embedded SubProcess child token to its parked scope-host token.
+	ScopeHostTokenID string
 }
 
 // ScopeBoundary tracks a boundary armed on a SubProcess scope.
@@ -68,6 +74,19 @@ type ScopeBoundary struct {
 	TimerText   string // original timer expression
 	MessageName string // message name (empty if timer/signal boundary)
 	SignalName  string // signal name (empty if timer/message boundary)
+}
+
+// MultiInstanceLoop tracks runtime state for a multi-instance activity host.
+type MultiInstanceLoop struct {
+	HostElementID      string
+	HostTokenID        string
+	TotalInstances     int32
+	ActiveInstances    int32
+	CompletedInstances int32
+	Sequential         bool
+	NextIndex          int32
+	OutputItems        []string
+	Cancelled          bool
 }
 
 // EventSubProcessArm is an armed event sub-process start subscription (START_EVENT ACTIVATED).
@@ -105,6 +124,8 @@ type Instance struct {
 	CompensationSubs map[string]*CompensationSub
 	// PendingCompensation is set while a compensate throw waits for handlers.
 	PendingCompensation *PendingCompensation
+	// MultiInstanceLoops keyed by host element id.
+	MultiInstanceLoops map[string]*MultiInstanceLoop
 }
 
 // CompensationSub is created when a host activity COMPLETED and a compensation
@@ -139,6 +160,7 @@ func NewInstance(id, deploymentID string, version int32) *Instance {
 		ScopeBoundaries:   make(map[string]*ScopeBoundary),
 		EventSubProcesses: make(map[string]*EventSubProcessArm),
 		CompensationSubs:  make(map[string]*CompensationSub),
+		MultiInstanceLoops: make(map[string]*MultiInstanceLoop),
 	}
 }
 
@@ -154,6 +176,7 @@ func (inst *Instance) ApplyEvent(e *eventv1.Event) {
 	inst.ElementIntent[el.GetId()] = el.GetIntent()
 	mergeVariables(inst, el)
 	applyEventSubProcessStart(inst, el)
+	applyMultiInstance(inst, el)
 	applyToken(inst, el)
 	applyProcessLifecycle(inst, el)
 }
@@ -178,6 +201,7 @@ func (inst *Instance) Clone() *Instance {
 		ScopeBoundaries:         make(map[string]*ScopeBoundary, len(inst.ScopeBoundaries)),
 		EventSubProcesses:       make(map[string]*EventSubProcessArm, len(inst.EventSubProcesses)),
 		CompensationSubs:        make(map[string]*CompensationSub, len(inst.CompensationSubs)),
+		MultiInstanceLoops:      make(map[string]*MultiInstanceLoop, len(inst.MultiInstanceLoops)),
 	}
 	for k, v := range inst.Variables {
 		out.Variables[k] = v
@@ -209,6 +233,14 @@ func (inst *Instance) Clone() *Instance {
 		pc.Queue = append([]string{}, inst.PendingCompensation.Queue...)
 		pc.Consumed = append([]string{}, inst.PendingCompensation.Consumed...)
 		out.PendingCompensation = &pc
+	}
+	for k, loop := range inst.MultiInstanceLoops {
+		if loop == nil {
+			continue
+		}
+		cp := *loop
+		cp.OutputItems = append([]string{}, loop.OutputItems...)
+		out.MultiInstanceLoops[k] = &cp
 	}
 	return out
 }
@@ -248,7 +280,7 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 	}
 	tok, ok := inst.Tokens[tokenID]
 	if !ok {
-		tok = &Token{ID: tokenID}
+		tok = &Token{ID: tokenID, LoopInstanceIndex: -1}
 		inst.Tokens[tokenID] = tok
 	}
 	hostElementID := tok.ElementID
@@ -336,6 +368,13 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 		tok.SignalBoundaryID = ""
 		tok.CalledProcessInstanceID = ""
 		if p := el.GetActivityPayload(); p != nil {
+			if p.GetLoopInstanceIndex() >= 0 {
+				tok.LoopInstanceIndex = p.GetLoopInstanceIndex()
+				tok.MultiInstanceHost = false
+			} else if p.GetLoopTotalInstances() > 0 {
+				tok.MultiInstanceHost = true
+				tok.LoopInstanceIndex = -1
+			}
 			if el.GetType() == eventv1.Element_TYPE_SUB_PROCESS {
 				inst.applyScopeBoundary(el.GetId(), tokenID, p)
 			} else {
@@ -365,6 +404,18 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 			}
 		}
 	case eventv1.Element_INTENT_COMPLETED, eventv1.Element_INTENT_TERMINATED:
+		if el.GetIntent() == eventv1.Element_INTENT_COMPLETED {
+			if p := el.GetActivityPayload(); p != nil && p.GetLoopInstanceIndex() >= 0 {
+				delete(inst.Tokens, tokenID)
+				if loop := inst.MultiInstanceLoops[el.GetId()]; loop != nil {
+					if loop.ActiveInstances > 0 {
+						loop.ActiveInstances--
+					}
+					loop.CompletedInstances++
+				}
+				return
+			}
+		}
 		if el.GetIntent() == eventv1.Element_INTENT_TERMINATED &&
 			(el.GetType() == eventv1.Element_TYPE_PARALLEL_GATEWAY ||
 				el.GetType() == eventv1.Element_TYPE_INTERMEDIATE_CATCH_EVENT) {
@@ -382,6 +433,8 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 		tok.MessageBoundaryID = ""
 		tok.SignalBoundaryID = ""
 		tok.CalledProcessInstanceID = ""
+		tok.MultiInstanceHost = false
+		tok.LoopInstanceIndex = -1
 	case eventv1.Element_INTENT_FAILED:
 		// Job failure does not complete the activity; worker may retry.
 		tok.Status = TokenWaiting
@@ -400,6 +453,8 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 		tok.MessageBoundaryID = ""
 		tok.SignalBoundaryID = ""
 		tok.CalledProcessInstanceID = ""
+		tok.MultiInstanceHost = false
+		tok.LoopInstanceIndex = -1
 		if sp := el.GetSequenceFlowPayload(); sp != nil && sp.GetTargetId() != "" {
 			tok.ElementID = sp.GetTargetId()
 		}
@@ -460,6 +515,7 @@ func applyProcessLifecycle(inst *Instance, el *eventv1.Element) {
 		inst.ScopeBoundaries = make(map[string]*ScopeBoundary)
 		inst.CompensationSubs = make(map[string]*CompensationSub)
 		inst.PendingCompensation = nil
+		inst.MultiInstanceLoops = make(map[string]*MultiInstanceLoop)
 	case eventv1.Element_INTENT_TERMINATED:
 		inst.Status = StatusTerminated
 		inst.Tokens = make(map[string]*Token)
@@ -467,6 +523,7 @@ func applyProcessLifecycle(inst *Instance, el *eventv1.Element) {
 		inst.ScopeBoundaries = make(map[string]*ScopeBoundary)
 		inst.CompensationSubs = make(map[string]*CompensationSub)
 		inst.PendingCompensation = nil
+		inst.MultiInstanceLoops = make(map[string]*MultiInstanceLoop)
 	case eventv1.Element_INTENT_ACTIVATED:
 		inst.Status = StatusActive
 	}
@@ -535,6 +592,58 @@ func applyEventSubProcessStart(inst *Instance, el *eventv1.Element) {
 		}
 	case eventv1.Element_INTENT_TERMINATED:
 		delete(inst.EventSubProcesses, p.GetEventSubProcessElementId())
+	}
+}
+
+func applyMultiInstance(inst *Instance, el *eventv1.Element) {
+	if inst == nil || el == nil {
+		return
+	}
+	p := el.GetActivityPayload()
+	if p == nil {
+		return
+	}
+	hostID := el.GetId()
+	switch el.GetIntent() {
+	case eventv1.Element_INTENT_ACTIVATED:
+		if p.GetLoopTotalInstances() > 0 && p.GetLoopInstanceIndex() < 0 {
+			spec := inst.MultiInstanceLoops[hostID]
+			if spec == nil {
+				spec = &MultiInstanceLoop{HostElementID: hostID, HostTokenID: el.GetTokenId()}
+				inst.MultiInstanceLoops[hostID] = spec
+			}
+			spec.HostTokenID = el.GetTokenId()
+			spec.TotalInstances = p.GetLoopTotalInstances()
+			spec.Sequential = p.GetLoopSequential()
+		}
+		if idx := p.GetLoopInstanceIndex(); idx >= 0 {
+			loop := inst.MultiInstanceLoops[hostID]
+			if loop == nil {
+				loop = &MultiInstanceLoop{HostElementID: hostID}
+				inst.MultiInstanceLoops[hostID] = loop
+			}
+			loop.ActiveInstances++
+			if loop.Sequential && idx >= loop.NextIndex {
+				loop.NextIndex = idx + 1
+			}
+		}
+	case eventv1.Element_INTENT_COMPLETED:
+		if idx := p.GetLoopInstanceIndex(); idx >= 0 {
+			return
+		}
+		if p.GetLoopTotalInstances() > 0 && p.GetLoopInstanceIndex() < 0 {
+			delete(inst.MultiInstanceLoops, hostID)
+		}
+	case eventv1.Element_INTENT_TERMINATED:
+		if idx := p.GetLoopInstanceIndex(); idx >= 0 {
+			loop := inst.MultiInstanceLoops[hostID]
+			if loop == nil {
+				return
+			}
+			if loop.ActiveInstances > 0 {
+				loop.ActiveInstances--
+			}
+		}
 	}
 }
 

@@ -404,6 +404,44 @@ func TestEngineServiceProcessVersionCoexistence(t *testing.T) {
 	}
 }
 
+func TestEngineServiceLoopInstanceIndex(t *testing.T) {
+	_, conn, stop := startGRPC(t)
+	defer stop()
+	ctx := context.Background()
+	client := enginev1.NewEngineServiceClient(conn)
+
+	xml, err := os.ReadFile(filepath.Join("..", "processing", "testdata", "m6_mi_parallel_cardinality.bpmn"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dep, err := client.Deploy(ctx, &enginev1.DeployRequest{BpmnXml: xml})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := client.CreateInstance(ctx, &enginev1.CreateInstanceRequest{DeploymentId: dep.GetDeploymentId()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := client.GetInstance(ctx, &enginev1.GetInstanceRequest{ProcessInstanceId: created.GetProcessInstanceId()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[int32]bool{}
+	for _, tok := range got.GetInstance().GetTokens() {
+		if tok.GetElementId() != "UserTask_mi" || tok.GetStatus() != string(projection.TokenWaiting) {
+			continue
+		}
+		idx := tok.GetLoopInstanceIndex()
+		if idx < 0 {
+			continue
+		}
+		seen[idx] = true
+	}
+	if len(seen) != 3 {
+		t.Fatalf("loop indexes=%v want 0,1,2", seen)
+	}
+}
+
 func startGRPC(t *testing.T) (*processing.Engine, *grpc.ClientConn, func()) {
 	t.Helper()
 	eng := processing.NewEngine(eventlog.NewMemory())

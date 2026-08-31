@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             id="Definitions_mi_timer_boundary"
+             targetNamespace="http://sparrow.example/m6">
+  <process id="Process_mi_timer_boundary" isExecutable="true">
+    <startEvent id="StartEvent_1">
+      <outgoing>Flow_start_to_task</outgoing>
+    </startEvent>
+    <userTask id="UserTask_mi">
+      <incoming>Flow_start_to_task</incoming>
+      <outgoing>Flow_task_to_ok</outgoing>
+      <multiInstanceLoopCharacteristics>
+        <loopCardinality xsi:type="tFormalExpression">3</loopCardinality>
+      </multiInstanceLoopCharacteristics>
+    </userTask>
+    <boundaryEvent id="TimerBoundary_1" attachedToRef="UserTask_mi" cancelActivity="true">
+      <outgoing>Flow_boundary_to_timeout</outgoing>
+      <timerEventDefinition>
+        <timeDuration xsi:type="tFormalExpression">PT0S</timeDuration>
+      </timerEventDefinition>
+    </boundaryEvent>
+    <endEvent id="EndEvent_ok">
+      <incoming>Flow_task_to_ok</incoming>
+    </endEvent>
+    <endEvent id="EndEvent_timeout">
+      <incoming>Flow_boundary_to_timeout</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_task" sourceRef="StartEvent_1" targetRef="UserTask_mi"/>
+    <sequenceFlow id="Flow_task_to_ok" sourceRef="UserTask_mi" targetRef="EndEvent_ok"/>
+    <sequenceFlow id="Flow_boundary_to_timeout" sourceRef="TimerBoundary_1" targetRef="EndEvent_timeout"/>
+  </process>
+</definitions>

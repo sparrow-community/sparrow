@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             id="Definitions_mi_service"
+             targetNamespace="http://sparrow.example/m6">
+  <process id="Process_mi_service" name="MI Parallel Service" isExecutable="true">
+    <startEvent id="StartEvent_1">
+      <outgoing>Flow_start_to_task</outgoing>
+    </startEvent>
+    <serviceTask id="ServiceTask_mi" name="Parallel MI Work" implementation="work.v1">
+      <incoming>Flow_start_to_task</incoming>
+      <outgoing>Flow_task_to_end</outgoing>
+      <multiInstanceLoopCharacteristics>
+        <loopCardinality xsi:type="tFormalExpression">3</loopCardinality>
+      </multiInstanceLoopCharacteristics>
+    </serviceTask>
+    <endEvent id="EndEvent_1">
+      <incoming>Flow_task_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_task" sourceRef="StartEvent_1" targetRef="ServiceTask_mi"/>
+    <sequenceFlow id="Flow_task_to_end" sourceRef="ServiceTask_mi" targetRef="EndEvent_1"/>
+  </process>
+</definitions>

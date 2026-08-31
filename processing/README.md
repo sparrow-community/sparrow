@@ -8,7 +8,7 @@ Sparrow’s BPMN **execution kernel**: single-node, event-driven. Append-only `e
 |--|--|
 | Roadmap / implemented | [`../AGENTS.md`](../AGENTS.md) |
 | Governance | [`../.specify/memory/constitution.md`](../.specify/memory/constitution.md) |
-| Active increment | [`../specs/001-engine-completeness/`](../specs/001-engine-completeness/) |
+| Active increment | [`../specs/002-multi-instance/`](../specs/002-multi-instance/) |
 
 Event = behavior; Element (Type, id, token_id, Intent, payload) = subject. Job / timer / message / signal waits are payloads—not peer ledger subjects.
 
@@ -51,18 +51,33 @@ eng, err := processing.Recover(ctx, eventLog, deploymentStore, runtimeStore)
 | `PROCESS` | Start / complete (or terminate) |
 | `START_EVENT` | Instant; Event Sub-Process starts arm on scope open (`ACTIVATED`; message/timer/signal/error) |
 | `END_EVENT` | Then try complete scope/process |
-| `USER_TASK` / `SERVICE_TASK` | Wait → `Complete`; ServiceTask `job_type` |
+| `USER_TASK` / `SERVICE_TASK` | Wait → `Complete`; ServiceTask `job_type`; multi-instance parallel/sequential |
 | Catch / timer·message·signal | Wait → `FireDue` / `Publish*` / `Complete` |
 | Throw | Instant; message/signal via Publication; compensate handlers |
 | `BOUNDARY_EVENT` | Interrupt terminates host; non-interrupt spawns token; compensate after COMPLETED |
 | Gateways | Exclusive / parallel / inclusive / event-based (no instantiate) |
-| `SUB_PROCESS` | Embedded; may host Event Sub-Process |
+| `SUB_PROCESS` | Embedded; may host Event Sub-Process; multi-instance inner scopes |
 | `CALL_ACTIVITY` | Same-definition `calledElement` → **child process instance**; host waits with `called_process_instance_id`; IO name mappings optional |
 | `SEQUENCE_FLOW` | `SEQUENCE_FLOW_TAKEN` |
 
 APIs: `Deploy`, `CreateInstance` (by `deployment_id` or `process_id` + optional version), `Complete`, `ThrowError`, `FireDue`, `PublishMessage`, `PublishSignal`, Job `Activate`/`Fail`/`Heartbeat`, `GetInstance`, `ListEvents`. Transport is `gateway` only.
 
-**Open debt:** CallActivity boundary/compensation thinner than SubProcess; cross-deployment call; live version migration — see deferred list in `AGENTS.md`.
+**Open debt:** CallActivity boundary/compensation thinner than SubProcess; cross-deployment call; live version migration; MI Call Activity — see deferred list in `AGENTS.md`.
+
+## Multi-instance
+
+Supported on **User Task**, **Service Task**, and embedded **Sub-Process** (not Call Activity).
+
+- **Host token** parks on the activity with `loop_instance_index = -1` and `loop_total_instances` on ACTIVATED; inner tokens use `0..N-1`.
+- **Parallel** (`isSequential=false`): all inner instances activate at once; default join requires all completions (`behavior=All`).
+- **Sequential** (`isSequential=true`): one inner instance at a time; next index activates after inner COMPLETED.
+- **Collection input**: `loopDataInputRef` (attribute) size drives instance count; `inputDataItem` bound per iteration; optional `loopDataOutputRef` assembled on host complete. Missing/non-array collection → zero instances.
+- **Early completion**: `completionCondition` or `behavior=One`; remaining inner tokens terminated on join.
+- **Recover**: replay inner COMPLETED removes inner tokens from projection; counters rebuilt from ACTIVATED payloads.
+- **Boundary**: interrupting boundary on MI activity cancels all inner instances and loop state via `MultiInstanceCancel`.
+- **Sub-Process MI**: each inner scope completes independently (`ScopeHostTokenID` links child tokens); outer loop join after all iterations complete.
+
+Fixtures: `testdata/m6_mi_*.bpmn`; tests in `multi_instance_test.go`.
 
 ## Test
 

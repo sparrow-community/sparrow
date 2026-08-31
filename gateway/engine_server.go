@@ -191,6 +191,7 @@ func instanceToProto(inst *projection.Instance) *enginev1.Instance {
 			BoundaryId:              tok.BoundaryID,
 			SignalName:              tok.SignalName,
 			CalledProcessInstanceId: tok.CalledProcessInstanceID,
+			LoopInstanceIndex:       tok.LoopInstanceIndex,
 		})
 	}
 	return out

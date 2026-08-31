@@ -30,6 +30,7 @@ type Deployment struct {
 	callActivities      map[string]CallActivity // callActivity id -> spec
 	calledProcessOwner  map[string]string      // called process id -> callActivity id
 	calledProcesses     map[string]element.Process
+	multiInstances      map[string]MultiInstanceSpec
 	elements            map[string]*elemEntry // flat index of all elements (recursive into subprocesses)
 	seqFlows            map[string]*seqFlowEntry
 }
@@ -106,10 +107,13 @@ func (d *Deployment) compile(messages []element.Message, signals []element.Signa
 	d.callActivities = make(map[string]CallActivity)
 	d.calledProcessOwner = make(map[string]string)
 	d.calledProcesses = make(map[string]element.Process)
+	d.multiInstances = make(map[string]MultiInstanceSpec)
 	d.elements = make(map[string]*elemEntry)
 	d.seqFlows = make(map[string]*seqFlowEntry)
 
-	d.indexScope(&p.FlowElements, p.ID, messages, signals, errors, collectAssociations(p))
+	if err := d.indexScope(&p.FlowElements, p.ID, messages, signals, errors, collectAssociations(p)); err != nil {
+		return err
+	}
 	d.elements[p.ID] = &elemEntry{Type: eventv1.Element_TYPE_PROCESS, ScopeID: ""}
 	return d.indexCallActivities(&p.FlowElements, catalog, messages, signals, errors)
 }
@@ -128,7 +132,7 @@ func collectAssociations(p *element.Process) []element.Association {
 	return out
 }
 
-func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messages []element.Message, signals []element.Signal, errors []element.Error, associations []element.Association) {
+func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messages []element.Message, signals []element.Signal, errors []element.Error, associations []element.Association) error {
 	reg := func(id string, typ eventv1.Element_Type, outgoing, incoming []string) {
 		d.elements[id] = &elemEntry{Type: typ, ScopeID: scopeID, Outgoing: outgoing, Incoming: incoming}
 	}
@@ -145,9 +149,15 @@ func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messag
 	}
 	for _, e := range fe.UserTasks {
 		reg(e.ID, eventv1.Element_TYPE_USER_TASK, e.Outgoing, e.Incoming)
+		if err := indexMultiInstance(d, e.ID, e.LoopCharacteristicsElements); err != nil {
+			return err
+		}
 	}
 	for _, e := range fe.ServiceTasks {
 		reg(e.ID, eventv1.Element_TYPE_SERVICE_TASK, e.Outgoing, e.Incoming)
+		if err := indexMultiInstance(d, e.ID, e.LoopCharacteristicsElements); err != nil {
+			return err
+		}
 	}
 	for _, e := range fe.ExclusiveGatewaies {
 		reg(e.ID, eventv1.Element_TYPE_EXCLUSIVE_GATEWAY, e.Outgoing, e.Incoming)
@@ -202,6 +212,9 @@ func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messag
 	for i := range fe.SubProcesses {
 		sp := &fe.SubProcesses[i]
 		reg(sp.ID, eventv1.Element_TYPE_SUB_PROCESS, sp.Outgoing, sp.Incoming)
+		if err := indexMultiInstance(d, sp.ID, sp.LoopCharacteristicsElements); err != nil {
+			return err
+		}
 		if sp.TriggeredByEvent {
 			spec, err := eventSubProcessStartSpec(sp.ID, sp.StartEvents[0], messages, signals, errors)
 			if err == nil {
@@ -219,8 +232,11 @@ func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messag
 				}
 			}
 		}
-		d.indexScope(&sp.FlowElements, sp.ID, messages, signals, errors, associations)
+		if err := d.indexScope(&sp.FlowElements, sp.ID, messages, signals, errors, associations); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 func (d *Deployment) indexCallActivities(fe *element.FlowElements, catalog map[string]*element.Process, messages []element.Message, signals []element.Signal, errors []element.Error) error {
@@ -247,7 +263,9 @@ func (d *Deployment) indexCallActivities(fe *element.FlowElements, catalog map[s
 					return fmt.Errorf("UNSUPPORTED_ELEMENT: called process id %q collides with an existing element", spec.CalledProcessID)
 				}
 				d.calledProcesses[spec.CalledProcessID] = *called
-				d.indexScope(&called.FlowElements, called.ID, messages, signals, errors, collectAssociations(called))
+				if err := d.indexScope(&called.FlowElements, called.ID, messages, signals, errors, collectAssociations(called)); err != nil {
+					return err
+				}
 				d.elements[called.ID] = &elemEntry{Type: eventv1.Element_TYPE_PROCESS, ScopeID: ""}
 			}
 			// Index CallActivities nested inside the called process (once per process).
