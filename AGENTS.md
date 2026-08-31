@@ -1,68 +1,61 @@
 # Sparrow
 
-Apache-2.0 Go workspace for a lightweight, functionally complete BPMN **execution engine** (not a Camunda-style product suite). Single-node; append-only Protobuf event log as source of truth. Event = behavior; Element = subject. End state is engine completeness, not a permanent minimal subset.
+Lightweight, **functionally complete** BPMN **execution engine**. Single-node; append-only event log is source of truth. Event = behavior; Element = subject.
 
-Why it exists: [`AI-Driven-BPMN.md`](./AI-Driven-BPMN.md).
+**Completeness** ≈ target executable BPMN models run end-to-end, and **Recover** is covered by tests (replay + redrive unfinished COMMANDs → same outcome).
 
 | | |
 |--|--|
 | Governance | [`.specify/memory/constitution.md`](./.specify/memory/constitution.md) |
-| Active increment | [`specs/002-multi-instance/`](./specs/002-multi-instance/) (spec → plan → tasks) |
-| Runtime design | [`processing/README.md`](./processing/README.md) |
+| Runtime | [`processing/README.md`](./processing/README.md) |
+| AI Driven (after engine) | [`AI-Driven-BPMN.md`](./AI-Driven-BPMN.md) |
 
-New work: Spec Kit skills in `.cursor/skills/` (`/speckit-specify` → `/speckit-plan` → `/speckit-tasks` → `/speckit-implement`).
+New work: `/speckit-specify` → plan → tasks → implement (`.cursor/skills/`).
 
-```text
-@AGENTS.md @.specify/memory/constitution.md @specs/002-multi-instance/
-This session: <one thing; prefer next unchecked US in tasks.md>
-```
+## Implemented
 
-## Roadmap
+Process lifecycle; UserTask; ServiceTask + Job; XOR/AND/Inclusive/EventBased (catch) gateways; SubProcess; CallActivity (child instance, IO mapping); Event Sub-Process; catch/throw/boundary (timer, message, signal, error, compensate); compensation; **multi-instance** on User Task, Service Task, SubProcess; process revision coexistence.
 
-**Done (M1–M4c + CallActivity child instance + IO mapping + error Event Sub-Process + process revisions + multi-instance):** Start/UserTask/XOR/End; ServiceTask/Job; timer/message/signal catch & boundary; gateways; SubProcess; Event Sub-Process (message/timer/signal/error); throw/compensation; error boundary/end/ThrowError; CallActivity as **independent child instance** with optional IO name mappings; same `process_id` revision coexistence; **multi-instance** on User Task / Service Task / embedded Sub-Process (parallel/sequential, collection, completion condition, recover).
+Shipped: M1–M4c, [`001`](./specs/001-engine-completeness/), [`002`](./specs/002-multi-instance/).
 
-**Next:** New feature increment via Spec Kit (`/speckit-specify`) — deferred items below stay out of scope until specified.
+## Remaining
 
-**Deferred:** cross-deployment CallActivity; live migration; ≥3 same-kind waiting boundaries on one activity; Incident; instantiate EBG; compensation into unfinished SubProcess; Event Sub-Process nested in Event Sub-Process; cluster; product suite. (One timer + one message + one signal boundary may coexist.)
+Pick next via `/speckit-specify`. Order flexible until a plan sets dependencies.
 
-## Implemented elements (snapshot)
+| P | Topic |
+|---|--------|
+| 1 | Cross-deployment CallActivity |
+| 1 | Incident (blocked state, retry/resume via COMMAND) |
+| 2 | Live instance migration |
+| 2 | Multi-instance Call Activity |
+| 2 | CallActivity boundary & compensation (parity with SubProcess) |
+| 2 | Instantiate event-based gateway |
+| 3 | Compensation into unfinished SubProcess |
+| 3 | Nested Event Sub-Process |
+| 3 | Multiple same-kind boundaries on one activity |
+| 3 | Escalation, Link, conditional flow, Terminate, Send/Receive/Manual/Business Rule Task (one increment each) |
 
-Process; Start (none); End (none/error/compensate); SequenceFlow; UserTask; ServiceTask (+ Job Activate/Fail/Heartbeat); **Multi-instance** (parallel/sequential cardinality or collection, completion condition) on User Task, Service Task, embedded SubProcess; Exclusive/Inclusive/Parallel/EventBased gateways; embedded SubProcess; CallActivity | Same-definition `calledElement`; **child process instance**; host parked with `called_process_instance_id`; optional IO name mappings; Event Sub-Process (message/timer/signal/error); intermediate catch/throw (timer/message/signal/compensate); Boundary (timer/message/signal/compensate/error); Association (compensation); process revision index (latest or explicit version at start).
+**Active increment:** none — `/speckit-specify` next row.
 
-**Gaps covered by 001 (done):** CallActivity child instance + IO mapping; Error Event Sub-Process; process revision coexistence. **Gaps covered by 002 (done):** Multi-instance. **Still out of scope:** Escalation/Link/Conditional/Terminate; Send/Receive/Manual/BusinessRule Task; cross-deployment CallActivity; MI Call Activity.
+## AI Driven
 
-## Runtime surface
+After engine work above: agents use the same APIs and ledger — deploy, start, query, complete via COMMAND. Details: [`AI-Driven-BPMN.md`](./AI-Driven-BPMN.md). Custom behavior maps to BPMN constructs + extensions.
 
-- API: `Deploy` / `CreateInstance` / `Complete` / `ThrowError` / `FireDue` / `PublishMessage` / `PublishSignal` / Job trio; `GetInstance` / `ListEvents`
-- Persist: `EventLog` + `deploy.Store` + optional `runtime.Store`; `Recover` / `Open`
-- Transport: `gateway` only (`engine.v1` + `job.v1`) — not in `processing`
+## API & persist
+
+`Deploy` · `CreateInstance` · `Complete` · `ThrowError` · `FireDue` · `PublishMessage` · `PublishSignal` · Job Activate/Fail/Heartbeat · `GetInstance` · `ListEvents`
+
+`EventLog` + `deploy.Store` + optional `runtime.Store` · `Recover` / `Open` · gRPC in `gateway` only
 
 ## Workspace
 
-Go **1.26.5** (`go.work`; commit it, ignore `go.work.sum`). Module prefix `github.com/sparrow-community/sparrow/...`. Local `replace` for sibling modules.
-
-| Module | Role |
-|--------|------|
-| `bpmn` | BPMN 2.0 XML → `element` types; MIWG tests |
-| `protocol` | Protobuf only: `event.v1` ledger, `job.v1` / `engine.v1` RPC (not Event types). Generated Go committed under `protocol/gen/go` |
-| `processing` | Engine: `deploy` / `handlers` / `executor` / `projection` / `log`; UUIDv7 ids; no parallel graph |
-| `gateway` | gRPC adapter + `cmd/sparrow` |
-
-**protocol:** change `.proto`, run `cd protocol/proto && ./build.sh` (`buf lint` + generate). Never hand-edit `*.pb.go`. Keep `buf` FILE wire compatibility.
-
-**processing:** semantics live in handlers + `processing/README.md`; waiting work uses one `Complete`; Job leases / late message buffers are runtime store, not ledger subjects.
-
-## Commands
+Go **1.26.5** · modules: `bpmn` · `protocol` · `processing` · `gateway`
 
 ```shell
 go test ./processing/ ./gateway/ ./protocol/proto/event/v1/
-go test ./bpmn/   # MIWG; slower
+go test ./bpmn/
 cd protocol/proto && ./build.sh
 go run ./gateway/cmd/sparrow -data-dir ./data -listen :50051
 ```
 
-## Conventions
-
-- Apache-2.0 (Sparrow community) license headers.
-- Do not add top-level modules without need; do not put gRPC in `processing`.
-- AI/custom behavior maps onto existing BPMN constructs (e.g. Service Task + extensions), not new OMG-core element types.
+Proto: edit `.proto`, run `build.sh`; never hand-edit `*.pb.go`. Semantics live in `handlers/` + [`processing/README.md`](./processing/README.md). Apache-2.0 headers.

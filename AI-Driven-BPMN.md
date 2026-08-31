@@ -1,46 +1,42 @@
 # AI Driven BPMN
 
-核心定义：Sparrow 为何存在、站在哪一层。工作区与路线图见 `AGENTS.md`；治理原则见 `.specify/memory/constitution.md`；当前增量见 `specs/001-engine-completeness/`；运行时设计见 `processing/README.md`。
+Engine first ([`AGENTS.md`](./AGENTS.md)); AI Driven is how agents **consume** the engine — same BPMN definitions, same event log, explicit COMMANDs only.
 
----
+## Idea
 
-## 定义
-
-**AI Driven BPMN**：AI 作为入口与驾驶员；BPMN 作为可共享、可版本化、可追责的公共语言与契约；引擎按契约确定性执行，事件日志为事实真相源。
+AI drafts and drives; BPMN is the versioned contract; Sparrow executes and records facts.
 
 ```text
-对话 / Agent（理解、起草、驾驶）
-        ↓  工具 · MCP · 业务插件
-Sparrow（校验、执行、拒绝、记账）
-        ↓
-BPMN 定义（契约） + 事件日志（事实）
+Agent / 对话
+    ↓  tools · MCP
+Sparrow（COMMAND → EVENT）
+    ↓
+BPMN 定义 + 事件日志
 ```
 
-原则：**生成可变，契约不可默改。** AI 可提议；定义与实例的生效变更必须留下可审计的命令与事实，不能只存在于对话。
+**生成可变，契约不可默改。** 定义与实例的生效变更必须落 COMMAND/EVENT，不能只在对话里发生。
 
----
+## Why BPMN
 
-## 为何仍需要契约层
+流程需要跨人、跨时间的一致符号与版本；Agent 计划短命，契约层提供共享上下文、责任边界与回放事实。Sparrow 提供：**版本化定义 + 确定性执行 + 审计回放**。
 
-AI 拉高了个人对流程的理解与规划能力。组织运转靠的不是「此刻谁理解得最好」，而是：
+## Sparrow 的角色
 
-1. **一致表达**——同一套符号与版本，跨人、跨系统、跨时间可读  
-2. **共享上下文**——不必每次从对话重新对齐「说的是哪条路径」  
-3. **契约**——遗产或短约均可；关键是写下、版本化、执行时引用  
+- **执行与审计** — Deploy、启停实例、Complete 等待点、REJECTION
+- **Agent 接口** — gRPC（`engine.v1` / `job.v1`）；MCP 等作为外部 consumer
+- **行为映射** — Agent 逻辑落在 Service Task、User Task、BPMN 扩展上
 
-BPMN（及同类形式化流程）是这类**共同记忆**的载体。Agent plan 是情境性脚本，易变、短命；契约层提供一致性、责任边界与可回放事实。短而可逆的事不必 BPMN；长、需追责、需共享上下文的事需要它。
+**Drive 模式：** 对话起草定义、查询实例、辅助待办；引擎只收 COMMAND。
 
-被挤掉的是「为画而画」；不易被替代的是 **版本化定义 + 确定性执行 + 审计回放**。Sparrow 守后者。
+**前置：** [`AGENTS.md`](./AGENTS.md) § Remaining 中引擎项优先完成。
 
----
+## 后续（引擎就绪后）
 
-## Sparrow
-
-| 是 | 不是 |
+| 项 | 目标 |
 |----|------|
-| 可被 AI 调用的流程执行与审计内核 | 对话产品 / 通用 Agent 编排器 |
-| 轻量级且功能完备的 BPMN 引擎 + 事件日志真相源 | Camunda 类产品套件（建模器 / 运维 UI 等）/ 用模型替代流程语义 |
+| Task extensions | Agent 元数据约定（扩展属性，非新 core 元素） |
+| Correlation 查询 | 按业务键查实例 |
+| Agent 操作指南 | deploy → create → complete → list events |
+| 失败恢复 | 对齐引擎 Incident increment |
 
-AI 落点映射到既有 BPMN 构造（如 Service Task、User Task 与扩展），不发明非标准核心元素。
-
-形态上以 **Drive** 为主：对话可起草与修订定义、启停与查询实例、辅助待办；引擎只接受明确 COMMAND。Copilot 为弱化形态；Autopilot（运行时高度自主）需额外护栏，不作默认主体。
+AI 相关能力不得绕过 COMMAND/EVENT 或无声改投影。
