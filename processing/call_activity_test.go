@@ -267,3 +267,140 @@ func TestCallActivityIOMapping(t *testing.T) {
 		t.Fatalf("extra must remain on caller, vars=%v", caller.Variables)
 	}
 }
+
+func TestCrossDeployCallActivitySpawnsCalleeDeployment(t *testing.T) {
+	ctx := context.Background()
+	eng := processing.NewEngine(eventlog.NewMemory())
+
+	calleeDep, err := eng.Deploy(ctx, readTestdataCall(t, "m8_cross_call_callee.bpmn"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	callerDep, err := eng.Deploy(ctx, readTestdataCall(t, "m8_cross_call_caller.bpmn"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calleeDep == callerDep {
+		t.Fatal("expected distinct deployments")
+	}
+
+	callerID, err := eng.CreateInstance(ctx, callerDep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caller := mustInstance(t, eng, callerID)
+	if caller.DeploymentID != callerDep {
+		t.Fatalf("caller deployment=%q want %q", caller.DeploymentID, callerDep)
+	}
+	hostElem, hostTok := waitingAt(caller)
+	if hostElem != "CallActivity_1" {
+		t.Fatalf("expected CallActivity_1 host, got %s", hostElem)
+	}
+	childID := caller.Tokens[hostTok].CalledProcessInstanceID
+	child := mustInstance(t, eng, childID)
+	if child.DeploymentID != calleeDep {
+		t.Fatalf("child deployment=%q want callee %q", child.DeploymentID, calleeDep)
+	}
+	if child.ProcessID != "Process_called_cross" {
+		t.Fatalf("child process=%q", child.ProcessID)
+	}
+	if child.ParentProcessInstanceID != callerID {
+		t.Fatalf("child parent=%q want %q", child.ParentProcessInstanceID, callerID)
+	}
+	elemID, tokenID := waitingAt(child)
+	if err := eng.Complete(ctx, childID, elemID, tokenID, nil); err != nil {
+		t.Fatal(err)
+	}
+	caller = mustInstance(t, eng, callerID)
+	if caller.Status != projection.StatusCompleted {
+		t.Fatalf("caller status=%s", caller.Status)
+	}
+}
+
+func TestCrossDeployCallerOnlyDeploySucceeds(t *testing.T) {
+	ctx := context.Background()
+	eng := processing.NewEngine(eventlog.NewMemory())
+	if _, err := eng.Deploy(ctx, readTestdataCall(t, "m8_cross_call_caller.bpmn")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCrossDeployCalleeNotDeployedRejects(t *testing.T) {
+	ctx := context.Background()
+	memLog := eventlog.NewMemory()
+	eng := processing.NewEngine(memLog)
+	callerDep, err := eng.Deploy(ctx, readTestdataCall(t, "m8_cross_call_caller.bpmn"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = eng.CreateInstance(ctx, callerDep, nil)
+	if err == nil {
+		t.Fatal("expected CreateInstance error when callee not deployed")
+	}
+	records, err := memLog.ReadAll(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var instanceID string
+	var sawRejection bool
+	for _, ev := range records {
+		if ev.GetProcessInstanceId() != "" && instanceID == "" {
+			instanceID = ev.GetProcessInstanceId()
+		}
+		if ev.GetRecordType() == eventv1.Event_RECORD_TYPE_REJECTION && ev.GetRejection().GetCode() == "NOT_FOUND" {
+			sawRejection = true
+		}
+	}
+	if !sawRejection {
+		t.Fatal("expected NOT_FOUND REJECTION in event log")
+	}
+	caller, ok := eng.GetInstance(instanceID)
+	if !ok {
+		t.Fatal("caller instance should exist after failed enter")
+	}
+	for _, tok := range caller.Tokens {
+		if tok != nil && tok.Status == projection.TokenWaiting && tok.ElementID == "CallActivity_1" {
+			t.Fatalf("caller must not wait on call when callee missing, tok=%#v", tok)
+		}
+	}
+}
+
+func TestCrossDeployCallActivityIOMapping(t *testing.T) {
+	ctx := context.Background()
+	eng := processing.NewEngine(eventlog.NewMemory())
+	if _, err := eng.Deploy(ctx, readTestdataCall(t, "m8_cross_call_io_callee.bpmn")); err != nil {
+		t.Fatal(err)
+	}
+	callerDep, err := eng.Deploy(ctx, readTestdataCall(t, "m8_cross_call_io_caller.bpmn"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	callerID, err := eng.CreateInstance(ctx, callerDep, map[string]any{"orderId": "o1", "extra": 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	caller := mustInstance(t, eng, callerID)
+	_, hostTok := waitingAt(caller)
+	childID := caller.Tokens[hostTok].CalledProcessInstanceID
+	child := mustInstance(t, eng, childID)
+	if _, ok := child.Variables["id"]; !ok {
+		t.Fatalf("expected mapped id on child, vars=%v", child.Variables)
+	}
+	if _, ok := child.Variables["extra"]; ok {
+		t.Fatalf("extra must not leak to child, vars=%v", child.Variables)
+	}
+	e1, t1 := waitingAt(child)
+	if err := eng.Complete(ctx, childID, e1, t1, map[string]any{"total": 9}); err != nil {
+		t.Fatal(err)
+	}
+	caller = mustInstance(t, eng, callerID)
+	if caller.Status != projection.StatusCompleted {
+		t.Fatalf("caller status=%s", caller.Status)
+	}
+	if got := caller.Variables["amount"]; got == "" {
+		t.Fatalf("expected amount on caller, vars=%v", caller.Variables)
+	}
+	if _, ok := caller.Variables["extra"]; !ok {
+		t.Fatalf("extra must remain on caller, vars=%v", caller.Variables)
+	}
+}

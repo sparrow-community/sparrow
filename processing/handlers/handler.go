@@ -79,9 +79,10 @@ type Publication struct {
 	ParentInstanceID string
 	CallActivityID   string
 	HostTokenID      string
-	CalledProcessID  string
-	DeploymentID     string
-	Completed        bool // ResumeParent: true=complete CallActivity, false=terminate
+	CalledProcessID     string
+	DeploymentID        string
+	CalledDeploymentID  string
+	Completed           bool // ResumeParent: true=complete CallActivity, false=terminate
 }
 
 // SpawnOutgoingEffect describes a boundary path taken on a newly minted token.

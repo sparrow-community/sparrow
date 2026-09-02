@@ -14,12 +14,33 @@ import (
 
 func init() {
 	handlers.SetCallChildIDAllocator(NextID)
+	handlers.SetCalleeResolver(func(processID string) (string, error) {
+		if calleeResolver == nil {
+			return "", fmt.Errorf("NOT_FOUND: process %q", processID)
+		}
+		return calleeResolver(processID)
+	})
+}
+
+// calleeResolver is set per Engine via wireCalleeResolver.
+var calleeResolver func(processID string) (string, error)
+
+func (e *Engine) wireCalleeResolver() {
+	calleeResolver = func(processID string) (string, error) {
+		e.mu.Lock()
+		defer e.mu.Unlock()
+		dep, err := e.resolveDeploymentLocked("", processID, 0)
+		if err != nil {
+			return "", err
+		}
+		return dep.ID, nil
+	}
 }
 
 func (e *Engine) startCalledInstance(ctx context.Context, p handlers.Publication) error {
 	parentID := p.ParentInstanceID
 	e.mu.Lock()
-	dep := e.deployments[p.DeploymentID]
+	callerDep := e.deployments[p.DeploymentID]
 	parent := e.instances[parentID]
 	if parent == nil && p.HostTokenID != "" {
 		for id, inst := range e.instances {
@@ -34,14 +55,22 @@ func (e *Engine) startCalledInstance(ctx context.Context, p handlers.Publication
 			}
 		}
 	}
+	calleeDepID := p.CalledDeploymentID
+	if calleeDepID == "" {
+		calleeDepID = p.DeploymentID
+	}
+	calleeDep := e.deployments[calleeDepID]
 	e.mu.Unlock()
-	if dep == nil {
+	if callerDep == nil {
 		return fmt.Errorf("NOT_FOUND: deployment %q", p.DeploymentID)
+	}
+	if calleeDep == nil {
+		return fmt.Errorf("NOT_FOUND: deployment %q", calleeDepID)
 	}
 	if parent == nil {
 		return fmt.Errorf("NOT_FOUND: parent instance for callActivity %q", p.CallActivityID)
 	}
-	call, ok := dep.CallActivitySpec(p.CallActivityID)
+	call, ok := callerDep.CallActivitySpec(p.CallActivityID)
 	if !ok {
 		return fmt.Errorf("NOT_FOUND: callActivity %q", p.CallActivityID)
 	}
@@ -73,9 +102,9 @@ func (e *Engine) startCalledInstance(ctx context.Context, p handlers.Publication
 		Id:                cmdID,
 		Timestamp:         nowMillis(),
 		RecordType:        eventv1.Event_RECORD_TYPE_COMMAND,
-		DeploymentId:      dep.ID,
+		DeploymentId:      calleeDep.ID,
 		ProcessInstanceId: instanceID,
-		ProcessVersion:    dep.Version,
+		ProcessVersion:    calleeDep.Version,
 		Element: &eventv1.Element{
 			Intent:  eventv1.Element_INTENT_ACTIVATING,
 			Type:    eventv1.Element_TYPE_PROCESS,
@@ -95,7 +124,7 @@ func (e *Engine) startCalledInstance(ctx context.Context, p handlers.Publication
 		return err
 	}
 
-	inst := projection.NewInstance(instanceID, dep.ID, dep.Version)
+	inst := projection.NewInstance(instanceID, calleeDep.ID, calleeDep.Version)
 	inst.ProcessID = calledProcessID
 	inst.ParentProcessInstanceID = parentID
 	inst.ParentElementID = p.CallActivityID
@@ -107,6 +136,14 @@ func (e *Engine) startCalledInstance(ctx context.Context, p handlers.Publication
 	e.instMu[instanceID] = lock
 	e.mu.Unlock()
 
+	startEventID := call.StartEventID
+	if startEventID == "" {
+		startEventID, err = calleeDep.StartEventID()
+		if err != nil {
+			return err
+		}
+	}
+
 	lock.Lock()
 	emit := e.emitter(ctx, inst, cmdID)
 	for _, rec := range handlers.ProcessStartRecordsWithParent(calledProcessID, pv, parentID, p.CallActivityID, p.HostTokenID) {
@@ -115,11 +152,11 @@ func (e *Engine) startCalledInstance(ctx context.Context, p handlers.Publication
 			return err
 		}
 	}
-	if err := emitEventSubProcessStartArms(dep, inst, calledProcessID, e.now(), emit); err != nil {
+	if err := emitEventSubProcessStartArms(calleeDep, inst, calledProcessID, e.now(), emit); err != nil {
 		lock.Unlock()
 		return err
 	}
-	pubs, err := e.executor.Enter(ctx, dep, inst, tokenID, call.StartEventID, emit)
+	pubs, err := e.executor.Enter(ctx, calleeDep, inst, tokenID, startEventID, emit)
 	lock.Unlock()
 	if err != nil {
 		return err
@@ -137,13 +174,13 @@ func (e *Engine) resumeParentCall(ctx context.Context, p handlers.Publication) e
 	e.mu.Lock()
 	parent := e.instances[p.ParentInstanceID]
 	lock := e.instMu[p.ParentInstanceID]
-	var dep *deploy.Deployment
+	var callerDep *deploy.Deployment
 	if parent != nil {
-		dep = e.deployments[parent.DeploymentID]
+		callerDep = e.deployments[parent.DeploymentID]
 	}
 	child := e.instances[p.ChildInstanceID]
 	e.mu.Unlock()
-	if parent == nil || dep == nil {
+	if parent == nil || callerDep == nil {
 		return fmt.Errorf("NOT_FOUND: parent instance %q", p.ParentInstanceID)
 	}
 
@@ -197,7 +234,7 @@ func (e *Engine) resumeParentCall(ctx context.Context, p handlers.Publication) e
 
 	var outVars map[string]any
 	if child != nil {
-		if call, ok := dep.CallActivitySpec(p.CallActivityID); ok && len(call.Outputs) > 0 {
+		if call, ok := callerDep.CallActivitySpec(p.CallActivityID); ok && len(call.Outputs) > 0 {
 			outVars = anyMapFromJSONStrings(applyMappings(child.Variables, call.Outputs))
 		}
 	}

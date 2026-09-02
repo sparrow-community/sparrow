@@ -15,6 +15,14 @@ func (CallActivityHandler) OnEnter(in EnterInput) (*Effect, error) {
 	if !ok {
 		return nil, fmt.Errorf("NOT_FOUND: callActivity %q", in.ElementID)
 	}
+	calleeDepID := in.Deployment.ID
+	if call.ExternalCallee {
+		id, err := resolveCalleeDeployment(call.CalledProcessID)
+		if err != nil {
+			return nil, err
+		}
+		calleeDepID = id
+	}
 	childID, err := nextCallChildID()
 	if err != nil {
 		return nil, err
@@ -34,13 +42,14 @@ func (CallActivityHandler) OnEnter(in EnterInput) (*Effect, error) {
 		},
 		Wait: true,
 		Publish: &Publication{
-			Kind:             PublicationStartChild,
-			ChildInstanceID:  childID,
-			ParentInstanceID: in.Instance.ID,
-			CallActivityID:   in.ElementID,
-			HostTokenID:      in.TokenID,
-			CalledProcessID:  call.CalledProcessID,
-			DeploymentID:     in.Deployment.ID,
+			Kind:                 PublicationStartChild,
+			ChildInstanceID:      childID,
+			ParentInstanceID:     in.Instance.ID,
+			CallActivityID:       in.ElementID,
+			HostTokenID:          in.TokenID,
+			CalledProcessID:      call.CalledProcessID,
+			DeploymentID:         in.Deployment.ID,
+			CalledDeploymentID:   calleeDepID,
 		},
 	}, nil
 }
@@ -72,9 +81,21 @@ var nextCallChildID = func() (string, error) {
 	return "", fmt.Errorf("call child id allocator not configured")
 }
 
+// resolveCalleeDeployment resolves calledElement to a deployment id at runtime.
+var resolveCalleeDeployment = func(processID string) (string, error) {
+	return "", fmt.Errorf("callee resolver not configured")
+}
+
 // SetCallChildIDAllocator wires UUIDv7 allocation from processing into handlers.
 func SetCallChildIDAllocator(fn func() (string, error)) {
 	if fn != nil {
 		nextCallChildID = fn
+	}
+}
+
+// SetCalleeResolver wires runtime callee deployment resolution from processing into handlers.
+func SetCalleeResolver(fn func(processID string) (deploymentID string, err error)) {
+	if fn != nil {
+		resolveCalleeDeployment = fn
 	}
 }

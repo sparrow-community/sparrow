@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             id="Definitions_cross_call_io_caller"
+             targetNamespace="http://sparrow.example/cross-call-io-caller">
+  <process id="Process_caller_io_cross" name="M8 Caller IO Cross" isExecutable="true">
+    <startEvent id="Start_caller">
+      <outgoing>Flow_s_c</outgoing>
+    </startEvent>
+    <callActivity id="CallActivity_1" calledElement="Process_called_io_cross">
+      <incoming>Flow_s_c</incoming>
+      <outgoing>Flow_c_e</outgoing>
+      <dataInputAssociation>
+        <sourceRef>orderId</sourceRef>
+        <targetRef>id</targetRef>
+      </dataInputAssociation>
+      <dataOutputAssociation>
+        <sourceRef>total</sourceRef>
+        <targetRef>amount</targetRef>
+      </dataOutputAssociation>
+    </callActivity>
+    <endEvent id="End_caller">
+      <incoming>Flow_c_e</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_s_c" sourceRef="Start_caller" targetRef="CallActivity_1"/>
+    <sequenceFlow id="Flow_c_e" sourceRef="CallActivity_1" targetRef="End_caller"/>
+  </process>
+</definitions>

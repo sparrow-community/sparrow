@@ -13,27 +13,21 @@ type VariableMapping struct {
 	Target string
 }
 
-// CallActivity links a callActivity element to a called process in the same definitions.
+// CallActivity links a callActivity element to a called process.
 type CallActivity struct {
 	ID              string
 	CalledProcessID string
 	StartEventID    string
 	Inputs          []VariableMapping
 	Outputs         []VariableMapping
+	// ExternalCallee is true when calledElement is not embedded in the same definitions.
+	ExternalCallee bool
 }
 
 func validateCallActivity(ca element.CallActivity, catalog map[string]*element.Process) (CallActivity, error) {
 	called := strings.TrimSpace(ca.CalledElement)
 	if called == "" {
 		return CallActivity{}, fmt.Errorf("UNSUPPORTED_ELEMENT: callActivity %q needs calledElement", ca.ID)
-	}
-	proc, ok := catalog[called]
-	if !ok {
-		return CallActivity{}, fmt.Errorf("UNSUPPORTED_ELEMENT: callActivity %q calledElement %q not found in definitions", ca.ID, called)
-	}
-	startID, err := StartEventID(proc)
-	if err != nil {
-		return CallActivity{}, fmt.Errorf("UNSUPPORTED_ELEMENT: callActivity %q called process %q: %v", ca.ID, called, err)
 	}
 	if len(ca.MultielementLoopCharacteristics) > 0 {
 		return CallActivity{}, fmt.Errorf("UNSUPPORTED_ELEMENT: multi-instance callActivity %q not supported", ca.ID)
@@ -46,13 +40,23 @@ func validateCallActivity(ca element.CallActivity, catalog map[string]*element.P
 	if err != nil {
 		return CallActivity{}, err
 	}
-	return CallActivity{
+	spec := CallActivity{
 		ID:              ca.ID,
 		CalledProcessID: called,
-		StartEventID:    startID,
 		Inputs:          inputs,
 		Outputs:         outputs,
-	}, nil
+	}
+	proc, ok := catalog[called]
+	if !ok {
+		spec.ExternalCallee = true
+		return spec, nil
+	}
+	startID, err := StartEventID(proc)
+	if err != nil {
+		return CallActivity{}, fmt.Errorf("UNSUPPORTED_ELEMENT: callActivity %q called process %q: %v", ca.ID, called, err)
+	}
+	spec.StartEventID = startID
+	return spec, nil
 }
 
 func compileInputMappings(assocs []element.DataInputAssociation, callID string) ([]VariableMapping, error) {

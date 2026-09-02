@@ -516,3 +516,131 @@ func TestRecoverRedrivesFailIncidentOpen(t *testing.T) {
 		t.Fatalf("INCIDENT_OPENED count=%d", n)
 	}
 }
+
+func TestRecoverCrossDeployCallActivity(t *testing.T) {
+	ctx := context.Background()
+	memLog := eventlog.NewMemory()
+	store := deploy.NewMemoryStore()
+	eng1, err := processing.Recover(ctx, memLog, store, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	calleeDep, err := eng1.Deploy(ctx, readRecoverCallTestdata(t, "m8_cross_call_callee.bpmn"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	callerDep, err := eng1.Deploy(ctx, readRecoverCallTestdata(t, "m8_cross_call_caller.bpmn"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	callerID, err := eng1.CreateInstance(ctx, callerDep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caller := mustInstance(t, eng1, callerID)
+	_, hostTok := waitingAt(caller)
+	childID := caller.Tokens[hostTok].CalledProcessInstanceID
+	if childID == "" {
+		t.Fatal("expected child id before recover")
+	}
+	child := mustInstance(t, eng1, childID)
+	if child.DeploymentID != calleeDep {
+		t.Fatalf("child deployment=%q want callee %q", child.DeploymentID, calleeDep)
+	}
+	if caller.DeploymentID != callerDep {
+		t.Fatalf("caller deployment=%q want %q", caller.DeploymentID, callerDep)
+	}
+
+	eng2, err := processing.Recover(ctx, memLog, store, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caller = mustInstance(t, eng2, callerID)
+	_, hostTok = waitingAt(caller)
+	if caller.Tokens[hostTok].CalledProcessInstanceID != childID {
+		t.Fatalf("caller link lost after recover")
+	}
+	child = mustInstance(t, eng2, childID)
+	if child.DeploymentID != calleeDep {
+		t.Fatalf("child deployment=%q after recover", child.DeploymentID)
+	}
+	if child.ParentProcessInstanceID != callerID {
+		t.Fatalf("child parent=%q after recover", child.ParentProcessInstanceID)
+	}
+	elemID, tokenID := waitingAt(child)
+	if err := eng2.Complete(ctx, childID, elemID, tokenID, nil); err != nil {
+		t.Fatal(err)
+	}
+	caller = mustInstance(t, eng2, callerID)
+	if caller.Status != projection.StatusCompleted {
+		t.Fatalf("caller status=%s after recover complete", caller.Status)
+	}
+}
+
+func TestRecoverRedrivesPartialCrossDeployChildCreate(t *testing.T) {
+	ctx := context.Background()
+	memLog := eventlog.NewMemory()
+	store := deploy.NewMemoryStore()
+	eng1, err := processing.Recover(ctx, memLog, store, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	calleeDep, err := eng1.Deploy(ctx, readRecoverCallTestdata(t, "m8_cross_call_callee.bpmn"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	callerDep, err := eng1.Deploy(ctx, readRecoverCallTestdata(t, "m8_cross_call_caller.bpmn"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	callerID, err := eng1.CreateInstance(ctx, callerDep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caller := mustInstance(t, eng1, callerID)
+	_, hostTok := waitingAt(caller)
+	childID := caller.Tokens[hostTok].CalledProcessInstanceID
+
+	all, err := memLog.ReadAll(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	partial := eventlog.NewMemory()
+	for _, ev := range all {
+		if _, err := partial.Append(ctx, ev); err != nil {
+			t.Fatal(err)
+		}
+		if ev.GetProcessInstanceId() == childID &&
+			ev.GetRecordType() == eventv1.Event_RECORD_TYPE_COMMAND &&
+			ev.GetElement().GetIntent() == eventv1.Element_INTENT_ACTIVATING &&
+			ev.GetElement().GetType() == eventv1.Element_TYPE_PROCESS {
+			break
+		}
+	}
+
+	eng2, err := processing.Recover(ctx, partial, store, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caller = mustInstance(t, eng2, callerID)
+	_, hostTok = waitingAt(caller)
+	if caller.Tokens[hostTok].CalledProcessInstanceID != childID {
+		t.Fatalf("caller child link lost after partial recover")
+	}
+	child := mustInstance(t, eng2, childID)
+	if child.DeploymentID != calleeDep {
+		t.Fatalf("child deployment=%q want %q", child.DeploymentID, calleeDep)
+	}
+	if waitingElement(child) != "Task_called" {
+		t.Fatalf("child tokens=%#v", child.Tokens)
+	}
+}
+
+func readRecoverCallTestdata(t *testing.T, name string) []byte {
+	t.Helper()
+	xml, err := os.ReadFile(filepath.Join("testdata", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return xml
+}

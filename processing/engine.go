@@ -3,6 +3,7 @@ package processing
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -59,6 +60,7 @@ func NewEngine(l eventlog.EventLog) *Engine {
 	}
 	e.executor = NewExecutor(handlers.DefaultRegistry())
 	e.executor.Now = e.now
+	e.wireCalleeResolver()
 	return e
 }
 
@@ -172,10 +174,12 @@ func (e *Engine) CreateInstanceRequest(ctx context.Context, req CreateInstanceRe
 		return "", err
 	}
 	pubs, err := e.executor.Enter(ctx, dep, inst, tokenID, startID, emit)
-	lock.Unlock()
 	if err != nil {
+		e.rejectEnterFailure(ctx, dep, inst, err)
+		lock.Unlock()
 		return "", err
 	}
+	lock.Unlock()
 	if err := e.flushPublications(ctx, pubs); err != nil {
 		return "", err
 	}
@@ -380,6 +384,7 @@ func (e *Engine) completeLocked(ctx context.Context, dep *deploy.Deployment, ins
 
 	pubs, err := e.executor.Complete(ctx, dep, inst, tokenID, elementID, pv, e.emitter(ctx, inst, cmdID))
 	if err != nil {
+		e.rejectEnterFailure(ctx, dep, inst, err)
 		return pubs, err
 	}
 	e.releaseLease(instanceID, tokenID)
@@ -516,6 +521,39 @@ func (e *Engine) reject(ctx context.Context, inst *projection.Instance, elementI
 
 func nowMillis() int64 {
 	return time.Now().UnixMilli()
+}
+
+func rejectionFromError(err error) (code, message string) {
+	if err == nil {
+		return "INTERNAL", "unknown error"
+	}
+	s := err.Error()
+	if i := strings.Index(s, ":"); i > 0 {
+		return strings.TrimSpace(s[:i]), strings.TrimSpace(s[i+1:])
+	}
+	return "INTERNAL", s
+}
+
+func activeEnterFailureToken(inst *projection.Instance) (elementID, tokenID string, ok bool) {
+	for id, tok := range inst.Tokens {
+		if tok != nil && tok.Status == projection.TokenActive && tok.ElementID != "" {
+			return tok.ElementID, id, true
+		}
+	}
+	return "", "", false
+}
+
+func (e *Engine) rejectEnterFailure(ctx context.Context, dep *deploy.Deployment, inst *projection.Instance, cause error) {
+	elementID, tokenID, ok := activeEnterFailureToken(inst)
+	if !ok {
+		return
+	}
+	typ, err := dep.TypeOf(elementID)
+	if err != nil {
+		return
+	}
+	code, msg := rejectionFromError(cause)
+	_ = e.reject(ctx, inst, elementID, tokenID, typ, eventv1.Element_INTENT_ACTIVATING, code, msg)
 }
 
 func (e *Engine) now() time.Time {

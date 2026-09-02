@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             id="Definitions_cross_call_caller"
+             targetNamespace="http://sparrow.example/cross-call-caller">
+  <process id="Process_caller_cross" name="M8 Caller Cross" isExecutable="true">
+    <startEvent id="Start_caller">
+      <outgoing>Flow_start_to_call</outgoing>
+    </startEvent>
+    <callActivity id="CallActivity_1" name="Call child" calledElement="Process_called_cross">
+      <incoming>Flow_start_to_call</incoming>
+      <outgoing>Flow_call_to_end</outgoing>
+    </callActivity>
+    <endEvent id="End_caller">
+      <incoming>Flow_call_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_call" sourceRef="Start_caller" targetRef="CallActivity_1"/>
+    <sequenceFlow id="Flow_call_to_end" sourceRef="CallActivity_1" targetRef="End_caller"/>
+  </process>
+</definitions>

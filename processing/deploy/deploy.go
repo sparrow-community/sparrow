@@ -254,11 +254,14 @@ func (d *Deployment) indexCallActivities(fe *element.FlowElements, catalog map[s
 			if spec.CalledProcessID == d.Process.ID {
 				return fmt.Errorf("UNSUPPORTED_ELEMENT: callActivity %q cannot call the root process", ca.ID)
 			}
+			d.callActivities[spec.ID] = spec
+			if spec.ExternalCallee {
+				continue
+			}
 			called := catalog[spec.CalledProcessID]
 			if err := validateM1(called, errors); err != nil {
 				return fmt.Errorf("UNSUPPORTED_ELEMENT: called process %q: %v", spec.CalledProcessID, err)
 			}
-			d.callActivities[spec.ID] = spec
 			if _, exists := d.calledProcessOwner[spec.CalledProcessID]; !exists {
 				d.calledProcessOwner[spec.CalledProcessID] = spec.ID
 			}
