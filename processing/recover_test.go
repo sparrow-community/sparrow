@@ -644,3 +644,126 @@ func readRecoverCallTestdata(t *testing.T, name string) []byte {
 	}
 	return xml
 }
+
+func TestCallActivityTimerBoundaryRecoverThenFireDue(t *testing.T) {
+	xml := readRecoverCallTestdata(t, "m9_call_timer_boundary.bpmn")
+	dir := t.TempDir()
+	ctx := context.Background()
+
+	eng1, err := processing.Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dep, err := eng1.Deploy(ctx, xml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	callerID, err := eng1.CreateInstance(ctx, dep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caller := mustInstance(t, eng1, callerID)
+	_, hostTok := waitingAt(caller)
+	childID := caller.Tokens[hostTok].CalledProcessInstanceID
+	due := caller.Tokens[hostTok].DueUnixMs
+	if due == 0 || caller.Tokens[hostTok].BoundaryID != "TimerBoundary_1" {
+		t.Fatalf("timer not armed: tok=%#v", caller.Tokens[hostTok])
+	}
+	if err := eng1.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	eng2, err := processing.Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer eng2.Close()
+
+	caller = mustInstance(t, eng2, callerID)
+	_, hostTok = waitingAt(caller)
+	tok := caller.Tokens[hostTok]
+	if tok.CalledProcessInstanceID != childID {
+		t.Fatalf("child link lost: got %q want %q", tok.CalledProcessInstanceID, childID)
+	}
+	if tok.DueUnixMs != due {
+		t.Fatalf("due after recover=%d want %d", tok.DueUnixMs, due)
+	}
+	if tok.BoundaryID != "TimerBoundary_1" {
+		t.Fatalf("boundary not restored: %q", tok.BoundaryID)
+	}
+
+	if err := eng2.FireDue(ctx); err != nil {
+		t.Fatal(err)
+	}
+	child := mustInstance(t, eng2, childID)
+	if child.Status != projection.StatusTerminated {
+		t.Fatalf("child status=%s want terminated", child.Status)
+	}
+	caller = mustInstance(t, eng2, callerID)
+	if caller.Status != projection.StatusCompleted {
+		t.Fatalf("caller status=%s", caller.Status)
+	}
+}
+
+func TestCallActivityCompensationRecoverAfterComplete(t *testing.T) {
+	xml := readRecoverCallTestdata(t, "m9_call_compensate.bpmn")
+	dir := t.TempDir()
+	ctx := context.Background()
+
+	eng1, err := processing.Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dep, err := eng1.Deploy(ctx, xml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	callerID, err := eng1.CreateInstance(ctx, dep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caller := mustInstance(t, eng1, callerID)
+	_, hostTok := waitingAt(caller)
+	childID := caller.Tokens[hostTok].CalledProcessInstanceID
+	elemID, tokenID := waitingAt(mustInstance(t, eng1, childID))
+	if err := eng1.Complete(ctx, childID, elemID, tokenID, nil); err != nil {
+		t.Fatal(err)
+	}
+	caller = mustInstance(t, eng1, callerID)
+	var undoTok string
+	for tid, tok := range caller.Tokens {
+		if tok != nil && tok.ElementID == "Undo_CA" && tok.Status == projection.TokenWaiting {
+			undoTok = tid
+		}
+	}
+	if undoTok == "" {
+		t.Fatalf("missing Undo_CA waiting before recover, tokens=%#v", caller.Tokens)
+	}
+	if err := eng1.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	eng2, err := processing.Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer eng2.Close()
+
+	caller = mustInstance(t, eng2, callerID)
+	undoTok = ""
+	for tid, tok := range caller.Tokens {
+		if tok != nil && tok.ElementID == "Undo_CA" && tok.Status == projection.TokenWaiting {
+			undoTok = tid
+		}
+	}
+	if undoTok == "" {
+		t.Fatalf("Undo_CA waiting lost after recover, tokens=%#v", caller.Tokens)
+	}
+	if err := eng2.Complete(ctx, callerID, "Undo_CA", undoTok, nil); err != nil {
+		t.Fatal(err)
+	}
+	caller = mustInstance(t, eng2, callerID)
+	if caller.Status != projection.StatusCompleted {
+		t.Fatalf("status=%s tokens=%#v", caller.Status, caller.Tokens)
+	}
+}

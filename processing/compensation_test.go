@@ -166,6 +166,62 @@ func TestCompensationDeploy(t *testing.T) {
 	}
 }
 
+func TestCallActivityCompensationThrowRunsHandler(t *testing.T) {
+	xml := readTestdataCall(t, "m9_call_compensate.bpmn")
+	eng := processing.NewEngine(eventlog.NewMemory())
+	ctx := context.Background()
+
+	dep, err := eng.Deploy(ctx, xml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	callerID, err := eng.CreateInstance(ctx, dep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caller := mustInstance(t, eng, callerID)
+	hostElem, hostTok := waitingAt(caller)
+	if hostElem != "CallActivity_1" {
+		t.Fatalf("expected CallActivity_1, got %s", hostElem)
+	}
+	childID := caller.Tokens[hostTok].CalledProcessInstanceID
+	elemID, tokenID := waitingAt(mustInstance(t, eng, childID))
+	if err := eng.Complete(ctx, childID, elemID, tokenID, nil); err != nil {
+		t.Fatal(err)
+	}
+	caller = mustInstance(t, eng, callerID)
+	waiting := allWaiting(caller)
+	if len(waiting) != 2 {
+		t.Fatalf("expected throw + Undo_CA waiting, got %v tokens=%#v", waiting, caller.Tokens)
+	}
+	var undoTok string
+	for tid, tok := range caller.Tokens {
+		if tok != nil && tok.ElementID == "Undo_CA" && tok.Status == projection.TokenWaiting {
+			undoTok = tid
+		}
+	}
+	if undoTok == "" {
+		t.Fatal("missing Undo_CA waiting token")
+	}
+	if err := eng.Complete(ctx, callerID, "Undo_CA", undoTok, nil); err != nil {
+		t.Fatal(err)
+	}
+	caller = mustInstance(t, eng, callerID)
+	if caller.Status != projection.StatusCompleted {
+		t.Fatalf("status=%s tokens=%#v", caller.Status, caller.Tokens)
+	}
+	events, _ := eng.ListEvents(ctx, callerID)
+	if !sawElementIntent(events, eventv1.Element_TYPE_USER_TASK, "Undo_CA", eventv1.Element_INTENT_COMPLETED) {
+		t.Fatal("expected Undo_CA COMPLETED")
+	}
+	if !sawElementIntent(events, eventv1.Element_TYPE_INTERMEDIATE_THROW_EVENT, "CompensateThrow_1", eventv1.Element_INTENT_COMPLETED) {
+		t.Fatal("expected CompensateThrow_1 COMPLETED")
+	}
+	if !sawElementIntent(events, eventv1.Element_TYPE_BOUNDARY_EVENT, "CompensateBoundary_CA", eventv1.Element_INTENT_ACTIVATED) {
+		t.Fatal("expected compensation boundary ACTIVATED after CallActivity")
+	}
+}
+
 func readTestdataCompensation(t *testing.T, name string) []byte {
 	t.Helper()
 	xml, err := os.ReadFile(filepath.Join("testdata", name))

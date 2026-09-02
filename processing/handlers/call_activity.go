@@ -27,18 +27,22 @@ func (CallActivityHandler) OnEnter(in EnterInput) (*Effect, error) {
 	if err != nil {
 		return nil, err
 	}
+	payload := &eventv1.ActivityPayload{CalledProcessInstanceId: childID}
+	payload, err = attachBoundary(in.Deployment, in.ElementID, in.Now, payload)
+	if err != nil {
+		return nil, err
+	}
+	activated := &eventv1.Element{
+		Intent:  eventv1.Element_INTENT_ACTIVATED,
+		Type:    in.Type,
+		Id:      in.ElementID,
+		TokenId: in.TokenID,
+		Payload: &eventv1.Element_ActivityPayload{ActivityPayload: payload},
+	}
 	return &Effect{
 		Records: []*eventv1.Element{
 			{Intent: eventv1.Element_INTENT_ACTIVATING, Type: in.Type, Id: in.ElementID, TokenId: in.TokenID},
-			{
-				Intent:  eventv1.Element_INTENT_ACTIVATED,
-				Type:    in.Type,
-				Id:      in.ElementID,
-				TokenId: in.TokenID,
-				Payload: &eventv1.Element_ActivityPayload{
-					ActivityPayload: &eventv1.ActivityPayload{CalledProcessInstanceId: childID},
-				},
-			},
+			activated,
 		},
 		Wait: true,
 		Publish: &Publication{
@@ -67,11 +71,14 @@ func (CallActivityHandler) OnComplete(in CompleteInput) (*Effect, error) {
 			ActivityPayload: &eventv1.ActivityPayload{Variables: vars},
 		}
 	}
+	records := []*eventv1.Element{
+		{Intent: eventv1.Element_INTENT_COMPLETING, Type: in.Type, Id: in.ElementID, TokenId: in.TokenID},
+		completed,
+	}
+	records = append(records, cancelAttachedBoundary(in.Deployment, in.ElementID, in.TokenID)...)
+	records = append(records, subscribeCompensation(in.Deployment, in.ElementID, in.TokenID)...)
 	return &Effect{
-		Records: []*eventv1.Element{
-			{Intent: eventv1.Element_INTENT_COMPLETING, Type: in.Type, Id: in.ElementID, TokenId: in.TokenID},
-			completed,
-		},
+		Records:      records,
 		TakeOutgoing: true,
 	}, nil
 }

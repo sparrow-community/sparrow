@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             id="Definitions_call_compensate"
+             targetNamespace="http://sparrow.example/call-compensate">
+  <process id="Process_caller" name="M9 Call Compensation" isExecutable="true">
+    <startEvent id="Start_1">
+      <outgoing>Flow_start_to_call</outgoing>
+    </startEvent>
+    <callActivity id="CallActivity_1" name="Call child" calledElement="Process_called">
+      <incoming>Flow_start_to_call</incoming>
+      <outgoing>Flow_call_to_throw</outgoing>
+    </callActivity>
+    <boundaryEvent id="CompensateBoundary_CA" attachedToRef="CallActivity_1" cancelActivity="false">
+      <compensateEventDefinition id="CompensateDef_CA"/>
+    </boundaryEvent>
+    <userTask id="Undo_CA" name="Cancel Call" isForCompensation="true"/>
+    <association id="Assoc_CA" sourceRef="CompensateBoundary_CA" targetRef="Undo_CA" associationDirection="One"/>
+    <intermediateThrowEvent id="CompensateThrow_1">
+      <incoming>Flow_call_to_throw</incoming>
+      <outgoing>Flow_throw_to_end</outgoing>
+      <compensateEventDefinition id="CompensateThrowDef_1"/>
+    </intermediateThrowEvent>
+    <endEvent id="End_1">
+      <incoming>Flow_throw_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_call" sourceRef="Start_1" targetRef="CallActivity_1"/>
+    <sequenceFlow id="Flow_call_to_throw" sourceRef="CallActivity_1" targetRef="CompensateThrow_1"/>
+    <sequenceFlow id="Flow_throw_to_end" sourceRef="CompensateThrow_1" targetRef="End_1"/>
+  </process>
+  <process id="Process_called" name="M9 Called" isExecutable="false">
+    <startEvent id="Start_called">
+      <outgoing>Flow_called_start_to_task</outgoing>
+    </startEvent>
+    <userTask id="Task_called" name="Child work">
+      <incoming>Flow_called_start_to_task</incoming>
+      <outgoing>Flow_called_task_to_end</outgoing>
+    </userTask>
+    <endEvent id="End_called">
+      <incoming>Flow_called_task_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_called_start_to_task" sourceRef="Start_called" targetRef="Task_called"/>
+    <sequenceFlow id="Flow_called_task_to_end" sourceRef="Task_called" targetRef="End_called"/>
+  </process>
+</definitions>

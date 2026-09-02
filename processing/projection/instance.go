@@ -329,22 +329,8 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 		return
 	}
 	if el.GetType() == eventv1.Element_TYPE_BOUNDARY_EVENT {
-		if el.GetIntent() == eventv1.Element_INTENT_ACTIVATED {
-			if p := el.GetEventPayload(); p != nil && p.GetCompensationHandlerId() != "" {
-				inst.CompensationSubs[el.GetId()] = &CompensationSub{
-					BoundaryID:  el.GetId(),
-					HandlerID:   p.GetCompensationHandlerId(),
-					HostTokenID: tokenID,
-					Seq:         int64(len(inst.CompensationSubs)) + 1,
-				}
-				return
-			}
-		}
-		if el.GetIntent() == eventv1.Element_INTENT_TERMINATED || el.GetIntent() == eventv1.Element_INTENT_COMPLETED {
-			if _, ok := inst.CompensationSubs[el.GetId()]; ok {
-				delete(inst.CompensationSubs, el.GetId())
-				return
-			}
+		if applyCompensationBoundaryToken(inst, el) {
+			return
 		}
 	}
 	tok.ElementID = el.GetId()
@@ -493,6 +479,38 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 			tok.ElementID = sp.GetTargetId()
 		}
 	}
+}
+
+// applyCompensationBoundaryToken records compensation subscription lifecycle without
+// moving the host token (subscribe on COMPLETED, consume on compensate throw).
+func applyCompensationBoundaryToken(inst *Instance, el *eventv1.Element) bool {
+	p := el.GetEventPayload()
+	hasHandler := p != nil && p.GetCompensationHandlerId() != ""
+	switch el.GetIntent() {
+	case eventv1.Element_INTENT_ACTIVATING, eventv1.Element_INTENT_ACTIVATED:
+		if !hasHandler {
+			return false
+		}
+		if el.GetIntent() == eventv1.Element_INTENT_ACTIVATED {
+			inst.CompensationSubs[el.GetId()] = &CompensationSub{
+				BoundaryID:  el.GetId(),
+				HandlerID:   p.GetCompensationHandlerId(),
+				HostTokenID: el.GetTokenId(),
+				Seq:         int64(len(inst.CompensationSubs)) + 1,
+			}
+		}
+		return true
+	case eventv1.Element_INTENT_COMPLETING:
+		if _, ok := inst.CompensationSubs[el.GetId()]; ok {
+			return true
+		}
+	case eventv1.Element_INTENT_TERMINATED, eventv1.Element_INTENT_COMPLETED:
+		if _, ok := inst.CompensationSubs[el.GetId()]; ok {
+			delete(inst.CompensationSubs, el.GetId())
+			return true
+		}
+	}
+	return false
 }
 
 func boundaryDisarmOnWaitingHost(hostElementID string, el *eventv1.Element, tok *Token) bool {

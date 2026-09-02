@@ -26,7 +26,6 @@ func (e *Engine) ThrowError(ctx context.Context, instanceID, elementID, tokenID,
 	}
 
 	lock.Lock()
-	defer lock.Unlock()
 
 	typ, typeErr := dep.TypeOf(elementID)
 	if typeErr != nil {
@@ -34,19 +33,23 @@ func (e *Engine) ThrowError(ctx context.Context, instanceID, elementID, tokenID,
 	}
 	tok := inst.Tokens[tokenID]
 	if tok == nil || tok.ElementID != elementID || tok.Status != projection.TokenWaiting {
+		lock.Unlock()
 		return e.reject(ctx, inst, elementID, tokenID, typ, eventv1.Element_INTENT_ERROR_THROWN, "INVALID_STATE", "element is not waiting for completion")
 	}
 	if typeErr != nil {
+		lock.Unlock()
 		return e.reject(ctx, inst, elementID, tokenID, typ, eventv1.Element_INTENT_ERROR_THROWN, "NOT_FOUND", "element not found")
 	}
 	switch typ {
-	case eventv1.Element_TYPE_USER_TASK, eventv1.Element_TYPE_SERVICE_TASK:
+	case eventv1.Element_TYPE_USER_TASK, eventv1.Element_TYPE_SERVICE_TASK, eventv1.Element_TYPE_CALL_ACTIVITY:
 	default:
+		lock.Unlock()
 		return e.reject(ctx, inst, elementID, tokenID, typ, eventv1.Element_INTENT_ERROR_THROWN, "INVALID_STATE", "element cannot throw an error")
 	}
 
 	cmdID, err := NextID()
 	if err != nil {
+		lock.Unlock()
 		return err
 	}
 	cmd := &eventv1.Event{
@@ -67,6 +70,7 @@ func (e *Engine) ThrowError(ctx context.Context, instanceID, elementID, tokenID,
 		},
 	}
 	if _, err := e.log.Append(ctx, cmd); err != nil {
+		lock.Unlock()
 		return err
 	}
 
@@ -80,14 +84,22 @@ func (e *Engine) ThrowError(ctx context.Context, instanceID, elementID, tokenID,
 			EventPayload: &eventv1.EventPayload{ErrorCode: errorCode},
 		},
 	}); err != nil {
+		lock.Unlock()
 		return err
 	}
 	if typ == eventv1.Element_TYPE_SERVICE_TASK && tok.JobType != "" {
 		e.releaseLease(instanceID, tokenID)
 		e.notifyJobs()
 	}
-	_, err = e.executor.propagateError(ctx, dep, inst, elementID, tokenID, errorCode, emit)
-	return err
+	pubs, err := e.executor.propagateError(ctx, dep, inst, elementID, tokenID, errorCode, emit)
+	lock.Unlock()
+	if err != nil {
+		return err
+	}
+	if err := e.flushPublications(ctx, pubs); err != nil {
+		return err
+	}
+	return e.tryDeliverBuffered(ctx, instanceID)
 }
 
 func (x *Executor) propagateError(
@@ -99,7 +111,7 @@ func (x *Executor) propagateError(
 ) ([]handlers.Publication, error) {
 	if throwTyp, err := dep.TypeOf(throwElementID); err == nil {
 		switch throwTyp {
-		case eventv1.Element_TYPE_USER_TASK, eventv1.Element_TYPE_SERVICE_TASK:
+		case eventv1.Element_TYPE_USER_TASK, eventv1.Element_TYPE_SERVICE_TASK, eventv1.Element_TYPE_CALL_ACTIVITY:
 			if bid, ok := dep.MatchErrorBoundary(throwElementID, errorCode); ok {
 				return x.fireActivityErrorBoundary(ctx, dep, inst, throwElementID, throwTokenID, bid, emit)
 			}

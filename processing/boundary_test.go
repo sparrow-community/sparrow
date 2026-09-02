@@ -864,3 +864,11 @@ func TestDeployAcceptsSignalBoundary(t *testing.T) {
 		t.Fatalf("Deploy: %v", err)
 	}
 }
+
+func TestDeployAcceptsCallActivityTimerBoundary(t *testing.T) {
+	xml := readTestdataCall(t, "m9_call_timer_boundary.bpmn")
+	eng := processing.NewEngine(eventlog.NewMemory())
+	if _, err := eng.Deploy(context.Background(), xml); err != nil {
+		t.Fatalf("Deploy: %v", err)
+	}
+}

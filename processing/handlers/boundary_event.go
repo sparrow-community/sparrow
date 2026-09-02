@@ -102,7 +102,15 @@ func subscribeCompensation(dep *deploy.Deployment, activityID, tokenID string) [
 		return nil
 	}
 	return []*eventv1.Element{
-		{Intent: eventv1.Element_INTENT_ACTIVATING, Type: eventv1.Element_TYPE_BOUNDARY_EVENT, Id: comp.BoundaryID, TokenId: tokenID},
+		{
+			Intent:  eventv1.Element_INTENT_ACTIVATING,
+			Type:    eventv1.Element_TYPE_BOUNDARY_EVENT,
+			Id:      comp.BoundaryID,
+			TokenId: tokenID,
+			Payload: &eventv1.Element_EventPayload{
+				EventPayload: &eventv1.EventPayload{CompensationHandlerId: comp.HandlerID},
+			},
+		},
 		{
 			Intent:  eventv1.Element_INTENT_ACTIVATED,
 			Type:    eventv1.Element_TYPE_BOUNDARY_EVENT,

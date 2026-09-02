@@ -404,3 +404,162 @@ func TestCrossDeployCallActivityIOMapping(t *testing.T) {
 		t.Fatalf("extra must remain on caller, vars=%v", caller.Variables)
 	}
 }
+
+func TestCallActivityTimerBoundaryPT0SFireDue(t *testing.T) {
+	xml := readTestdataCall(t, "m9_call_timer_boundary.bpmn")
+	eng := processing.NewEngine(eventlog.NewMemory())
+	ctx := context.Background()
+	dep, err := eng.Deploy(ctx, xml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	callerID, err := eng.CreateInstance(ctx, dep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caller := mustInstance(t, eng, callerID)
+	hostElem, hostTok := waitingAt(caller)
+	if hostElem != "CallActivity_1" {
+		t.Fatalf("expected CallActivity_1 host, got %s tokens=%#v", hostElem, caller.Tokens)
+	}
+	tok := caller.Tokens[hostTok]
+	if tok.DueUnixMs == 0 || tok.BoundaryID != "TimerBoundary_1" {
+		t.Fatalf("armed timer token=%#v", tok)
+	}
+	childID := tok.CalledProcessInstanceID
+	if childID == "" {
+		t.Fatal("expected child instance")
+	}
+	child := mustInstance(t, eng, childID)
+	if waitingElement(child) != "Task_called" {
+		t.Fatalf("expected child active, tokens=%#v", child.Tokens)
+	}
+
+	if err := eng.FireDue(ctx); err != nil {
+		t.Fatal(err)
+	}
+	child = mustInstance(t, eng, childID)
+	if child.Status != projection.StatusTerminated {
+		t.Fatalf("child status=%s want terminated", child.Status)
+	}
+	caller = mustInstance(t, eng, callerID)
+	if caller.Status != projection.StatusCompleted {
+		t.Fatalf("caller status=%s tokens=%#v", caller.Status, caller.Tokens)
+	}
+	events, _ := eng.ListEvents(ctx, callerID)
+	if !sawElementIntent(events, eventv1.Element_TYPE_CALL_ACTIVITY, "CallActivity_1", eventv1.Element_INTENT_TERMINATED) {
+		t.Fatal("expected CallActivity TERMINATED")
+	}
+	if !sawElementIntent(events, eventv1.Element_TYPE_BOUNDARY_EVENT, "TimerBoundary_1", eventv1.Element_INTENT_COMPLETED) {
+		t.Fatal("expected boundary COMPLETED")
+	}
+	if !sawElementIntent(events, eventv1.Element_TYPE_END_EVENT, "End_caller_timeout", eventv1.Element_INTENT_COMPLETED) {
+		t.Fatal("expected timeout end")
+	}
+	if sawElementIntent(events, eventv1.Element_TYPE_END_EVENT, "End_caller_ok", eventv1.Element_INTENT_COMPLETED) {
+		t.Fatal("happy-path end must not complete")
+	}
+}
+
+func TestCallActivityErrorBoundaryThrowInterrupts(t *testing.T) {
+	xml := readTestdataCall(t, "m9_call_error_boundary.bpmn")
+	eng := processing.NewEngine(eventlog.NewMemory())
+	ctx := context.Background()
+	dep, err := eng.Deploy(ctx, xml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	callerID, err := eng.CreateInstance(ctx, dep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caller := mustInstance(t, eng, callerID)
+	hostElem, hostTok := waitingAt(caller)
+	if hostElem != "CallActivity_1" {
+		t.Fatalf("tokens=%#v", caller.Tokens)
+	}
+	childID := caller.Tokens[hostTok].CalledProcessInstanceID
+
+	if err := eng.ThrowError(ctx, callerID, hostElem, hostTok, "BUSINESS_ERROR"); err != nil {
+		t.Fatal(err)
+	}
+	child := mustInstance(t, eng, childID)
+	if child.Status != projection.StatusTerminated {
+		t.Fatalf("child status=%s want terminated", child.Status)
+	}
+	caller = mustInstance(t, eng, callerID)
+	if caller.Status != projection.StatusCompleted {
+		t.Fatalf("caller status=%s", caller.Status)
+	}
+	events, _ := eng.ListEvents(ctx, callerID)
+	if !sawElementIntent(events, eventv1.Element_TYPE_CALL_ACTIVITY, "CallActivity_1", eventv1.Element_INTENT_ERROR_THROWN) {
+		t.Fatal("expected ERROR_THROWN on call activity")
+	}
+	if !sawElementIntent(events, eventv1.Element_TYPE_CALL_ACTIVITY, "CallActivity_1", eventv1.Element_INTENT_TERMINATED) {
+		t.Fatal("expected CallActivity TERMINATED")
+	}
+	if !sawElementIntent(events, eventv1.Element_TYPE_BOUNDARY_EVENT, "ErrorBoundary_1", eventv1.Element_INTENT_COMPLETED) {
+		t.Fatal("expected error boundary COMPLETED")
+	}
+	if !sawElementIntent(events, eventv1.Element_TYPE_END_EVENT, "End_caller_err", eventv1.Element_INTENT_COMPLETED) {
+		t.Fatal("expected error path end")
+	}
+}
+
+func TestCallActivityNonInterruptingMessageBoundary(t *testing.T) {
+	xml := readTestdataCall(t, "m9_call_message_non_interrupt.bpmn")
+	eng := processing.NewEngine(eventlog.NewMemory())
+	ctx := context.Background()
+	dep, err := eng.Deploy(ctx, xml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	callerID, err := eng.CreateInstance(ctx, dep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caller := mustInstance(t, eng, callerID)
+	hostElem, hostTok := waitingAt(caller)
+	if hostElem != "CallActivity_1" {
+		t.Fatalf("tokens=%#v", caller.Tokens)
+	}
+	childID := caller.Tokens[hostTok].CalledProcessInstanceID
+
+	n, err := eng.PublishMessage(ctx, processing.PublishMessageRequest{Name: "order.cancelled"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("delivered=%d want 1", n)
+	}
+	caller = mustInstance(t, eng, callerID)
+	if caller.Status != projection.StatusActive {
+		t.Fatalf("status=%s want active", caller.Status)
+	}
+	if len(caller.Tokens) < 2 {
+		t.Fatalf("want host + boundary tokens, got %#v", caller.Tokens)
+	}
+	hostElem, hostTok = waitingAt(caller)
+	if hostElem != "CallActivity_1" {
+		t.Fatalf("call host must still wait, tokens=%#v", caller.Tokens)
+	}
+	child := mustInstance(t, eng, childID)
+	if child.Status != projection.StatusActive {
+		t.Fatalf("child must remain active, status=%s", child.Status)
+	}
+	events, _ := eng.ListEvents(ctx, callerID)
+	if sawElementIntent(events, eventv1.Element_TYPE_CALL_ACTIVITY, "CallActivity_1", eventv1.Element_INTENT_TERMINATED) {
+		t.Fatal("CallActivity must not be terminated by non-interrupting boundary")
+	}
+	if !sawElementIntent(events, eventv1.Element_TYPE_END_EVENT, "End_caller_msg", eventv1.Element_INTENT_COMPLETED) {
+		t.Fatal("expected message end from spawned token")
+	}
+	elemID, tokenID := waitingAt(child)
+	if err := eng.Complete(ctx, childID, elemID, tokenID, nil); err != nil {
+		t.Fatal(err)
+	}
+	caller = mustInstance(t, eng, callerID)
+	if caller.Status != projection.StatusCompleted {
+		t.Fatalf("caller status=%s tokens=%#v", caller.Status, caller.Tokens)
+	}
+}

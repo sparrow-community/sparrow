@@ -793,7 +793,12 @@ func validateBoundaryHost(proc *element.Process, activityID string) error {
 			return nil
 		}
 	}
-	return fmt.Errorf("UNSUPPORTED_ELEMENT: boundary must attach to a userTask, serviceTask, or subProcess (%q)", activityID)
+	for _, e := range proc.CallActivities {
+		if e.ID == activityID {
+			return nil
+		}
+	}
+	return fmt.Errorf("UNSUPPORTED_ELEMENT: boundary must attach to a userTask, serviceTask, subProcess, or callActivity (%q)", activityID)
 }
 
 func validateSubProcesses(fe *element.FlowElements, errors []element.Error) error {

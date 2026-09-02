@@ -627,7 +627,11 @@ func (x *Executor) advanceCompensation(
 ) ([]handlers.Publication, error) {
 	pc := inst.PendingCompensation
 	if pc == nil {
-		return nil, nil
+		pc = rebuildPendingCompensation(inst, dep)
+		if pc == nil {
+			return nil, nil
+		}
+		inst.PendingCompensation = pc
 	}
 	if len(pc.Queue) == 0 {
 		throwTok, throwEl := pc.ThrowTokenID, pc.ThrowElementID
@@ -643,4 +647,49 @@ func (x *Executor) advanceCompensation(
 	pc.ActiveTokenID = hid
 	pc.ActiveHandler = handler
 	return x.Enter(ctx, dep, inst, hid, handler, emit)
+}
+
+// rebuildPendingCompensation reconstructs in-flight compensate throw state after event replay.
+func rebuildPendingCompensation(inst *projection.Instance, dep *deploy.Deployment) *projection.PendingCompensation {
+	if inst == nil || dep == nil {
+		return nil
+	}
+	var throwTokenID, throwElementID string
+	for tid, tok := range inst.Tokens {
+		if tok == nil || tok.Status != projection.TokenWaiting {
+			continue
+		}
+		typ, err := dep.TypeOf(tok.ElementID)
+		if err != nil || typ != eventv1.Element_TYPE_INTERMEDIATE_THROW_EVENT {
+			continue
+		}
+		kind, err := dep.ThrowKind(tok.ElementID)
+		if err != nil || kind != deploy.ThrowKindCompensate {
+			continue
+		}
+		throwTokenID = tid
+		throwElementID = tok.ElementID
+		break
+	}
+	if throwTokenID == "" {
+		return nil
+	}
+	var activeTokenID, activeHandler string
+	for tid, tok := range inst.Tokens {
+		if tok == nil || tok.Status != projection.TokenWaiting {
+			continue
+		}
+		if !dep.IsCompensationHandler(tok.ElementID) {
+			continue
+		}
+		activeTokenID = tid
+		activeHandler = tok.ElementID
+		break
+	}
+	return &projection.PendingCompensation{
+		ThrowTokenID:   throwTokenID,
+		ThrowElementID: throwElementID,
+		ActiveTokenID:  activeTokenID,
+		ActiveHandler:  activeHandler,
+	}
 }

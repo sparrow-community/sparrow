@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             id="Definitions_call_message_non_interrupt"
+             targetNamespace="http://sparrow.example/call-message-boundary">
+  <message id="message_1" name="order.cancelled"/>
+  <process id="Process_caller" name="M9 Call Non-Interrupting Message Boundary" isExecutable="true">
+    <startEvent id="Start_caller">
+      <outgoing>Flow_start_to_call</outgoing>
+    </startEvent>
+    <callActivity id="CallActivity_1" name="Call child" calledElement="Process_called">
+      <incoming>Flow_start_to_call</incoming>
+      <outgoing>Flow_call_to_ok</outgoing>
+    </callActivity>
+    <boundaryEvent id="MessageBoundary_1" attachedToRef="CallActivity_1" cancelActivity="false">
+      <outgoing>Flow_boundary_to_msg</outgoing>
+      <messageEventDefinition id="MsgDef_1" messageRef="message_1"/>
+    </boundaryEvent>
+    <endEvent id="End_caller_ok">
+      <incoming>Flow_call_to_ok</incoming>
+    </endEvent>
+    <endEvent id="End_caller_msg">
+      <incoming>Flow_boundary_to_msg</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_call" sourceRef="Start_caller" targetRef="CallActivity_1"/>
+    <sequenceFlow id="Flow_call_to_ok" sourceRef="CallActivity_1" targetRef="End_caller_ok"/>
+    <sequenceFlow id="Flow_boundary_to_msg" sourceRef="MessageBoundary_1" targetRef="End_caller_msg"/>
+  </process>
+  <process id="Process_called" name="M9 Called" isExecutable="false">
+    <startEvent id="Start_called">
+      <outgoing>Flow_called_start_to_task</outgoing>
+    </startEvent>
+    <userTask id="Task_called" name="Child work">
+      <incoming>Flow_called_start_to_task</incoming>
+      <outgoing>Flow_called_task_to_end</outgoing>
+    </userTask>
+    <endEvent id="End_called">
+      <incoming>Flow_called_task_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_called_start_to_task" sourceRef="Start_called" targetRef="Task_called"/>
+    <sequenceFlow id="Flow_called_task_to_end" sourceRef="Task_called" targetRef="End_called"/>
+  </process>
+</definitions>
