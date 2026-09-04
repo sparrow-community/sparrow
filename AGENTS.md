@@ -24,13 +24,18 @@ Pick next via `/speckit-specify`. Order flexible until a plan sets dependencies.
 
 | P | Topic |
 |---|--------|
-| 2 | Live instance migration |
 | 2 | Multi-instance Call Activity |
 | 2 | Instantiate event-based gateway |
 | 3 | Compensation into unfinished SubProcess |
 | 3 | Nested Event Sub-Process |
 | 3 | Multiple same-kind boundaries on one activity |
 | 3 | Escalation, Link, conditional flow, Terminate, Send/Receive/Manual/Business Rule Task (one increment each) |
+
+## Future
+
+| Topic | Note |
+|-------|------|
+| Live instance migration | Revisions already coexist; migrating running instances is ops, not completeness |
 
 ## AI Driven
 
