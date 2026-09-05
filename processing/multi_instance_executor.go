@@ -16,30 +16,32 @@ func (x *Executor) runMultiInstanceStart(
 	inst *projection.Instance,
 	start *handlers.MultiInstanceStart,
 	emit Emitter,
-) error {
+) ([]handlers.Publication, error) {
 	if start == nil {
-		return nil
+		return nil, nil
 	}
 	spec, ok := dep.MultiInstanceSpec(start.ElementID)
 	if !ok {
-		return nil
+		return nil, nil
 	}
+	var pubs []handlers.Publication
 	for _, idx := range start.InnerIndices {
 		tid, err := NextID()
 		if err != nil {
-			return err
+			return pubs, err
 		}
 		if extra := spec.CollectionElementVariables(inst.Variables, int(idx)); extra != nil {
 			for k, v := range extra {
 				inst.Variables[k] = v
 			}
 		}
-		_, err = x.enterWithLoopIndex(ctx, dep, inst, tid, start.ElementID, idx, emit)
+		more, err := x.enterWithLoopIndex(ctx, dep, inst, tid, start.ElementID, idx, emit)
+		pubs = append(pubs, more...)
 		if err != nil {
-			return err
+			return pubs, err
 		}
 	}
-	return nil
+	return pubs, nil
 }
 
 func (x *Executor) enterWithLoopIndex(
@@ -134,8 +136,12 @@ func (x *Executor) runMultiInstanceInnerComplete(
 			if err != nil {
 				return nil, err
 			}
-			_, err = x.enterWithLoopIndex(ctx, dep, inst, tid, elementID, loop.NextIndex, emit)
-			return nil, err
+			if extra := spec.CollectionElementVariables(inst.Variables, int(loop.NextIndex)); extra != nil {
+				for k, v := range extra {
+					inst.Variables[k] = v
+				}
+			}
+			return x.enterWithLoopIndex(ctx, dep, inst, tid, elementID, loop.NextIndex, emit)
 		}
 		return nil, nil
 	}
@@ -151,14 +157,15 @@ func (x *Executor) completeMultiInstanceHost(
 	loop *projection.MultiInstanceLoop,
 	emit Emitter,
 ) ([]handlers.Publication, error) {
-	if err := x.terminateMultiInstanceInners(dep, inst, elementID, loop.HostTokenID, emit); err != nil {
-		return nil, err
+	pubs, err := x.terminateMultiInstanceInners(dep, inst, elementID, loop.HostTokenID, emit)
+	if err != nil {
+		return pubs, err
 	}
 	AppendOutputCollection(inst, spec, loop)
 	hostID := loop.HostTokenID
 	typ, err := dep.TypeOf(elementID)
 	if err != nil {
-		return nil, err
+		return pubs, err
 	}
 	hostPayload := &eventv1.ActivityPayload{
 		LoopInstanceIndex:      -1,
@@ -177,15 +184,27 @@ func (x *Executor) completeMultiInstanceHost(
 			Payload: &eventv1.Element_ActivityPayload{ActivityPayload: hostPayload},
 		}
 		if err := emit(el); err != nil {
-			return nil, err
+			return pubs, err
+		}
+	}
+	for _, rec := range handlers.CancelAttachedBoundaries(dep, elementID, hostID) {
+		if err := emit(rec); err != nil {
+			return pubs, err
+		}
+	}
+	for _, rec := range handlers.SubscribeCompensation(dep, elementID, hostID) {
+		if err := emit(rec); err != nil {
+			return pubs, err
 		}
 	}
 	delete(inst.MultiInstanceLoops, elementID)
 	next, err := x.takeOutgoing(dep, hostID, elementID, "", emit)
 	if err != nil {
-		return nil, err
+		return pubs, err
 	}
-	return x.Enter(ctx, dep, inst, hostID, next, emit)
+	more, err := x.Enter(ctx, dep, inst, hostID, next, emit)
+	pubs = append(pubs, more...)
+	return pubs, err
 }
 
 func (x *Executor) terminateMultiInstanceInners(
@@ -193,17 +212,26 @@ func (x *Executor) terminateMultiInstanceInners(
 	inst *projection.Instance,
 	elementID, hostTokenID string,
 	emit Emitter,
-) error {
+) ([]handlers.Publication, error) {
 	elTyp, err := dep.TypeOf(elementID)
 	if err != nil {
-		return err
+		return nil, err
 	}
+	var pubs []handlers.Publication
 	for tid, tok := range inst.Tokens {
 		if tid == hostTokenID || tok == nil {
 			continue
 		}
 		if tok.ElementID != elementID || tok.LoopInstanceIndex < 0 {
 			continue
+		}
+		if tok.CalledProcessInstanceID != "" {
+			pubs = append(pubs, handlers.Publication{
+				Kind:            handlers.PublicationTerminateChild,
+				ChildInstanceID: tok.CalledProcessInstanceID,
+				CallActivityID:  elementID,
+				HostTokenID:     tid,
+			})
 		}
 		if tok.Status == projection.TokenWaiting {
 			for _, intent := range []eventv1.Element_Intent{
@@ -219,13 +247,13 @@ func (x *Executor) terminateMultiInstanceInners(
 						ActivityPayload: &eventv1.ActivityPayload{LoopInstanceIndex: tok.LoopInstanceIndex},
 					},
 				}); err != nil {
-					return err
+					return pubs, err
 				}
 			}
 		}
 		delete(inst.Tokens, tid)
 	}
-	return nil
+	return pubs, nil
 }
 
 func (x *Executor) cancelMultiInstanceActivity(
@@ -233,11 +261,12 @@ func (x *Executor) cancelMultiInstanceActivity(
 	inst *projection.Instance,
 	elementID string,
 	emit Emitter,
-) error {
+) ([]handlers.Publication, error) {
 	elTyp, err := dep.TypeOf(elementID)
 	if err != nil {
-		return err
+		return nil, err
 	}
+	var pubs []handlers.Publication
 	var innerHosts []string
 	for tid, tok := range inst.Tokens {
 		if tok == nil || tok.ElementID != elementID {
@@ -245,6 +274,14 @@ func (x *Executor) cancelMultiInstanceActivity(
 		}
 		if tok.LoopInstanceIndex >= 0 && !tok.MultiInstanceHost {
 			innerHosts = append(innerHosts, tid)
+			if tok.CalledProcessInstanceID != "" {
+				pubs = append(pubs, handlers.Publication{
+					Kind:            handlers.PublicationTerminateChild,
+					ChildInstanceID: tok.CalledProcessInstanceID,
+					CallActivityID:  elementID,
+					HostTokenID:     tid,
+				})
+			}
 		}
 	}
 	terminateToken := func(tid string, idx int32) error {
@@ -277,7 +314,7 @@ func (x *Executor) cancelMultiInstanceActivity(
 		for _, host := range innerHosts {
 			if tid == host || tok.ScopeHostTokenID == host {
 				if err := terminateToken(tid, tok.LoopInstanceIndex); err != nil {
-					return err
+					return pubs, err
 				}
 				break
 			}
@@ -288,10 +325,10 @@ func (x *Executor) cancelMultiInstanceActivity(
 			continue
 		}
 		if err := terminateToken(tid, tok.LoopInstanceIndex); err != nil {
-			return err
+			return pubs, err
 		}
 	}
 	delete(inst.MultiInstanceLoops, elementID)
 	inst.RemoveScopeBoundariesForScope(elementID)
-	return nil
+	return pubs, nil
 }

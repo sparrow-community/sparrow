@@ -563,3 +563,224 @@ func TestCallActivityNonInterruptingMessageBoundary(t *testing.T) {
 		t.Fatalf("caller status=%s tokens=%#v", caller.Status, caller.Tokens)
 	}
 }
+
+func TestDeployAcceptsMultiInstanceCallActivity(t *testing.T) {
+	eng := processing.NewEngine(eventlog.NewMemory())
+	if _, err := eng.Deploy(context.Background(), readTestdataCall(t, "m10_mi_call_parallel.bpmn")); err != nil {
+		t.Fatalf("Deploy: %v", err)
+	}
+}
+
+func miCallInnerChildren(t *testing.T, eng *processing.Engine, callerID string) []*projection.Instance {
+	t.Helper()
+	caller := mustInstance(t, eng, callerID)
+	var children []*projection.Instance
+	seen := map[string]bool{}
+	for _, tok := range caller.Tokens {
+		if tok == nil || tok.LoopInstanceIndex < 0 || tok.MultiInstanceHost {
+			continue
+		}
+		if tok.CalledProcessInstanceID == "" || seen[tok.CalledProcessInstanceID] {
+			continue
+		}
+		seen[tok.CalledProcessInstanceID] = true
+		children = append(children, mustInstance(t, eng, tok.CalledProcessInstanceID))
+	}
+	return children
+}
+
+func TestMultiInstanceCallActivityParallel(t *testing.T) {
+	xml := readTestdataCall(t, "m10_mi_call_parallel.bpmn")
+	eng := processing.NewEngine(eventlog.NewMemory())
+	ctx := context.Background()
+	dep, err := eng.Deploy(ctx, xml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	callerID, err := eng.CreateInstance(ctx, dep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	children := miCallInnerChildren(t, eng, callerID)
+	if len(children) != 3 {
+		t.Fatalf("children=%d want 3", len(children))
+	}
+	ids := map[string]bool{}
+	for _, c := range children {
+		if ids[c.ID] {
+			t.Fatalf("duplicate child %s", c.ID)
+		}
+		ids[c.ID] = true
+		if c.ParentProcessInstanceID != callerID {
+			t.Fatalf("child parent=%q", c.ParentProcessInstanceID)
+		}
+		elemID, tokenID := waitingAt(c)
+		if err := eng.Complete(ctx, c.ID, elemID, tokenID, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	caller := mustInstance(t, eng, callerID)
+	if caller.Status != projection.StatusCompleted {
+		t.Fatalf("caller status=%s tokens=%#v", caller.Status, caller.Tokens)
+	}
+}
+
+func TestMultiInstanceCallActivitySequential(t *testing.T) {
+	xml := readTestdataCall(t, "m10_mi_call_sequential.bpmn")
+	eng := processing.NewEngine(eventlog.NewMemory())
+	ctx := context.Background()
+	dep, err := eng.Deploy(ctx, xml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	callerID, err := eng.CreateInstance(ctx, dep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 3; i++ {
+		children := miCallInnerChildren(t, eng, callerID)
+		if len(children) != 1 {
+			t.Fatalf("step %d: active children=%d want 1 tokens=%#v", i, len(children), mustInstance(t, eng, callerID).Tokens)
+		}
+		elemID, tokenID := waitingAt(children[0])
+		if err := eng.Complete(ctx, children[0].ID, elemID, tokenID, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	caller := mustInstance(t, eng, callerID)
+	if caller.Status != projection.StatusCompleted {
+		t.Fatalf("caller status=%s", caller.Status)
+	}
+}
+
+func TestMultiInstanceCallActivityCollectionIO(t *testing.T) {
+	xml := readTestdataCall(t, "m10_mi_call_collection.bpmn")
+	eng := processing.NewEngine(eventlog.NewMemory())
+	ctx := context.Background()
+	dep, err := eng.Deploy(ctx, xml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	callerID, err := eng.CreateInstance(ctx, dep, map[string]any{"items": []any{"a", "b"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	children := miCallInnerChildren(t, eng, callerID)
+	if len(children) != 2 {
+		t.Fatalf("children=%d want 2", len(children))
+	}
+	lines := map[string]bool{}
+	for _, c := range children {
+		if _, ok := c.Variables["line"]; !ok {
+			t.Fatalf("expected mapped line on child vars=%v", c.Variables)
+		}
+		lines[c.Variables["line"]] = true
+		elemID, tokenID := waitingAt(c)
+		if err := eng.Complete(ctx, c.ID, elemID, tokenID, map[string]any{"out": "x"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(lines) != 2 {
+		t.Fatalf("expected distinct line values, got %v", lines)
+	}
+	caller := mustInstance(t, eng, callerID)
+	if caller.Status != projection.StatusCompleted {
+		t.Fatalf("caller status=%s", caller.Status)
+	}
+	if got := caller.Variables["results"]; got == "" {
+		t.Fatalf("expected results output collection, vars=%v", caller.Variables)
+	}
+}
+
+func TestMultiInstanceCallActivityEmptyCollection(t *testing.T) {
+	xml := readTestdataCall(t, "m10_mi_call_collection.bpmn")
+	eng := processing.NewEngine(eventlog.NewMemory())
+	ctx := context.Background()
+	dep, err := eng.Deploy(ctx, xml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	callerID, err := eng.CreateInstance(ctx, dep, map[string]any{"items": []any{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	caller := mustInstance(t, eng, callerID)
+	if caller.Status != projection.StatusCompleted {
+		t.Fatalf("caller status=%s tokens=%#v", caller.Status, caller.Tokens)
+	}
+	if len(miCallInnerChildren(t, eng, callerID)) != 0 {
+		t.Fatal("empty collection must not start children")
+	}
+}
+
+func TestMultiInstanceCallActivityCompletionEarly(t *testing.T) {
+	xml := readTestdataCall(t, "m10_mi_call_completion.bpmn")
+	eng := processing.NewEngine(eventlog.NewMemory())
+	ctx := context.Background()
+	dep, err := eng.Deploy(ctx, xml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	callerID, err := eng.CreateInstance(ctx, dep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	children := miCallInnerChildren(t, eng, callerID)
+	if len(children) != 5 {
+		t.Fatalf("children=%d want 5", len(children))
+	}
+	for i := 0; i < 2; i++ {
+		elemID, tokenID := waitingAt(children[i])
+		if err := eng.Complete(ctx, children[i].ID, elemID, tokenID, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	caller := mustInstance(t, eng, callerID)
+	if caller.Status != projection.StatusCompleted {
+		t.Fatalf("caller status=%s tokens=%#v", caller.Status, caller.Tokens)
+	}
+	for i := 2; i < 5; i++ {
+		c := mustInstance(t, eng, children[i].ID)
+		if c.Status != projection.StatusTerminated {
+			t.Fatalf("straggler child %d status=%s want terminated", i, c.Status)
+		}
+	}
+}
+
+func TestMultiInstanceCallActivityTimerBoundary(t *testing.T) {
+	xml := readTestdataCall(t, "m10_mi_call_timer_boundary.bpmn")
+	eng := processing.NewEngine(eventlog.NewMemory())
+	ctx := context.Background()
+	dep, err := eng.Deploy(ctx, xml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	callerID, err := eng.CreateInstance(ctx, dep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	children := miCallInnerChildren(t, eng, callerID)
+	if len(children) != 2 {
+		t.Fatalf("children=%d want 2", len(children))
+	}
+	if err := eng.FireDue(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range children {
+		got := mustInstance(t, eng, c.ID)
+		if got.Status != projection.StatusTerminated {
+			t.Fatalf("child status=%s want terminated", got.Status)
+		}
+	}
+	caller := mustInstance(t, eng, callerID)
+	if caller.Status != projection.StatusCompleted {
+		t.Fatalf("caller status=%s", caller.Status)
+	}
+	events, _ := eng.ListEvents(ctx, callerID)
+	if !sawElementIntent(events, eventv1.Element_TYPE_END_EVENT, "End_caller_timeout", eventv1.Element_INTENT_COMPLETED) {
+		t.Fatal("expected timeout end")
+	}
+	if sawElementIntent(events, eventv1.Element_TYPE_END_EVENT, "End_caller_ok", eventv1.Element_INTENT_COMPLETED) {
+		t.Fatal("happy path must not complete")
+	}
+}

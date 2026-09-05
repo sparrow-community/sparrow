@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             id="Definitions_mi_call_timer_boundary"
+             targetNamespace="http://sparrow.example/m10">
+  <process id="Process_caller" name="MI Call Timer Boundary" isExecutable="true">
+    <startEvent id="Start_caller">
+      <outgoing>Flow_start_to_call</outgoing>
+    </startEvent>
+    <callActivity id="CallActivity_1" name="Call child" calledElement="Process_called">
+      <incoming>Flow_start_to_call</incoming>
+      <outgoing>Flow_call_to_ok</outgoing>
+      <multiInstanceLoopCharacteristics>
+        <loopCardinality xsi:type="tFormalExpression">2</loopCardinality>
+      </multiInstanceLoopCharacteristics>
+    </callActivity>
+    <boundaryEvent id="TimerBoundary_1" attachedToRef="CallActivity_1" cancelActivity="true">
+      <outgoing>Flow_boundary_to_timeout</outgoing>
+      <timerEventDefinition id="TimerDef_1">
+        <timeDuration xsi:type="tFormalExpression">PT0S</timeDuration>
+      </timerEventDefinition>
+    </boundaryEvent>
+    <endEvent id="End_caller_ok">
+      <incoming>Flow_call_to_ok</incoming>
+    </endEvent>
+    <endEvent id="End_caller_timeout">
+      <incoming>Flow_boundary_to_timeout</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_call" sourceRef="Start_caller" targetRef="CallActivity_1"/>
+    <sequenceFlow id="Flow_call_to_ok" sourceRef="CallActivity_1" targetRef="End_caller_ok"/>
+    <sequenceFlow id="Flow_boundary_to_timeout" sourceRef="TimerBoundary_1" targetRef="End_caller_timeout"/>
+  </process>
+  <process id="Process_called" name="Called" isExecutable="false">
+    <startEvent id="Start_called">
+      <outgoing>Flow_called_start_to_task</outgoing>
+    </startEvent>
+    <userTask id="Task_called" name="Child work">
+      <incoming>Flow_called_start_to_task</incoming>
+      <outgoing>Flow_called_task_to_end</outgoing>
+    </userTask>
+    <endEvent id="End_called">
+      <incoming>Flow_called_task_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_called_start_to_task" sourceRef="Start_called" targetRef="Task_called"/>
+    <sequenceFlow id="Flow_called_task_to_end" sourceRef="Task_called" targetRef="End_called"/>
+  </process>
+</definitions>

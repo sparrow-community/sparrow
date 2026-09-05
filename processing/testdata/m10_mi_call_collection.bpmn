@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             id="Definitions_mi_call_collection"
+             targetNamespace="http://sparrow.example/m10">
+  <process id="Process_caller" name="MI Call Collection" isExecutable="true">
+    <startEvent id="Start_caller">
+      <outgoing>Flow_start_to_call</outgoing>
+    </startEvent>
+    <callActivity id="CallActivity_1" name="Call child" calledElement="Process_called">
+      <incoming>Flow_start_to_call</incoming>
+      <outgoing>Flow_call_to_end</outgoing>
+      <multiInstanceLoopCharacteristics loopDataInputRef="items" loopDataOutputRef="results">
+        <inputDataItem name="item"/>
+        <outputDataItem name="result"/>
+      </multiInstanceLoopCharacteristics>
+      <dataInputAssociation>
+        <sourceRef>item</sourceRef>
+        <targetRef>line</targetRef>
+      </dataInputAssociation>
+      <dataOutputAssociation>
+        <sourceRef>out</sourceRef>
+        <targetRef>result</targetRef>
+      </dataOutputAssociation>
+    </callActivity>
+    <endEvent id="End_caller">
+      <incoming>Flow_call_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_call" sourceRef="Start_caller" targetRef="CallActivity_1"/>
+    <sequenceFlow id="Flow_call_to_end" sourceRef="CallActivity_1" targetRef="End_caller"/>
+  </process>
+  <process id="Process_called" name="Called" isExecutable="false">
+    <startEvent id="Start_called">
+      <outgoing>Flow_called_start_to_task</outgoing>
+    </startEvent>
+    <userTask id="Task_called" name="Child work">
+      <incoming>Flow_called_start_to_task</incoming>
+      <outgoing>Flow_called_task_to_end</outgoing>
+    </userTask>
+    <endEvent id="End_called">
+      <incoming>Flow_called_task_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_called_start_to_task" sourceRef="Start_called" targetRef="Task_called"/>
+    <sequenceFlow id="Flow_called_task_to_end" sourceRef="Task_called" targetRef="End_called"/>
+  </process>
+</definitions>

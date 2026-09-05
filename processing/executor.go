@@ -87,7 +87,9 @@ func (x *Executor) Enter(
 			pubs = append(pubs, *effect.Publish)
 		}
 		if effect.MultiInstanceStart != nil {
-			if err := x.runMultiInstanceStart(ctx, dep, inst, effect.MultiInstanceStart, emit); err != nil {
+			more, err := x.runMultiInstanceStart(ctx, dep, inst, effect.MultiInstanceStart, emit)
+			pubs = append(pubs, more...)
+			if err != nil {
 				return pubs, err
 			}
 		}
@@ -228,7 +230,9 @@ func (x *Executor) Complete(
 		return pubs, err
 	}
 	if effect.MultiInstanceCancel != "" {
-		if err := x.cancelMultiInstanceActivity(dep, inst, effect.MultiInstanceCancel, emit); err != nil {
+		more, err := x.cancelMultiInstanceActivity(dep, inst, effect.MultiInstanceCancel, emit)
+		pubs = append(pubs, more...)
+		if err != nil {
 			return pubs, err
 		}
 	}

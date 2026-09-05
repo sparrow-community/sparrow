@@ -65,6 +65,11 @@ func CancelAttachedBoundaries(dep *deploy.Deployment, activityID, tokenID string
 	return cancelAttachedBoundary(dep, activityID, tokenID)
 }
 
+// SubscribeCompensation exports compensation subscription records for host complete paths.
+func SubscribeCompensation(dep *deploy.Deployment, activityID, tokenID string) []*eventv1.Element {
+	return subscribeCompensation(dep, activityID, tokenID)
+}
+
 func cancelAttachedBoundary(dep *deploy.Deployment, activityID, tokenID string) []*eventv1.Element {
 	if dep == nil {
 		return nil

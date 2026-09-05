@@ -80,6 +80,9 @@ func (e *Engine) startCalledInstance(ctx context.Context, p handlers.Publication
 	}
 
 	pv := variablesFromJSONStrings(applyMappings(parent.Variables, call.Inputs))
+	if len(p.ChildVariables) > 0 {
+		pv = p.ChildVariables
+	}
 
 	instanceID := p.ChildInstanceID
 	var err error

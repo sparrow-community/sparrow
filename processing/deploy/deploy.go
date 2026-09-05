@@ -193,6 +193,9 @@ func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messag
 	}
 	for _, e := range fe.CallActivities {
 		reg(e.ID, eventv1.Element_TYPE_CALL_ACTIVITY, e.Outgoing, e.Incoming)
+		if err := indexMultiInstance(d, e.ID, e.LoopCharacteristicsElements); err != nil {
+			return err
+		}
 	}
 	for _, e := range fe.BoundaryEvents {
 		reg(e.ID, eventv1.Element_TYPE_BOUNDARY_EVENT, e.Outgoing, e.Incoming)

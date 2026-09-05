@@ -767,3 +767,126 @@ func TestCallActivityCompensationRecoverAfterComplete(t *testing.T) {
 		t.Fatalf("status=%s tokens=%#v", caller.Status, caller.Tokens)
 	}
 }
+
+func TestMultiInstanceCallActivityRecoverMidLoop(t *testing.T) {
+	xml := readRecoverCallTestdata(t, "m10_mi_call_parallel.bpmn")
+	dir := t.TempDir()
+	ctx := context.Background()
+
+	eng1, err := processing.Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dep, err := eng1.Deploy(ctx, xml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	callerID, err := eng1.CreateInstance(ctx, dep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caller := mustInstance(t, eng1, callerID)
+	var childIDs []string
+	for _, tok := range caller.Tokens {
+		if tok != nil && tok.LoopInstanceIndex >= 0 && !tok.MultiInstanceHost && tok.CalledProcessInstanceID != "" {
+			childIDs = append(childIDs, tok.CalledProcessInstanceID)
+		}
+	}
+	if len(childIDs) != 3 {
+		t.Fatalf("children=%d want 3", len(childIDs))
+	}
+	elemID, tokenID := waitingAt(mustInstance(t, eng1, childIDs[0]))
+	if err := eng1.Complete(ctx, childIDs[0], elemID, tokenID, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := eng1.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	eng2, err := processing.Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer eng2.Close()
+
+	for i := 1; i < 3; i++ {
+		child := mustInstance(t, eng2, childIDs[i])
+		if child.Status != projection.StatusActive {
+			t.Fatalf("child %d status=%s after recover", i, child.Status)
+		}
+		e, tok := waitingAt(child)
+		if err := eng2.Complete(ctx, childIDs[i], e, tok, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	caller = mustInstance(t, eng2, callerID)
+	if caller.Status != projection.StatusCompleted {
+		t.Fatalf("caller status=%s after recover complete", caller.Status)
+	}
+}
+
+func TestMultiInstanceCallActivityCrossDeployRecoverMidLoop(t *testing.T) {
+	dir := t.TempDir()
+	ctx := context.Background()
+
+	eng1, err := processing.Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	calleeDep, err := eng1.Deploy(ctx, readRecoverCallTestdata(t, "m8_cross_call_callee.bpmn"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	callerDep, err := eng1.Deploy(ctx, readRecoverCallTestdata(t, "m10_mi_call_cross_caller.bpmn"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	callerID, err := eng1.CreateInstance(ctx, callerDep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caller := mustInstance(t, eng1, callerID)
+	var childIDs []string
+	for _, tok := range caller.Tokens {
+		if tok != nil && tok.LoopInstanceIndex >= 0 && !tok.MultiInstanceHost && tok.CalledProcessInstanceID != "" {
+			childIDs = append(childIDs, tok.CalledProcessInstanceID)
+		}
+	}
+	if len(childIDs) != 3 {
+		t.Fatalf("children=%d want 3", len(childIDs))
+	}
+	for _, cid := range childIDs {
+		child := mustInstance(t, eng1, cid)
+		if child.DeploymentID != calleeDep {
+			t.Fatalf("child deployment=%q want %q", child.DeploymentID, calleeDep)
+		}
+	}
+	elemID, tokenID := waitingAt(mustInstance(t, eng1, childIDs[0]))
+	if err := eng1.Complete(ctx, childIDs[0], elemID, tokenID, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := eng1.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	eng2, err := processing.Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer eng2.Close()
+
+	for i := 1; i < 3; i++ {
+		child := mustInstance(t, eng2, childIDs[i])
+		if child.DeploymentID != calleeDep {
+			t.Fatalf("child deployment after recover=%q want %q", child.DeploymentID, calleeDep)
+		}
+		e, tok := waitingAt(child)
+		if err := eng2.Complete(ctx, childIDs[i], e, tok, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	caller = mustInstance(t, eng2, callerID)
+	if caller.Status != projection.StatusCompleted {
+		t.Fatalf("caller status=%s", caller.Status)
+	}
+}

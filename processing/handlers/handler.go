@@ -83,6 +83,8 @@ type Publication struct {
 	DeploymentID        string
 	CalledDeploymentID  string
 	Completed           bool // ResumeParent: true=complete CallActivity, false=terminate
+	// ChildVariables are snapped Call Activity inputs for StartChild (MI-safe).
+	ChildVariables []*eventv1.Variable
 }
 
 // SpawnOutgoingEffect describes a boundary path taken on a newly minted token.
