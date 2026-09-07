@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             id="Definitions_inst_ebg_with_start"
+             targetNamespace="http://sparrow.example/inst_ebg_with_start">
+  <message id="Msg_escalate" name="escalate"/>
+  <message id="Msg_other" name="other"/>
+  <process id="Process_inst_ebg_with_start" isExecutable="true">
+    <startEvent id="Start_1">
+      <outgoing>Flow_start_to_ut</outgoing>
+    </startEvent>
+    <userTask id="UserTask_1">
+      <incoming>Flow_start_to_ut</incoming>
+      <outgoing>Flow_ut_to_end</outgoing>
+    </userTask>
+    <endEvent id="End_ut">
+      <incoming>Flow_ut_to_end</incoming>
+    </endEvent>
+    <eventBasedGateway id="EBG_inst" instantiate="true">
+      <outgoing>Flow_ebg_to_timer</outgoing>
+      <outgoing>Flow_ebg_to_msg</outgoing>
+    </eventBasedGateway>
+    <intermediateCatchEvent id="TimerCatch_1">
+      <incoming>Flow_ebg_to_timer</incoming>
+      <outgoing>Flow_timer_to_end</outgoing>
+      <timerEventDefinition>
+        <timeDuration xsi:type="tFormalExpression">PT0S</timeDuration>
+      </timerEventDefinition>
+    </intermediateCatchEvent>
+    <intermediateCatchEvent id="MessageCatch_1">
+      <incoming>Flow_ebg_to_msg</incoming>
+      <outgoing>Flow_msg_to_end</outgoing>
+      <messageEventDefinition messageRef="Msg_escalate"/>
+    </intermediateCatchEvent>
+    <endEvent id="End_timer">
+      <incoming>Flow_timer_to_end</incoming>
+    </endEvent>
+    <endEvent id="End_msg">
+      <incoming>Flow_msg_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_ut" sourceRef="Start_1" targetRef="UserTask_1"/>
+    <sequenceFlow id="Flow_ut_to_end" sourceRef="UserTask_1" targetRef="End_ut"/>
+    <sequenceFlow id="Flow_ebg_to_timer" sourceRef="EBG_inst" targetRef="TimerCatch_1"/>
+    <sequenceFlow id="Flow_ebg_to_msg" sourceRef="EBG_inst" targetRef="MessageCatch_1"/>
+    <sequenceFlow id="Flow_timer_to_end" sourceRef="TimerCatch_1" targetRef="End_timer"/>
+    <sequenceFlow id="Flow_msg_to_end" sourceRef="MessageCatch_1" targetRef="End_msg"/>
+  </process>
+</definitions>

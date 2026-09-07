@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             id="Definitions_inst_ebg"
+             targetNamespace="http://sparrow.example/inst_ebg">
+  <message id="Msg_escalate" name="escalate"/>
+  <process id="Process_inst_ebg" name="Instantiate Event Based Gateway" isExecutable="true">
+    <eventBasedGateway id="EBG_inst" instantiate="true">
+      <outgoing>Flow_ebg_to_timer</outgoing>
+      <outgoing>Flow_ebg_to_msg</outgoing>
+    </eventBasedGateway>
+    <intermediateCatchEvent id="TimerCatch_1">
+      <incoming>Flow_ebg_to_timer</incoming>
+      <outgoing>Flow_timer_to_end</outgoing>
+      <timerEventDefinition>
+        <timeDuration xsi:type="tFormalExpression">PT0S</timeDuration>
+      </timerEventDefinition>
+    </intermediateCatchEvent>
+    <intermediateCatchEvent id="MessageCatch_1">
+      <incoming>Flow_ebg_to_msg</incoming>
+      <outgoing>Flow_msg_to_end</outgoing>
+      <messageEventDefinition messageRef="Msg_escalate"/>
+    </intermediateCatchEvent>
+    <endEvent id="End_timer">
+      <incoming>Flow_timer_to_end</incoming>
+    </endEvent>
+    <endEvent id="End_msg">
+      <incoming>Flow_msg_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_ebg_to_timer" sourceRef="EBG_inst" targetRef="TimerCatch_1"/>
+    <sequenceFlow id="Flow_ebg_to_msg" sourceRef="EBG_inst" targetRef="MessageCatch_1"/>
+    <sequenceFlow id="Flow_timer_to_end" sourceRef="TimerCatch_1" targetRef="End_timer"/>
+    <sequenceFlow id="Flow_msg_to_end" sourceRef="MessageCatch_1" targetRef="End_msg"/>
+  </process>
+</definitions>

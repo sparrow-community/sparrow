@@ -370,7 +370,15 @@ func validateM1(proc *element.Process, errors []element.Error) error {
 		seenAttach[key] = e.ID
 	}
 	if len(proc.StartEvents) == 0 {
-		return fmt.Errorf("no startEvent in process")
+		if _, err := instantiateEntryID(proc); err != nil {
+			return fmt.Errorf("no startEvent in process")
+		}
+		return nil
+	}
+	for _, g := range proc.EventBasedGatewaies {
+		if g.Instantiate {
+			return fmt.Errorf("UNSUPPORTED_ELEMENT: process cannot combine startEvent with instantiate eventBasedGateway %q", g.ID)
+		}
 	}
 	return nil
 }
@@ -408,7 +416,7 @@ func (d *Deployment) ProcessID() string { return d.Process.ID }
 
 func StartEventID(proc *element.Process) (string, error) {
 	if len(proc.StartEvents) == 0 {
-		return "", fmt.Errorf("no startEvent in process")
+		return instantiateEntryID(proc)
 	}
 	id := proc.StartEvents[0].ID
 	outs := Outgoing(proc, id)
@@ -422,6 +430,47 @@ func StartEventID(proc *element.Process) (string, error) {
 		return "", fmt.Errorf("startEvent has no outgoing sequence flow")
 	}
 	return id, nil
+}
+
+// instantiateEntryID returns the sole process-level exclusive instantiate
+// event-based gateway when the process has no startEvent.
+func instantiateEntryID(proc *element.Process) (string, error) {
+	var found string
+	for _, g := range proc.EventBasedGatewaies {
+		if !g.Instantiate {
+			continue
+		}
+		if g.EventGatewayType == element.EventGatewayTypeParallel {
+			return "", fmt.Errorf("UNSUPPORTED_ELEMENT: eventBasedGateway %q parallel instantiate is not supported", g.ID)
+		}
+		if len(g.Incoming) > 0 {
+			return "", fmt.Errorf("UNSUPPORTED_ELEMENT: eventBasedGateway %q instantiate must have no incoming sequence flow", g.ID)
+		}
+		for _, f := range proc.SequenceFlows {
+			if f.TargetRef == g.ID {
+				return "", fmt.Errorf("UNSUPPORTED_ELEMENT: eventBasedGateway %q instantiate must have no incoming sequence flow", g.ID)
+			}
+		}
+		outs := g.Outgoing
+		if len(outs) == 0 {
+			for _, f := range proc.SequenceFlows {
+				if f.SourceRef == g.ID {
+					outs = append(outs, f.ID)
+				}
+			}
+		}
+		if len(outs) < 2 {
+			return "", fmt.Errorf("UNSUPPORTED_ELEMENT: eventBasedGateway %q must have at least two outgoing flows", g.ID)
+		}
+		if found != "" {
+			return "", fmt.Errorf("UNSUPPORTED_ELEMENT: process has multiple instantiate eventBasedGateway entries")
+		}
+		found = g.ID
+	}
+	if found == "" {
+		return "", fmt.Errorf("no startEvent in process")
+	}
+	return found, nil
 }
 
 func (d *Deployment) StartEventID() (string, error) {
@@ -839,13 +888,30 @@ func validateSubProcessesAt(fe *element.FlowElements, insideEmbedded, insideEven
 }
 
 func validateEventBasedGateways(fe *element.FlowElements) error {
+	return validateEventBasedGatewaysAt(fe, false)
+}
+
+func validateEventBasedGatewaysAt(fe *element.FlowElements, insideSubProcess bool) error {
 	catchIDs := make(map[string]bool, len(fe.IntermediateCatchEvents))
 	for _, e := range fe.IntermediateCatchEvents {
 		catchIDs[e.ID] = true
 	}
 	for _, g := range fe.EventBasedGatewaies {
 		if g.Instantiate {
-			return fmt.Errorf("UNSUPPORTED_ELEMENT: eventBasedGateway %q instantiate is not supported", g.ID)
+			if insideSubProcess {
+				return fmt.Errorf("UNSUPPORTED_ELEMENT: eventBasedGateway %q instantiate inside subProcess is not supported", g.ID)
+			}
+			if g.EventGatewayType == element.EventGatewayTypeParallel {
+				return fmt.Errorf("UNSUPPORTED_ELEMENT: eventBasedGateway %q parallel instantiate is not supported", g.ID)
+			}
+			if len(g.Incoming) > 0 {
+				return fmt.Errorf("UNSUPPORTED_ELEMENT: eventBasedGateway %q instantiate must have no incoming sequence flow", g.ID)
+			}
+			for _, f := range fe.SequenceFlows {
+				if f.TargetRef == g.ID {
+					return fmt.Errorf("UNSUPPORTED_ELEMENT: eventBasedGateway %q instantiate must have no incoming sequence flow", g.ID)
+				}
+			}
 		}
 		// Exclusive (default) and Parallel intermediate event-based gateways are supported.
 		outs := g.Outgoing
@@ -876,7 +942,7 @@ func validateEventBasedGateways(fe *element.FlowElements) error {
 		}
 	}
 	for i := range fe.SubProcesses {
-		if err := validateEventBasedGateways(&fe.SubProcesses[i].FlowElements); err != nil {
+		if err := validateEventBasedGatewaysAt(&fe.SubProcesses[i].FlowElements, true); err != nil {
 			return err
 		}
 	}
