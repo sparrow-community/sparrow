@@ -409,9 +409,9 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 				return
 			}
 		}
-		if el.GetIntent() == eventv1.Element_INTENT_TERMINATED &&
-			(el.GetType() == eventv1.Element_TYPE_PARALLEL_GATEWAY ||
-				el.GetType() == eventv1.Element_TYPE_INTERMEDIATE_CATCH_EVENT) {
+		if el.GetIntent() == eventv1.Element_INTENT_TERMINATED {
+			// Scope cancel / sibling cancel must drop the token on replay too.
+			// Live paths may also DropTokens after emit; projection must not revive as active.
 			delete(inst.Tokens, tokenID)
 			return
 		}

@@ -3,6 +3,7 @@ package processing
 import (
 	"context"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/sparrow-community/sparrow/processing/deploy"
@@ -564,24 +565,67 @@ func (x *Executor) startCompensation(
 		handlerID  string
 		seq        int64
 	}
+	seen := make(map[string]bool)
 	var items []item
-	for bid, sub := range inst.CompensationSubs {
-		if sub == nil {
-			continue
+	addItem := func(bid string, sub *projection.CompensationSub, c deploy.Compensation) {
+		if sub == nil || seen[bid] {
+			return
 		}
-		c, ok := dep.CompensationByBoundary(bid)
-		if !ok {
-			continue
-		}
-		if activityRef != "" && c.ActivityID != activityRef {
-			continue
-		}
-		actScope, _ := dep.ScopeOf(c.ActivityID)
-		if actScope != throwScope {
-			continue
-		}
+		seen[bid] = true
 		items = append(items, item{boundaryID: bid, handlerID: c.HandlerID, seq: sub.Seq})
 	}
+	collectSameScope := func() {
+		for bid, sub := range inst.CompensationSubs {
+			if sub == nil {
+				continue
+			}
+			c, ok := dep.CompensationByBoundary(bid)
+			if !ok {
+				continue
+			}
+			if activityRef != "" && c.ActivityID != activityRef {
+				continue
+			}
+			actScope, _ := dep.ScopeOf(c.ActivityID)
+			if actScope != throwScope {
+				continue
+			}
+			addItem(bid, sub, c)
+		}
+	}
+	collectUnderSubProcess := func(spID string) {
+		for bid, sub := range inst.CompensationSubs {
+			if sub == nil {
+				continue
+			}
+			c, ok := dep.CompensationByBoundary(bid)
+			if !ok {
+				continue
+			}
+			if !activityInScopeTree(dep, c.ActivityID, spID) {
+				continue
+			}
+			addItem(bid, sub, c)
+		}
+	}
+
+	if unfinishedSubProcessHost(dep, inst, activityRef) && scopeParentIs(dep, activityRef, throwScope) {
+		if err := x.terminateScope(ctx, dep, inst, activityRef, emit); err != nil {
+			return nil, err
+		}
+		collectUnderSubProcess(activityRef)
+	} else if activityRef != "" {
+		collectSameScope()
+	} else {
+		for _, spID := range unfinishedChildSubProcesses(dep, inst, throwScope) {
+			if err := x.terminateScope(ctx, dep, inst, spID, emit); err != nil {
+				return nil, err
+			}
+			collectUnderSubProcess(spID)
+		}
+		collectSameScope()
+	}
+
 	// Reverse order of completion (higher Seq first).
 	for i := 0; i < len(items); i++ {
 		for j := i + 1; j < len(items); j++ {
@@ -621,6 +665,75 @@ func (x *Executor) startCompensation(
 		Consumed:       consumed,
 	}
 	return x.advanceCompensation(ctx, dep, inst, emit)
+}
+
+// activityInScopeTree reports whether activityID lives under rootScopeID
+// (ScopeOf chain includes rootScopeID).
+func activityInScopeTree(dep *deploy.Deployment, activityID, rootScopeID string) bool {
+	if dep == nil || activityID == "" || rootScopeID == "" {
+		return false
+	}
+	s, ok := dep.ScopeOf(activityID)
+	for ok && s != "" {
+		if s == rootScopeID {
+			return true
+		}
+		s, ok = dep.ScopeOf(s)
+	}
+	return false
+}
+
+func scopeParentIs(dep *deploy.Deployment, elementID, parentScopeID string) bool {
+	if dep == nil {
+		return false
+	}
+	p, ok := dep.ScopeOf(elementID)
+	return ok && p == parentScopeID
+}
+
+func unfinishedSubProcessHost(dep *deploy.Deployment, inst *projection.Instance, spID string) bool {
+	if dep == nil || inst == nil || spID == "" {
+		return false
+	}
+	typ, err := dep.TypeOf(spID)
+	if err != nil || typ != eventv1.Element_TYPE_SUB_PROCESS || dep.IsEventSubProcess(spID) {
+		return false
+	}
+	for _, tok := range inst.Tokens {
+		if tok != nil && tok.ElementID == spID {
+			return true
+		}
+	}
+	return false
+}
+
+func unfinishedChildSubProcesses(dep *deploy.Deployment, inst *projection.Instance, throwScope string) []string {
+	if dep == nil || inst == nil {
+		return nil
+	}
+	seen := make(map[string]bool)
+	var ids []string
+	for _, tok := range inst.Tokens {
+		if tok == nil {
+			continue
+		}
+		spID := tok.ElementID
+		if seen[spID] {
+			continue
+		}
+		typ, err := dep.TypeOf(spID)
+		if err != nil || typ != eventv1.Element_TYPE_SUB_PROCESS || dep.IsEventSubProcess(spID) {
+			continue
+		}
+		parent, ok := dep.ScopeOf(spID)
+		if !ok || parent != throwScope {
+			continue
+		}
+		seen[spID] = true
+		ids = append(ids, spID)
+	}
+	sort.Strings(ids)
+	return ids
 }
 
 func (x *Executor) advanceCompensation(

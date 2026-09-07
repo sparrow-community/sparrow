@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             id="Definitions_comp_unfinished_targeted"
+             targetNamespace="http://sparrow.example/comp-unfinished-targeted">
+  <process id="Process_comp_unfinished_targeted" isExecutable="true">
+    <startEvent id="Start_1">
+      <outgoing>Flow_start_to_fork</outgoing>
+    </startEvent>
+    <parallelGateway id="Fork_1">
+      <incoming>Flow_start_to_fork</incoming>
+      <outgoing>Flow_fork_to_sp</outgoing>
+      <outgoing>Flow_fork_to_x</outgoing>
+    </parallelGateway>
+
+    <subProcess id="SubProcess_1" name="Book">
+      <incoming>Flow_fork_to_sp</incoming>
+      <startEvent id="Start_sp">
+        <outgoing>Flow_sp_to_a</outgoing>
+      </startEvent>
+      <userTask id="Task_A" name="Reserve">
+        <incoming>Flow_sp_to_a</incoming>
+        <outgoing>Flow_a_to_b</outgoing>
+      </userTask>
+      <boundaryEvent id="CompensateBoundary_A" attachedToRef="Task_A" cancelActivity="false">
+        <compensateEventDefinition id="CompensateDef_A"/>
+      </boundaryEvent>
+      <userTask id="Undo_A" name="Cancel Reserve" isForCompensation="true"/>
+      <association id="Assoc_A" sourceRef="CompensateBoundary_A" targetRef="Undo_A" associationDirection="One"/>
+      <userTask id="Task_B" name="Review">
+        <incoming>Flow_a_to_b</incoming>
+        <outgoing>Flow_b_to_end_sp</outgoing>
+      </userTask>
+      <endEvent id="End_sp">
+        <incoming>Flow_b_to_end_sp</incoming>
+      </endEvent>
+      <sequenceFlow id="Flow_sp_to_a" sourceRef="Start_sp" targetRef="Task_A"/>
+      <sequenceFlow id="Flow_a_to_b" sourceRef="Task_A" targetRef="Task_B"/>
+      <sequenceFlow id="Flow_b_to_end_sp" sourceRef="Task_B" targetRef="End_sp"/>
+    </subProcess>
+
+    <userTask id="Task_X" name="Charge">
+      <incoming>Flow_fork_to_x</incoming>
+      <outgoing>Flow_x_to_throw</outgoing>
+    </userTask>
+    <boundaryEvent id="CompensateBoundary_X" attachedToRef="Task_X" cancelActivity="false">
+      <compensateEventDefinition id="CompensateDef_X"/>
+    </boundaryEvent>
+    <userTask id="Undo_X" name="Refund" isForCompensation="true"/>
+    <association id="Assoc_X" sourceRef="CompensateBoundary_X" targetRef="Undo_X" associationDirection="One"/>
+
+    <intermediateThrowEvent id="CompensateThrow_1">
+      <incoming>Flow_x_to_throw</incoming>
+      <outgoing>Flow_throw_to_end</outgoing>
+      <compensateEventDefinition id="CompensateThrowDef_1" activityRef="SubProcess_1"/>
+    </intermediateThrowEvent>
+    <endEvent id="End_1">
+      <incoming>Flow_throw_to_end</incoming>
+    </endEvent>
+
+    <sequenceFlow id="Flow_start_to_fork" sourceRef="Start_1" targetRef="Fork_1"/>
+    <sequenceFlow id="Flow_fork_to_sp" sourceRef="Fork_1" targetRef="SubProcess_1"/>
+    <sequenceFlow id="Flow_fork_to_x" sourceRef="Fork_1" targetRef="Task_X"/>
+    <sequenceFlow id="Flow_x_to_throw" sourceRef="Task_X" targetRef="CompensateThrow_1"/>
+    <sequenceFlow id="Flow_throw_to_end" sourceRef="CompensateThrow_1" targetRef="End_1"/>
+  </process>
+</definitions>
