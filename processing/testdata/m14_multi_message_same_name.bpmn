@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             id="Definitions_multi_msg_same_name"
+             targetNamespace="http://sparrow.example/multi-msg-same-name">
+  <message id="Msg_a1" name="cancel.a"/>
+  <message id="Msg_a2" name="cancel.a"/>
+  <process id="Process_multi_msg_same_name" isExecutable="true">
+    <startEvent id="Start_1">
+      <outgoing>Flow_start_to_task</outgoing>
+    </startEvent>
+    <userTask id="UserTask_1">
+      <incoming>Flow_start_to_task</incoming>
+      <outgoing>Flow_task_to_end</outgoing>
+    </userTask>
+    <boundaryEvent id="MessageBoundary_A1" attachedToRef="UserTask_1" cancelActivity="true">
+      <outgoing>Flow_a1_to_end</outgoing>
+      <messageEventDefinition messageRef="Msg_a1"/>
+    </boundaryEvent>
+    <boundaryEvent id="MessageBoundary_A2" attachedToRef="UserTask_1" cancelActivity="true">
+      <outgoing>Flow_a2_to_end</outgoing>
+      <messageEventDefinition messageRef="Msg_a2"/>
+    </boundaryEvent>
+    <endEvent id="End_ok">
+      <incoming>Flow_task_to_end</incoming>
+    </endEvent>
+    <endEvent id="End_a1">
+      <incoming>Flow_a1_to_end</incoming>
+    </endEvent>
+    <endEvent id="End_a2">
+      <incoming>Flow_a2_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_task" sourceRef="Start_1" targetRef="UserTask_1"/>
+    <sequenceFlow id="Flow_task_to_end" sourceRef="UserTask_1" targetRef="End_ok"/>
+    <sequenceFlow id="Flow_a1_to_end" sourceRef="MessageBoundary_A1" targetRef="End_a1"/>
+    <sequenceFlow id="Flow_a2_to_end" sourceRef="MessageBoundary_A2" targetRef="End_a2"/>
+  </process>
+</definitions>

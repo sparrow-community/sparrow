@@ -114,6 +114,14 @@ func (e *Engine) collectSignalWaiters(name, instanceID string) []dueWait {
 			if tok == nil || tok.Status != projection.TokenWaiting {
 				continue
 			}
+			if len(tok.BoundaryWaits) > 0 {
+				for _, w := range tok.BoundaryWaits {
+					if w.Kind == "signal" && w.SignalName == name {
+						waiters = append(waiters, dueWait{instanceID: iid, elementID: w.BoundaryID, tokenID: tok.ID})
+					}
+				}
+				continue
+			}
 			if tok.SignalName != "" && tok.SignalName == name {
 				waiters = append(waiters, dueWait{instanceID: iid, elementID: signalWaiterElementID(tok), tokenID: tok.ID})
 			}

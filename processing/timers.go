@@ -113,6 +113,14 @@ func (e *Engine) collectDue(nowUnixMs int64) []dueWait {
 			if tok == nil || (tok.Status != projection.TokenWaiting && tok.Status != projection.TokenBlocked) {
 				continue
 			}
+			if len(tok.BoundaryWaits) > 0 {
+				for _, w := range tok.BoundaryWaits {
+					if w.Kind == "timer" && w.DueUnixMs > 0 && w.DueUnixMs <= nowUnixMs {
+						due = append(due, dueWait{instanceID: iid, elementID: w.BoundaryID, tokenID: tok.ID})
+					}
+				}
+				continue
+			}
 			if tok.DueUnixMs > 0 && tok.DueUnixMs <= nowUnixMs {
 				due = append(due, dueWait{instanceID: iid, elementID: waiterElementID(tok), tokenID: tok.ID})
 			}

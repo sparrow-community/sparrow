@@ -147,6 +147,14 @@ func (e *Engine) collectMessageWaiters(name, instanceID string, keys []*eventv1.
 			if tok == nil || tok.Status != projection.TokenWaiting {
 				continue
 			}
+			if len(tok.BoundaryWaits) > 0 {
+				for _, w := range tok.BoundaryWaits {
+					if w.Kind == "message" && w.MessageName == name {
+						waiters = append(waiters, dueWait{instanceID: iid, elementID: w.BoundaryID, tokenID: tok.ID, MessageName: w.MessageName})
+					}
+				}
+				continue
+			}
 			if tok.MessageName != "" && tok.MessageName == name {
 				waiters = append(waiters, dueWait{instanceID: iid, elementID: messageWaiterElementID(tok), tokenID: tok.ID, MessageName: tok.MessageName})
 			}
@@ -321,7 +329,18 @@ func (e *Engine) messageWaiterOn(instanceID string) (dueWait, map[string]string,
 	lock.Lock()
 	defer lock.Unlock()
 	for _, tok := range inst.Tokens {
-		if tok == nil || tok.Status != projection.TokenWaiting || tok.MessageName == "" {
+		if tok == nil || tok.Status != projection.TokenWaiting {
+			continue
+		}
+		if len(tok.BoundaryWaits) > 0 {
+			for _, w := range tok.BoundaryWaits {
+				if w.Kind == "message" && w.MessageName != "" {
+					return dueWait{instanceID: instanceID, elementID: w.BoundaryID, tokenID: tok.ID, MessageName: w.MessageName}, cloneStringMap(inst.Variables), true
+				}
+			}
+			continue
+		}
+		if tok.MessageName == "" {
 			continue
 		}
 		return dueWait{instanceID: instanceID, elementID: messageWaiterElementID(tok), tokenID: tok.ID, MessageName: tok.MessageName}, cloneStringMap(inst.Variables), true

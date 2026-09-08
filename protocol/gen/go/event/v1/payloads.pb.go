@@ -311,9 +311,12 @@ type ActivityPayload struct {
 	// Consecutive job failures since last ACTIVATED or INCIDENT_RESOLVED.
 	JobFailCount int32 `protobuf:"varint,16,opt,name=job_fail_count,json=jobFailCount,proto3" json:"job_fail_count,omitempty"`
 	// When true on a FAILED command, open an incident after this fail regardless of count.
-	NoRetry       bool `protobuf:"varint,17,opt,name=no_retry,json=noRetry,proto3" json:"no_retry,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	NoRetry bool `protobuf:"varint,17,opt,name=no_retry,json=noRetry,proto3" json:"no_retry,omitempty"`
+	// All armed waiting boundaries on this activity (timer/message/signal).
+	// Legacy singular boundary_id / message_* / signal_* still hold the first of each kind.
+	WaitingBoundaries []*WaitingBoundary `protobuf:"bytes,18,rep,name=waiting_boundaries,json=waitingBoundaries,proto3" json:"waiting_boundaries,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *ActivityPayload) Reset() {
@@ -465,6 +468,104 @@ func (x *ActivityPayload) GetNoRetry() bool {
 	return false
 }
 
+func (x *ActivityPayload) GetWaitingBoundaries() []*WaitingBoundary {
+	if x != nil {
+		return x.WaitingBoundaries
+	}
+	return nil
+}
+
+// One armed waiting boundary attached to an activity (or recorded on scope host ACTIVATED).
+type WaitingBoundary struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// BPMN boundary event id.
+	BoundaryId string `protobuf:"bytes,1,opt,name=boundary_id,json=boundaryId,proto3" json:"boundary_id,omitempty"`
+	// "timer", "message", or "signal".
+	Kind string `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"`
+	// Timer due (unix ms); zero when unused.
+	DueUnixMs int64 `protobuf:"varint,3,opt,name=due_unix_ms,json=dueUnixMs,proto3" json:"due_unix_ms,omitempty"`
+	// Timer expression text; empty when unused.
+	Duration string `protobuf:"bytes,4,opt,name=duration,proto3" json:"duration,omitempty"`
+	// Message name when kind is message.
+	MessageName string `protobuf:"bytes,5,opt,name=message_name,json=messageName,proto3" json:"message_name,omitempty"`
+	// Signal name when kind is signal.
+	SignalName    string `protobuf:"bytes,6,opt,name=signal_name,json=signalName,proto3" json:"signal_name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WaitingBoundary) Reset() {
+	*x = WaitingBoundary{}
+	mi := &file_event_v1_payloads_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WaitingBoundary) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WaitingBoundary) ProtoMessage() {}
+
+func (x *WaitingBoundary) ProtoReflect() protoreflect.Message {
+	mi := &file_event_v1_payloads_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WaitingBoundary.ProtoReflect.Descriptor instead.
+func (*WaitingBoundary) Descriptor() ([]byte, []int) {
+	return file_event_v1_payloads_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *WaitingBoundary) GetBoundaryId() string {
+	if x != nil {
+		return x.BoundaryId
+	}
+	return ""
+}
+
+func (x *WaitingBoundary) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *WaitingBoundary) GetDueUnixMs() int64 {
+	if x != nil {
+		return x.DueUnixMs
+	}
+	return 0
+}
+
+func (x *WaitingBoundary) GetDuration() string {
+	if x != nil {
+		return x.Duration
+	}
+	return ""
+}
+
+func (x *WaitingBoundary) GetMessageName() string {
+	if x != nil {
+		return x.MessageName
+	}
+	return ""
+}
+
+func (x *WaitingBoundary) GetSignalName() string {
+	if x != nil {
+		return x.SignalName
+	}
+	return ""
+}
+
 type GatewayPayload struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// For exclusive/inclusive decisions: the chosen outgoing sequence flow id.
@@ -475,7 +576,7 @@ type GatewayPayload struct {
 
 func (x *GatewayPayload) Reset() {
 	*x = GatewayPayload{}
-	mi := &file_event_v1_payloads_proto_msgTypes[4]
+	mi := &file_event_v1_payloads_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -487,7 +588,7 @@ func (x *GatewayPayload) String() string {
 func (*GatewayPayload) ProtoMessage() {}
 
 func (x *GatewayPayload) ProtoReflect() protoreflect.Message {
-	mi := &file_event_v1_payloads_proto_msgTypes[4]
+	mi := &file_event_v1_payloads_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -500,7 +601,7 @@ func (x *GatewayPayload) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GatewayPayload.ProtoReflect.Descriptor instead.
 func (*GatewayPayload) Descriptor() ([]byte, []int) {
-	return file_event_v1_payloads_proto_rawDescGZIP(), []int{4}
+	return file_event_v1_payloads_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *GatewayPayload) GetTakenSequenceFlowId() string {
@@ -520,7 +621,7 @@ type SequenceFlowPayload struct {
 
 func (x *SequenceFlowPayload) Reset() {
 	*x = SequenceFlowPayload{}
-	mi := &file_event_v1_payloads_proto_msgTypes[5]
+	mi := &file_event_v1_payloads_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -532,7 +633,7 @@ func (x *SequenceFlowPayload) String() string {
 func (*SequenceFlowPayload) ProtoMessage() {}
 
 func (x *SequenceFlowPayload) ProtoReflect() protoreflect.Message {
-	mi := &file_event_v1_payloads_proto_msgTypes[5]
+	mi := &file_event_v1_payloads_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -545,7 +646,7 @@ func (x *SequenceFlowPayload) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SequenceFlowPayload.ProtoReflect.Descriptor instead.
 func (*SequenceFlowPayload) Descriptor() ([]byte, []int) {
-	return file_event_v1_payloads_proto_rawDescGZIP(), []int{5}
+	return file_event_v1_payloads_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *SequenceFlowPayload) GetSourceId() string {
@@ -571,7 +672,7 @@ type DataPayload struct {
 
 func (x *DataPayload) Reset() {
 	*x = DataPayload{}
-	mi := &file_event_v1_payloads_proto_msgTypes[6]
+	mi := &file_event_v1_payloads_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -583,7 +684,7 @@ func (x *DataPayload) String() string {
 func (*DataPayload) ProtoMessage() {}
 
 func (x *DataPayload) ProtoReflect() protoreflect.Message {
-	mi := &file_event_v1_payloads_proto_msgTypes[6]
+	mi := &file_event_v1_payloads_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -596,7 +697,7 @@ func (x *DataPayload) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DataPayload.ProtoReflect.Descriptor instead.
 func (*DataPayload) Descriptor() ([]byte, []int) {
-	return file_event_v1_payloads_proto_rawDescGZIP(), []int{6}
+	return file_event_v1_payloads_proto_rawDescGZIP(), []int{7}
 }
 
 var File_event_v1_payloads_proto protoreflect.FileDescriptor
@@ -625,7 +726,7 @@ const file_event_v1_payloads_proto_rawDesc = "" +
 	"error_code\x18\a \x01(\tR\terrorCode\x12\x1d\n" +
 	"\n" +
 	"token_wait\x18\b \x01(\bR\ttokenWait\x12>\n" +
-	"\x1cevent_sub_process_element_id\x18\t \x01(\tR\x18eventSubProcessElementId\"\xc5\x05\n" +
+	"\x1cevent_sub_process_element_id\x18\t \x01(\tR\x18eventSubProcessElementId\"\x8f\x06\n" +
 	"\x0fActivityPayload\x120\n" +
 	"\tvariables\x18\x01 \x03(\v2\x12.event.v1.VariableR\tvariables\x12\x19\n" +
 	"\bjob_type\x18\x02 \x01(\tR\ajobType\x12#\n" +
@@ -646,7 +747,17 @@ const file_event_v1_payloads_proto_rawDesc = "" +
 	"\x18loop_completed_instances\x18\x0e \x01(\x05R\x16loopCompletedInstances\x12'\n" +
 	"\x0floop_sequential\x18\x0f \x01(\bR\x0eloopSequential\x12$\n" +
 	"\x0ejob_fail_count\x18\x10 \x01(\x05R\fjobFailCount\x12\x19\n" +
-	"\bno_retry\x18\x11 \x01(\bR\anoRetry\"E\n" +
+	"\bno_retry\x18\x11 \x01(\bR\anoRetry\x12H\n" +
+	"\x12waiting_boundaries\x18\x12 \x03(\v2\x19.event.v1.WaitingBoundaryR\x11waitingBoundaries\"\xc6\x01\n" +
+	"\x0fWaitingBoundary\x12\x1f\n" +
+	"\vboundary_id\x18\x01 \x01(\tR\n" +
+	"boundaryId\x12\x12\n" +
+	"\x04kind\x18\x02 \x01(\tR\x04kind\x12\x1e\n" +
+	"\vdue_unix_ms\x18\x03 \x01(\x03R\tdueUnixMs\x12\x1a\n" +
+	"\bduration\x18\x04 \x01(\tR\bduration\x12!\n" +
+	"\fmessage_name\x18\x05 \x01(\tR\vmessageName\x12\x1f\n" +
+	"\vsignal_name\x18\x06 \x01(\tR\n" +
+	"signalName\"E\n" +
 	"\x0eGatewayPayload\x123\n" +
 	"\x16taken_sequence_flow_id\x18\x01 \x01(\tR\x13takenSequenceFlowId\"O\n" +
 	"\x13SequenceFlowPayload\x12\x1b\n" +
@@ -667,25 +778,27 @@ func file_event_v1_payloads_proto_rawDescGZIP() []byte {
 	return file_event_v1_payloads_proto_rawDescData
 }
 
-var file_event_v1_payloads_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_event_v1_payloads_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_event_v1_payloads_proto_goTypes = []any{
 	(*Variable)(nil),            // 0: event.v1.Variable
 	(*ProcessPayload)(nil),      // 1: event.v1.ProcessPayload
 	(*EventPayload)(nil),        // 2: event.v1.EventPayload
 	(*ActivityPayload)(nil),     // 3: event.v1.ActivityPayload
-	(*GatewayPayload)(nil),      // 4: event.v1.GatewayPayload
-	(*SequenceFlowPayload)(nil), // 5: event.v1.SequenceFlowPayload
-	(*DataPayload)(nil),         // 6: event.v1.DataPayload
+	(*WaitingBoundary)(nil),     // 4: event.v1.WaitingBoundary
+	(*GatewayPayload)(nil),      // 5: event.v1.GatewayPayload
+	(*SequenceFlowPayload)(nil), // 6: event.v1.SequenceFlowPayload
+	(*DataPayload)(nil),         // 7: event.v1.DataPayload
 }
 var file_event_v1_payloads_proto_depIdxs = []int32{
 	0, // 0: event.v1.ProcessPayload.variables:type_name -> event.v1.Variable
 	0, // 1: event.v1.EventPayload.variables:type_name -> event.v1.Variable
 	0, // 2: event.v1.ActivityPayload.variables:type_name -> event.v1.Variable
-	3, // [3:3] is the sub-list for method output_type
-	3, // [3:3] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	4, // 3: event.v1.ActivityPayload.waiting_boundaries:type_name -> event.v1.WaitingBoundary
+	4, // [4:4] is the sub-list for method output_type
+	4, // [4:4] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_event_v1_payloads_proto_init() }
@@ -699,7 +812,7 @@ func file_event_v1_payloads_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_event_v1_payloads_proto_rawDesc), len(file_event_v1_payloads_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   7,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

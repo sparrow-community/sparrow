@@ -79,7 +79,7 @@ func Compile(bpmnXML []byte) (*Deployment, error) {
 	if proc == nil {
 		return nil, fmt.Errorf("process not found")
 	}
-	if err := validateM1(proc, model.Definitions.Errors); err != nil {
+	if err := validateM1(proc, model.Definitions.Messages, model.Definitions.Signals, model.Definitions.Errors); err != nil {
 		return nil, err
 	}
 	if _, err := StartEventID(proc); err != nil {
@@ -262,7 +262,7 @@ func (d *Deployment) indexCallActivities(fe *element.FlowElements, catalog map[s
 				continue
 			}
 			called := catalog[spec.CalledProcessID]
-			if err := validateM1(called, errors); err != nil {
+			if err := validateM1(called, messages, signals, errors); err != nil {
 				return fmt.Errorf("UNSUPPORTED_ELEMENT: called process %q: %v", spec.CalledProcessID, err)
 			}
 			if _, exists := d.calledProcessOwner[spec.CalledProcessID]; !exists {
@@ -293,7 +293,7 @@ func (d *Deployment) indexCallActivities(fe *element.FlowElements, catalog map[s
 	return walk(fe)
 }
 
-func validateM1(proc *element.Process, errors []element.Error) error {
+func validateM1(proc *element.Process, messages []element.Message, signals []element.Signal, errors []element.Error) error {
 	unsupported := 0
 	unsupported += len(proc.Tasks) + len(proc.ManualTasks)
 	unsupported += len(proc.SendTasks) + len(proc.ReceiveTasks) + len(proc.BusinessRuleTasks)
@@ -311,13 +311,15 @@ func validateM1(proc *element.Process, errors []element.Error) error {
 	}
 	type seenKey struct {
 		activity string
-		kind     string // "timer", "message", "signal", or "compensate"
+		kind     string // timer|message|signal|compensate|error:CODE
+		disc     string // message/signal name; timer uses boundary id; empty for compensate
 	}
 	seenAttach := make(map[seenKey]string, len(proc.BoundaryEvents))
 	assocs := collectAssociations(proc)
 	for _, e := range proc.BoundaryEvents {
 		attached := ""
 		kind := ""
+		disc := ""
 		switch {
 		case len(e.TimerEventDefinitions) > 0:
 			spec, err := timerBoundarySpec(e)
@@ -326,20 +328,23 @@ func validateM1(proc *element.Process, errors []element.Error) error {
 			}
 			attached = spec.AttachedTo
 			kind = "timer"
+			disc = e.ID
 		case len(e.MessageEventDefinitions) > 0:
-			spec, err := messageBoundarySpec(e, nil)
+			spec, err := messageBoundarySpec(e, messages)
 			if err != nil {
 				return err
 			}
 			attached = spec.AttachedTo
 			kind = "message"
+			disc = spec.Name
 		case len(e.SignalEventDefinitions) > 0:
-			spec, err := signalBoundarySpec(e, nil)
+			spec, err := signalBoundarySpec(e, signals)
 			if err != nil {
 				return err
 			}
 			attached = spec.AttachedTo
 			kind = "signal"
+			disc = spec.Name
 		case len(e.CompensateEventDefinitions) > 0:
 			spec, err := compensationBoundarySpec(e, assocs)
 			if err != nil {
@@ -360,7 +365,7 @@ func validateM1(proc *element.Process, errors []element.Error) error {
 		default:
 			return fmt.Errorf("UNSUPPORTED_ELEMENT: boundaryEvent %q must be a timer, message, signal, error, or compensation boundary", e.ID)
 		}
-		key := seenKey{attached, kind}
+		key := seenKey{attached, kind, disc}
 		if prev, ok := seenAttach[key]; ok {
 			return fmt.Errorf("UNSUPPORTED_ELEMENT: activity %q already has %s boundary %q", attached, kind, prev)
 		}

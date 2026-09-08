@@ -341,7 +341,7 @@ func (e *Engine) completeLocked(ctx context.Context, dep *deploy.Deployment, ins
 	waiting := tok != nil && (tok.Status == projection.TokenWaiting || tok.Status == projection.TokenBlocked)
 	if waiting && typ == eventv1.Element_TYPE_BOUNDARY_EVENT {
 		attached, ok := dep.AttachedActivity(elementID)
-		waiting = ok && tok.ElementID == attached && (tok.BoundaryID == elementID || tok.MessageBoundaryID == elementID || tok.SignalBoundaryID == elementID)
+		waiting = ok && tok.ElementID == attached && projection.TokenHasArmedBoundary(tok, elementID)
 	} else if waiting {
 		waiting = tok.ElementID == elementID
 	}

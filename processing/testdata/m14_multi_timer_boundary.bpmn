@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             id="Definitions_multi_timer_boundary"
+             targetNamespace="http://sparrow.example/multi-timer-boundary">
+  <process id="Process_multi_timer_boundary" isExecutable="true">
+    <startEvent id="Start_1">
+      <outgoing>Flow_start_to_task</outgoing>
+    </startEvent>
+    <userTask id="UserTask_1" name="Work">
+      <incoming>Flow_start_to_task</incoming>
+      <outgoing>Flow_task_to_end</outgoing>
+    </userTask>
+    <boundaryEvent id="TimerBoundary_short" attachedToRef="UserTask_1" cancelActivity="true">
+      <outgoing>Flow_short_to_end</outgoing>
+      <timerEventDefinition>
+        <timeDuration xsi:type="tFormalExpression">PT0S</timeDuration>
+      </timerEventDefinition>
+    </boundaryEvent>
+    <boundaryEvent id="TimerBoundary_long" attachedToRef="UserTask_1" cancelActivity="true">
+      <outgoing>Flow_long_to_end</outgoing>
+      <timerEventDefinition>
+        <timeDuration xsi:type="tFormalExpression">PT1H</timeDuration>
+      </timerEventDefinition>
+    </boundaryEvent>
+    <endEvent id="End_ok">
+      <incoming>Flow_task_to_end</incoming>
+    </endEvent>
+    <endEvent id="End_short">
+      <incoming>Flow_short_to_end</incoming>
+    </endEvent>
+    <endEvent id="End_long">
+      <incoming>Flow_long_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_task" sourceRef="Start_1" targetRef="UserTask_1"/>
+    <sequenceFlow id="Flow_task_to_end" sourceRef="UserTask_1" targetRef="End_ok"/>
+    <sequenceFlow id="Flow_short_to_end" sourceRef="TimerBoundary_short" targetRef="End_short"/>
+    <sequenceFlow id="Flow_long_to_end" sourceRef="TimerBoundary_long" targetRef="End_long"/>
+  </process>
+</definitions>

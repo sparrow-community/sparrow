@@ -50,10 +50,11 @@ func (SubProcessHandler) OnEnter(in EnterInput) (*Effect, error) {
 		p = &eventv1.ActivityPayload{}
 	}
 	p = activityPayloadWithIndex(p, idx)
-	if p.GetBoundaryId() == "" && p.GetMessageBoundaryId() == "" && p.GetSignalBoundaryId() == "" &&
-		p.GetDueUnixMs() == 0 && idx < 0 {
+	hasBoundary := p.GetBoundaryId() != "" || p.GetMessageBoundaryId() != "" || p.GetSignalBoundaryId() != "" ||
+		p.GetDueUnixMs() != 0 || len(p.GetWaitingBoundaries()) > 0
+	if !hasBoundary && idx < 0 {
 		p = nil
-	} else if idx >= 0 && p.GetBoundaryId() == "" && p.GetMessageBoundaryId() == "" && p.GetSignalBoundaryId() == "" && p.GetDueUnixMs() == 0 {
+	} else if idx >= 0 && !hasBoundary {
 		p = activityPayloadWithIndex(nil, idx)
 	}
 	if p != nil {
@@ -75,55 +76,7 @@ func (SubProcessHandler) OnEnter(in EnterInput) (*Effect, error) {
 }
 
 func attachScopeBoundary(dep *deploy.Deployment, subProcessID string, now time.Time) (*eventv1.ActivityPayload, error) {
-	if dep == nil {
-		return nil, nil
-	}
-	var p *eventv1.ActivityPayload
-	if bid, ok := dep.TimerBoundary(subProcessID); ok {
-		if now.IsZero() {
-			now = time.Now()
-		}
-		due, text, err := dep.TimerDue(bid, now)
-		if err != nil {
-			return nil, err
-		}
-		p = &eventv1.ActivityPayload{
-			DueUnixMs:  due,
-			Duration:   text,
-			BoundaryId: bid,
-		}
-	}
-	if bid, ok := dep.MessageBoundary(subProcessID); ok {
-		name, err := dep.MessageName(bid)
-		if err != nil {
-			return nil, err
-		}
-		if p == nil {
-			p = &eventv1.ActivityPayload{}
-		}
-		p.MessageName = name
-		if p.BoundaryId == "" {
-			p.BoundaryId = bid
-		} else {
-			p.MessageBoundaryId = bid
-		}
-	}
-	if bid, ok := dep.SignalBoundary(subProcessID); ok {
-		name, err := dep.SignalName(bid)
-		if err != nil {
-			return nil, err
-		}
-		if p == nil {
-			p = &eventv1.ActivityPayload{}
-		}
-		p.SignalName = name
-		if p.BoundaryId == "" {
-			p.BoundaryId = bid
-		} else {
-			p.SignalBoundaryId = bid
-		}
-	}
-	return p, nil
+	return attachBoundary(dep, subProcessID, now, nil)
 }
 
 func (SubProcessHandler) OnComplete(in CompleteInput) (*Effect, error) {

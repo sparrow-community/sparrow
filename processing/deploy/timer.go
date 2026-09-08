@@ -282,8 +282,18 @@ func (d *Deployment) CatchKind(id string) (CatchKind, error) {
 	return "", fmt.Errorf("NOT_FOUND: intermediate catch %q", id)
 }
 
-// TimerBoundary returns the timer boundary attached to an activity.
+// TimerBoundary returns the first timer boundary attached to an activity.
 func (d *Deployment) TimerBoundary(activityID string) (string, bool) {
+	ids := d.TimerBoundaries(activityID)
+	if len(ids) == 0 {
+		return "", false
+	}
+	return ids[0], true
+}
+
+// TimerBoundaries returns all timer boundaries attached to an activity.
+func (d *Deployment) TimerBoundaries(activityID string) []string {
+	var ids []string
 	for _, e := range d.Process.BoundaryEvents {
 		if e.AttachedToRef != activityID {
 			continue
@@ -291,25 +301,35 @@ func (d *Deployment) TimerBoundary(activityID string) (string, bool) {
 		if _, err := timerBoundarySpec(e); err != nil {
 			continue
 		}
-		return e.ID, true
+		ids = append(ids, e.ID)
 	}
-	return "", false
+	return ids
 }
 
-// MessageBoundary returns the message boundary attached to an activity.
+// MessageBoundary returns the first message boundary attached to an activity.
 func (d *Deployment) MessageBoundary(activityID string) (string, bool) {
+	ids := d.MessageBoundaries(activityID)
+	if len(ids) == 0 {
+		return "", false
+	}
+	return ids[0], true
+}
+
+// MessageBoundaries returns all message boundaries attached to an activity.
+func (d *Deployment) MessageBoundaries(activityID string) []string {
+	var ids []string
 	for _, e := range d.Process.BoundaryEvents {
 		if e.AttachedToRef != activityID {
 			continue
 		}
 		if _, ok := d.messageCatch[e.ID]; ok {
-			return e.ID, true
+			ids = append(ids, e.ID)
 		}
 	}
-	return "", false
+	return ids
 }
 
-// AttachedBoundary returns the single boundary attached to an activity.
+// AttachedBoundary returns the first waiting boundary attached to an activity.
 func (d *Deployment) AttachedBoundary(activityID string) (string, bool) {
 	if id, ok := d.TimerBoundary(activityID); ok {
 		return id, true
@@ -320,17 +340,27 @@ func (d *Deployment) AttachedBoundary(activityID string) (string, bool) {
 	return d.SignalBoundary(activityID)
 }
 
-// SignalBoundary returns the signal boundary attached to an activity.
+// SignalBoundary returns the first signal boundary attached to an activity.
 func (d *Deployment) SignalBoundary(activityID string) (string, bool) {
+	ids := d.SignalBoundaries(activityID)
+	if len(ids) == 0 {
+		return "", false
+	}
+	return ids[0], true
+}
+
+// SignalBoundaries returns all signal boundaries attached to an activity.
+func (d *Deployment) SignalBoundaries(activityID string) []string {
+	var ids []string
 	for _, e := range d.Process.BoundaryEvents {
 		if e.AttachedToRef != activityID {
 			continue
 		}
 		if _, ok := d.signalCatch[e.ID]; ok {
-			return e.ID, true
+			ids = append(ids, e.ID)
 		}
 	}
-	return "", false
+	return ids
 }
 
 // InterruptingBoundary returns the attached boundary when it is interrupting.

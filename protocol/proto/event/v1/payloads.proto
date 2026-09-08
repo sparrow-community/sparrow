@@ -88,6 +88,25 @@ message ActivityPayload {
   int32 job_fail_count = 16;
   // When true on a FAILED command, open an incident after this fail regardless of count.
   bool no_retry = 17;
+  // All armed waiting boundaries on this activity (timer/message/signal).
+  // Legacy singular boundary_id / message_* / signal_* still hold the first of each kind.
+  repeated WaitingBoundary waiting_boundaries = 18;
+}
+
+// One armed waiting boundary attached to an activity (or recorded on scope host ACTIVATED).
+message WaitingBoundary {
+  // BPMN boundary event id.
+  string boundary_id = 1;
+  // "timer", "message", or "signal".
+  string kind = 2;
+  // Timer due (unix ms); zero when unused.
+  int64 due_unix_ms = 3;
+  // Timer expression text; empty when unused.
+  string duration = 4;
+  // Message name when kind is message.
+  string message_name = 5;
+  // Signal name when kind is signal.
+  string signal_name = 6;
 }
 
 message GatewayPayload {

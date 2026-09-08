@@ -68,6 +68,19 @@ type Token struct {
 	JobFailCount int32
 	// IncidentErrorMessage is the worker error snapshot while blocked.
 	IncidentErrorMessage string
+	// BoundaryWaits lists all armed waiting boundaries on this activity token.
+	// Legacy singular fields remain the first of each kind for compatibility.
+	BoundaryWaits []BoundaryWait
+}
+
+// BoundaryWait is one armed timer/message/signal boundary on an activity token.
+type BoundaryWait struct {
+	BoundaryID  string
+	Kind        string // timer|message|signal
+	DueUnixMs   int64
+	TimerText   string
+	MessageName string
+	SignalName  string
 }
 
 // ScopeBoundary tracks a boundary armed on a SubProcess scope.
@@ -216,6 +229,9 @@ func (inst *Instance) Clone() *Instance {
 			continue
 		}
 		cp := *tok
+		if len(tok.BoundaryWaits) > 0 {
+			cp.BoundaryWaits = append([]BoundaryWait{}, tok.BoundaryWaits...)
+		}
 		out.Tokens[k] = &cp
 	}
 	for k, v := range inst.ElementIntent {
@@ -292,6 +308,7 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 	if boundaryDisarmOnWaitingHost(hostElementID, el, tok) {
 		if el.GetIntent() == eventv1.Element_INTENT_TERMINATED {
 			bid := el.GetId()
+			removeBoundaryWait(tok, bid)
 			if bid == tok.BoundaryID {
 				tok.DueUnixMs = 0
 				tok.TimerText = ""
@@ -305,26 +322,25 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 				tok.SignalName = ""
 				tok.SignalBoundaryID = ""
 			}
+			syncLegacyBoundaryFields(tok)
 		}
 		return
 	}
 	if boundaryRearmOnWaitingHost(hostElementID, el, tok) {
 		if p := el.GetActivityPayload(); p != nil {
-			tok.DueUnixMs = p.GetDueUnixMs()
-			tok.TimerText = p.GetDuration()
-			tok.BoundaryID = p.GetBoundaryId()
-			if p.GetMessageName() != "" {
-				tok.MessageName = p.GetMessageName()
+			if len(p.GetWaitingBoundaries()) > 0 {
+				for _, w := range boundaryWaitsFromPayload(p) {
+					upsertBoundaryWait(tok, w)
+				}
+			} else {
+				upsertBoundaryWait(tok, BoundaryWait{
+					BoundaryID: el.GetId(),
+					Kind:       "timer",
+					DueUnixMs:  p.GetDueUnixMs(),
+					TimerText:  p.GetDuration(),
+				})
 			}
-			if p.GetMessageBoundaryId() != "" {
-				tok.MessageBoundaryID = p.GetMessageBoundaryId()
-			}
-			if p.GetSignalName() != "" {
-				tok.SignalName = p.GetSignalName()
-			}
-			if p.GetSignalBoundaryId() != "" {
-				tok.SignalBoundaryID = p.GetSignalBoundaryId()
-			}
+			syncLegacyBoundaryFields(tok)
 		}
 		return
 	}
@@ -380,6 +396,7 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 				tok.CalledProcessInstanceID = p.GetCalledProcessInstanceId()
 				tok.JobFailCount = 0
 				tok.IncidentErrorMessage = ""
+				tok.BoundaryWaits = boundaryWaitsFromPayload(p)
 			}
 		}
 		if p := el.GetEventPayload(); p != nil {
@@ -583,31 +600,54 @@ func applyProcessLifecycle(inst *Instance, el *eventv1.Element) {
 
 // VariablesFromMap encodes Go values as JSON text variables.
 func (inst *Instance) applyScopeBoundary(scopeID, tokenID string, p *eventv1.ActivityPayload) {
-	if p.GetBoundaryId() != "" {
-		inst.ScopeBoundaries[p.GetBoundaryId()] = &ScopeBoundary{
-			BoundaryID:  p.GetBoundaryId(),
+	if p == nil {
+		return
+	}
+	for _, w := range p.GetWaitingBoundaries() {
+		if w == nil || w.GetBoundaryId() == "" {
+			continue
+		}
+		inst.ScopeBoundaries[w.GetBoundaryId()] = &ScopeBoundary{
+			BoundaryID:  w.GetBoundaryId(),
 			ScopeID:     scopeID,
 			TokenID:     tokenID,
-			DueUnixMs:   p.GetDueUnixMs(),
-			TimerText:   p.GetDuration(),
-			MessageName: p.GetMessageName(),
-			SignalName:  p.GetSignalName(),
+			DueUnixMs:   w.GetDueUnixMs(),
+			TimerText:   w.GetDuration(),
+			MessageName: w.GetMessageName(),
+			SignalName:  w.GetSignalName(),
+		}
+	}
+	if p.GetBoundaryId() != "" {
+		if _, ok := inst.ScopeBoundaries[p.GetBoundaryId()]; !ok {
+			inst.ScopeBoundaries[p.GetBoundaryId()] = &ScopeBoundary{
+				BoundaryID:  p.GetBoundaryId(),
+				ScopeID:     scopeID,
+				TokenID:     tokenID,
+				DueUnixMs:   p.GetDueUnixMs(),
+				TimerText:   p.GetDuration(),
+				MessageName: p.GetMessageName(),
+				SignalName:  p.GetSignalName(),
+			}
 		}
 	}
 	if p.GetMessageBoundaryId() != "" {
-		inst.ScopeBoundaries[p.GetMessageBoundaryId()] = &ScopeBoundary{
-			BoundaryID:  p.GetMessageBoundaryId(),
-			ScopeID:     scopeID,
-			TokenID:     tokenID,
-			MessageName: p.GetMessageName(),
+		if _, ok := inst.ScopeBoundaries[p.GetMessageBoundaryId()]; !ok {
+			inst.ScopeBoundaries[p.GetMessageBoundaryId()] = &ScopeBoundary{
+				BoundaryID:  p.GetMessageBoundaryId(),
+				ScopeID:     scopeID,
+				TokenID:     tokenID,
+				MessageName: p.GetMessageName(),
+			}
 		}
 	}
 	if p.GetSignalBoundaryId() != "" {
-		inst.ScopeBoundaries[p.GetSignalBoundaryId()] = &ScopeBoundary{
-			BoundaryID:  p.GetSignalBoundaryId(),
-			ScopeID:     scopeID,
-			TokenID:     tokenID,
-			SignalName:  p.GetSignalName(),
+		if _, ok := inst.ScopeBoundaries[p.GetSignalBoundaryId()]; !ok {
+			inst.ScopeBoundaries[p.GetSignalBoundaryId()] = &ScopeBoundary{
+				BoundaryID:  p.GetSignalBoundaryId(),
+				ScopeID:     scopeID,
+				TokenID:     tokenID,
+				SignalName:  p.GetSignalName(),
+			}
 		}
 	}
 }
@@ -712,4 +752,109 @@ func VariablesFromMap(vars map[string]any) ([]*eventv1.Variable, error) {
 		out = append(out, &eventv1.Variable{Name: k, JsonValue: string(b)})
 	}
 	return out, nil
+}
+
+func boundaryWaitsFromPayload(p *eventv1.ActivityPayload) []BoundaryWait {
+	if p == nil {
+		return nil
+	}
+	src := p.GetWaitingBoundaries()
+	if len(src) == 0 {
+		return nil
+	}
+	out := make([]BoundaryWait, 0, len(src))
+	for _, w := range src {
+		if w == nil || w.GetBoundaryId() == "" {
+			continue
+		}
+		out = append(out, BoundaryWait{
+			BoundaryID:  w.GetBoundaryId(),
+			Kind:        w.GetKind(),
+			DueUnixMs:   w.GetDueUnixMs(),
+			TimerText:   w.GetDuration(),
+			MessageName: w.GetMessageName(),
+			SignalName:  w.GetSignalName(),
+		})
+	}
+	return out
+}
+
+func removeBoundaryWait(tok *Token, boundaryID string) {
+	if tok == nil || boundaryID == "" {
+		return
+	}
+	dst := tok.BoundaryWaits[:0]
+	for _, w := range tok.BoundaryWaits {
+		if w.BoundaryID != boundaryID {
+			dst = append(dst, w)
+		}
+	}
+	tok.BoundaryWaits = dst
+}
+
+func upsertBoundaryWait(tok *Token, wait BoundaryWait) {
+	if tok == nil || wait.BoundaryID == "" {
+		return
+	}
+	for i := range tok.BoundaryWaits {
+		if tok.BoundaryWaits[i].BoundaryID == wait.BoundaryID {
+			tok.BoundaryWaits[i] = wait
+			return
+		}
+	}
+	tok.BoundaryWaits = append(tok.BoundaryWaits, wait)
+}
+
+func syncLegacyBoundaryFields(tok *Token) {
+	if tok == nil {
+		return
+	}
+	tok.DueUnixMs = 0
+	tok.TimerText = ""
+	tok.BoundaryID = ""
+	tok.MessageName = ""
+	tok.MessageBoundaryID = ""
+	tok.SignalName = ""
+	tok.SignalBoundaryID = ""
+	for _, w := range tok.BoundaryWaits {
+		switch w.Kind {
+		case "timer":
+			if tok.BoundaryID == "" || tok.DueUnixMs == 0 {
+				tok.BoundaryID = w.BoundaryID
+				tok.DueUnixMs = w.DueUnixMs
+				tok.TimerText = w.TimerText
+			}
+		case "message":
+			if tok.MessageName == "" {
+				tok.MessageName = w.MessageName
+			}
+			if tok.BoundaryID == "" {
+				tok.BoundaryID = w.BoundaryID
+			} else if tok.MessageBoundaryID == "" && tok.BoundaryID != w.BoundaryID {
+				tok.MessageBoundaryID = w.BoundaryID
+			}
+		case "signal":
+			if tok.SignalName == "" {
+				tok.SignalName = w.SignalName
+			}
+			if tok.BoundaryID == "" {
+				tok.BoundaryID = w.BoundaryID
+			} else if tok.SignalBoundaryID == "" && tok.BoundaryID != w.BoundaryID {
+				tok.SignalBoundaryID = w.BoundaryID
+			}
+		}
+	}
+}
+
+// TokenHasArmedBoundary reports whether the token is waiting on boundaryID.
+func TokenHasArmedBoundary(tok *Token, boundaryID string) bool {
+	if tok == nil || boundaryID == "" {
+		return false
+	}
+	for _, w := range tok.BoundaryWaits {
+		if w.BoundaryID == boundaryID {
+			return true
+		}
+	}
+	return tok.BoundaryID == boundaryID || tok.MessageBoundaryID == boundaryID || tok.SignalBoundaryID == boundaryID
 }

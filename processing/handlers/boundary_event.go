@@ -13,50 +13,79 @@ func attachBoundary(dep *deploy.Deployment, activityID string, now time.Time, p 
 	if dep == nil {
 		return p, nil
 	}
-	if bid, ok := dep.TimerBoundary(activityID); ok {
-		if now.IsZero() {
-			now = time.Now()
-		}
+	if now.IsZero() {
+		now = time.Now()
+	}
+	var waits []*eventv1.WaitingBoundary
+	for _, bid := range dep.TimerBoundaries(activityID) {
 		due, text, err := dep.TimerDue(bid, now)
 		if err != nil {
 			return nil, err
 		}
+		waits = append(waits, &eventv1.WaitingBoundary{
+			BoundaryId: bid,
+			Kind:       "timer",
+			DueUnixMs:  due,
+			Duration:   text,
+		})
 		if p == nil {
 			p = &eventv1.ActivityPayload{}
 		}
-		p.DueUnixMs = due
-		p.Duration = text
-		p.BoundaryId = bid
+		if p.BoundaryId == "" {
+			p.DueUnixMs = due
+			p.Duration = text
+			p.BoundaryId = bid
+		}
 	}
-	if bid, ok := dep.MessageBoundary(activityID); ok {
+	for _, bid := range dep.MessageBoundaries(activityID) {
 		name, err := dep.MessageName(bid)
 		if err != nil {
 			return nil, err
 		}
+		waits = append(waits, &eventv1.WaitingBoundary{
+			BoundaryId:  bid,
+			Kind:        "message",
+			MessageName: name,
+		})
 		if p == nil {
 			p = &eventv1.ActivityPayload{}
 		}
-		p.MessageName = name
+		if p.MessageName == "" {
+			p.MessageName = name
+		}
 		if p.BoundaryId == "" {
 			p.BoundaryId = bid
-		} else {
+		} else if p.MessageBoundaryId == "" && p.BoundaryId != bid {
 			p.MessageBoundaryId = bid
 		}
 	}
-	if bid, ok := dep.SignalBoundary(activityID); ok {
+	for _, bid := range dep.SignalBoundaries(activityID) {
 		name, err := dep.SignalName(bid)
 		if err != nil {
 			return nil, err
 		}
+		waits = append(waits, &eventv1.WaitingBoundary{
+			BoundaryId: bid,
+			Kind:       "signal",
+			SignalName: name,
+		})
 		if p == nil {
 			p = &eventv1.ActivityPayload{}
 		}
-		p.SignalName = name
+		if p.SignalName == "" {
+			p.SignalName = name
+		}
 		if p.BoundaryId == "" {
 			p.BoundaryId = bid
-		} else {
+		} else if p.SignalBoundaryId == "" && p.BoundaryId != bid {
 			p.SignalBoundaryId = bid
 		}
+	}
+	if len(waits) > 0 {
+		if p == nil {
+			p = &eventv1.ActivityPayload{}
+		}
+		p.WaitingBoundaries = waits
 	}
 	return p, nil
 }
@@ -75,25 +104,26 @@ func cancelAttachedBoundary(dep *deploy.Deployment, activityID, tokenID string) 
 		return nil
 	}
 	var records []*eventv1.Element
-	if bid, ok := dep.TimerBoundary(activityID); ok {
+	seen := map[string]bool{}
+	appendCancel := func(bid string) {
+		if bid == "" || seen[bid] {
+			return
+		}
+		seen[bid] = true
 		records = append(records,
 			&eventv1.Element{Intent: eventv1.Element_INTENT_TERMINATING, Type: eventv1.Element_TYPE_BOUNDARY_EVENT, Id: bid, TokenId: tokenID},
 			&eventv1.Element{Intent: eventv1.Element_INTENT_TERMINATED, Type: eventv1.Element_TYPE_BOUNDARY_EVENT, Id: bid, TokenId: tokenID},
 		)
 	}
-	if bid, ok := dep.MessageBoundary(activityID); ok {
-		records = append(records,
-			&eventv1.Element{Intent: eventv1.Element_INTENT_TERMINATING, Type: eventv1.Element_TYPE_BOUNDARY_EVENT, Id: bid, TokenId: tokenID},
-			&eventv1.Element{Intent: eventv1.Element_INTENT_TERMINATED, Type: eventv1.Element_TYPE_BOUNDARY_EVENT, Id: bid, TokenId: tokenID},
-		)
+	for _, bid := range dep.TimerBoundaries(activityID) {
+		appendCancel(bid)
 	}
-	if bid, ok := dep.SignalBoundary(activityID); ok {
-		records = append(records,
-			&eventv1.Element{Intent: eventv1.Element_INTENT_TERMINATING, Type: eventv1.Element_TYPE_BOUNDARY_EVENT, Id: bid, TokenId: tokenID},
-			&eventv1.Element{Intent: eventv1.Element_INTENT_TERMINATED, Type: eventv1.Element_TYPE_BOUNDARY_EVENT, Id: bid, TokenId: tokenID},
-		)
+	for _, bid := range dep.MessageBoundaries(activityID) {
+		appendCancel(bid)
 	}
-	// Compensation boundaries are subscribed on COMPLETED, not cancelled here.
+	for _, bid := range dep.SignalBoundaries(activityID) {
+		appendCancel(bid)
+	}
 	return records
 }
 
@@ -148,6 +178,12 @@ func rearmAttachedBoundary(boundaryID, activityTokenID, text string, dueUnixMs i
 					BoundaryId: boundaryID,
 					DueUnixMs:  dueUnixMs,
 					Duration:   text,
+					WaitingBoundaries: []*eventv1.WaitingBoundary{{
+						BoundaryId: boundaryID,
+						Kind:       "timer",
+						DueUnixMs:  dueUnixMs,
+						Duration:   text,
+					}},
 				},
 			},
 		},
@@ -196,24 +232,26 @@ func (BoundaryEventHandler) OnComplete(in CompleteInput) (*Effect, error) {
 		{Intent: eventv1.Element_INTENT_TERMINATING, Type: typ, Id: attached, TokenId: in.TokenID},
 		{Intent: eventv1.Element_INTENT_TERMINATED, Type: typ, Id: attached, TokenId: in.TokenID},
 	}
-	// Terminate sibling boundary (the other boundary on the same activity).
-	if bid, ok := in.Deployment.TimerBoundary(attached); ok && bid != in.ElementID {
+	// Terminate sibling waiting boundaries on the same activity.
+	seen := map[string]bool{in.ElementID: true}
+	appendSibling := func(bid string) {
+		if bid == "" || seen[bid] {
+			return
+		}
+		seen[bid] = true
 		records = append(records,
 			&eventv1.Element{Intent: eventv1.Element_INTENT_TERMINATING, Type: eventv1.Element_TYPE_BOUNDARY_EVENT, Id: bid, TokenId: in.TokenID},
 			&eventv1.Element{Intent: eventv1.Element_INTENT_TERMINATED, Type: eventv1.Element_TYPE_BOUNDARY_EVENT, Id: bid, TokenId: in.TokenID},
 		)
 	}
-	if bid, ok := in.Deployment.MessageBoundary(attached); ok && bid != in.ElementID {
-		records = append(records,
-			&eventv1.Element{Intent: eventv1.Element_INTENT_TERMINATING, Type: eventv1.Element_TYPE_BOUNDARY_EVENT, Id: bid, TokenId: in.TokenID},
-			&eventv1.Element{Intent: eventv1.Element_INTENT_TERMINATED, Type: eventv1.Element_TYPE_BOUNDARY_EVENT, Id: bid, TokenId: in.TokenID},
-		)
+	for _, bid := range in.Deployment.TimerBoundaries(attached) {
+		appendSibling(bid)
 	}
-	if bid, ok := in.Deployment.SignalBoundary(attached); ok && bid != in.ElementID {
-		records = append(records,
-			&eventv1.Element{Intent: eventv1.Element_INTENT_TERMINATING, Type: eventv1.Element_TYPE_BOUNDARY_EVENT, Id: bid, TokenId: in.TokenID},
-			&eventv1.Element{Intent: eventv1.Element_INTENT_TERMINATED, Type: eventv1.Element_TYPE_BOUNDARY_EVENT, Id: bid, TokenId: in.TokenID},
-		)
+	for _, bid := range in.Deployment.MessageBoundaries(attached) {
+		appendSibling(bid)
+	}
+	for _, bid := range in.Deployment.SignalBoundaries(attached) {
+		appendSibling(bid)
 	}
 	records = append(records,
 		&eventv1.Element{Intent: eventv1.Element_INTENT_COMPLETING, Type: in.Type, Id: in.ElementID, TokenId: in.TokenID},
