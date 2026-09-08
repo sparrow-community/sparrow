@@ -162,7 +162,40 @@ func (x *Executor) Enter(
 			pubs = append(pubs, more...)
 			return pubs, err
 		}
-		if effect.TryCompleteProcess {
+		if effect.ThrowEscalation != nil {
+			throwTyp, err := dep.TypeOf(elementID)
+			if err != nil {
+				return pubs, fmt.Errorf("UNSUPPORTED_ELEMENT: %v", err)
+			}
+			if err := emit(&eventv1.Element{
+				Intent:  eventv1.Element_INTENT_ESCALATION_THROWN,
+				Type:    throwTyp,
+				Id:      elementID,
+				TokenId: tokenID,
+				Payload: &eventv1.Element_EventPayload{
+					EventPayload: &eventv1.EventPayload{EscalationCode: effect.ThrowEscalation.EscalationCode},
+				},
+			}); err != nil {
+				return pubs, err
+			}
+			more, err := x.propagateEscalation(ctx, dep, inst, elementID, tokenID, effect.ThrowEscalation.EscalationCode, emit)
+			pubs = append(pubs, more...)
+			if err != nil {
+				return pubs, err
+			}
+			if inst.Tokens[tokenID] == nil {
+				return pubs, nil
+			}
+			if effect.TryCompleteProcess {
+				more, err := x.tryCompleteScope(ctx, dep, inst, tokenID, elementID, emit)
+				pubs = append(pubs, more...)
+				return pubs, err
+			}
+			if !effect.TakeOutgoing {
+				return pubs, nil
+			}
+			// Fall through to TakeOutgoing for intermediate escalation throw.
+		} else if effect.TryCompleteProcess {
 			more, err := x.tryCompleteScope(ctx, dep, inst, tokenID, elementID, emit)
 			pubs = append(pubs, more...)
 			return pubs, err

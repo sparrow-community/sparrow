@@ -18,6 +18,24 @@ func (EndEventHandler) OnEnter(in EnterInput) (*Effect, error) {
 			ThrowError: &ThrowErrorEffect{ErrorCode: code},
 		}, nil
 	}
+	if code, ok := in.Deployment.EscalationEndCode(in.ElementID); ok {
+		return &Effect{
+			Records: []*eventv1.Element{
+				{Intent: eventv1.Element_INTENT_ACTIVATING, Type: in.Type, Id: in.ElementID, TokenId: in.TokenID},
+				{
+					Intent:  eventv1.Element_INTENT_ACTIVATED,
+					Type:    in.Type,
+					Id:      in.ElementID,
+					TokenId: in.TokenID,
+					Payload: &eventv1.Element_EventPayload{
+						EventPayload: &eventv1.EventPayload{EscalationCode: code},
+					},
+				},
+			},
+			ThrowEscalation:    &ThrowEscalationEffect{EscalationCode: code},
+			TryCompleteProcess: true,
+		}, nil
+	}
 	if in.Deployment.IsCompensateEnd(in.ElementID) {
 		return &Effect{
 			Records: []*eventv1.Element{

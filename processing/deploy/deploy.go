@@ -27,6 +27,9 @@ type Deployment struct {
 	errorBoundaries   map[string][]string     // activity id -> error boundary ids
 	errorEnds         map[string]string       // error end event id -> error code
 	compensateEnds    map[string]string       // compensate end event id -> optional activityRef
+	escalationCatch      map[string]string   // escalation boundary id -> code (empty = catch-all)
+	escalationBoundaries map[string][]string // activity id -> escalation boundary ids
+	escalationEnds       map[string]string   // escalation end event id -> code
 	callActivities      map[string]CallActivity // callActivity id -> spec
 	calledProcessOwner  map[string]string      // called process id -> callActivity id
 	calledProcesses     map[string]element.Process
@@ -79,7 +82,7 @@ func Compile(bpmnXML []byte) (*Deployment, error) {
 	if proc == nil {
 		return nil, fmt.Errorf("process not found")
 	}
-	if err := validateM1(proc, model.Definitions.Messages, model.Definitions.Signals, model.Definitions.Errors); err != nil {
+	if err := validateM1(proc, model.Definitions.Messages, model.Definitions.Signals, model.Definitions.Errors, model.Definitions.Escalations); err != nil {
 		return nil, err
 	}
 	if _, err := StartEventID(proc); err != nil {
@@ -87,13 +90,13 @@ func Compile(bpmnXML []byte) (*Deployment, error) {
 	}
 
 	d := &Deployment{Version: 1, Process: *proc}
-	if err := d.compile(model.Definitions.Messages, model.Definitions.Signals, model.Definitions.Errors, catalog); err != nil {
+	if err := d.compile(model.Definitions.Messages, model.Definitions.Signals, model.Definitions.Errors, model.Definitions.Escalations, catalog); err != nil {
 		return nil, err
 	}
 	return d, nil
 }
 
-func (d *Deployment) compile(messages []element.Message, signals []element.Signal, errors []element.Error, catalog map[string]*element.Process) error {
+func (d *Deployment) compile(messages []element.Message, signals []element.Signal, errors []element.Error, escalations []element.Escalation, catalog map[string]*element.Process) error {
 	p := &d.Process
 	d.timerCatch = make(map[string]timerCatch, len(p.IntermediateCatchEvents)+len(p.BoundaryEvents))
 	d.messageCatch = make(map[string]string, len(p.IntermediateCatchEvents)+len(p.BoundaryEvents))
@@ -105,6 +108,9 @@ func (d *Deployment) compile(messages []element.Message, signals []element.Signa
 	d.errorBoundaries = make(map[string][]string)
 	d.errorEnds = make(map[string]string)
 	d.compensateEnds = make(map[string]string)
+	d.escalationCatch = make(map[string]string)
+	d.escalationBoundaries = make(map[string][]string)
+	d.escalationEnds = make(map[string]string)
 	d.callActivities = make(map[string]CallActivity)
 	d.calledProcessOwner = make(map[string]string)
 	d.calledProcesses = make(map[string]element.Process)
@@ -112,11 +118,11 @@ func (d *Deployment) compile(messages []element.Message, signals []element.Signa
 	d.elements = make(map[string]*elemEntry)
 	d.seqFlows = make(map[string]*seqFlowEntry)
 
-	if err := d.indexScope(&p.FlowElements, p.ID, messages, signals, errors, collectAssociations(p)); err != nil {
+	if err := d.indexScope(&p.FlowElements, p.ID, messages, signals, errors, escalations, collectAssociations(p)); err != nil {
 		return err
 	}
 	d.elements[p.ID] = &elemEntry{Type: eventv1.Element_TYPE_PROCESS, ScopeID: ""}
-	return d.indexCallActivities(&p.FlowElements, catalog, messages, signals, errors)
+	return d.indexCallActivities(&p.FlowElements, catalog, messages, signals, errors, escalations)
 }
 
 func collectAssociations(p *element.Process) []element.Association {
@@ -133,7 +139,7 @@ func collectAssociations(p *element.Process) []element.Association {
 	return out
 }
 
-func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messages []element.Message, signals []element.Signal, errors []element.Error, associations []element.Association) error {
+func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messages []element.Message, signals []element.Signal, errors []element.Error, escalations []element.Escalation, associations []element.Association) error {
 	reg := func(id string, typ eventv1.Element_Type, outgoing, incoming []string) {
 		d.elements[id] = &elemEntry{Type: typ, ScopeID: scopeID, Outgoing: outgoing, Incoming: incoming}
 	}
@@ -144,6 +150,8 @@ func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messag
 		reg(e.ID, eventv1.Element_TYPE_END_EVENT, e.Outgoing, e.Incoming)
 		if code, err := errorEndSpec(e, errors); err == nil {
 			d.errorEnds[e.ID] = code
+		} else if code, err := escalationEndSpec(e, escalations); err == nil {
+			d.escalationEnds[e.ID] = code
 		} else if spec, err := compensateEndSpec(e); err == nil {
 			d.compensateEnds[e.ID] = spec.ActivityRef
 		}
@@ -187,7 +195,7 @@ func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messag
 	}
 	for _, e := range fe.IntermediateThrowEvents {
 		reg(e.ID, eventv1.Element_TYPE_INTERMEDIATE_THROW_EVENT, e.Outgoing, e.Incoming)
-		if spec, err := throwEventSpec(e, messages, signals); err == nil {
+		if spec, err := throwEventSpec(e, messages, signals, escalations); err == nil {
 			d.throwEvents[e.ID] = spec
 		}
 	}
@@ -210,6 +218,9 @@ func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messag
 		} else if spec, err := errorBoundarySpec(e, errors); err == nil {
 			d.errorCatch[e.ID] = spec.ErrorCode
 			d.errorBoundaries[spec.AttachedTo] = append(d.errorBoundaries[spec.AttachedTo], e.ID)
+		} else if spec, err := escalationBoundarySpec(e, escalations); err == nil {
+			d.escalationCatch[e.ID] = spec.EscalationCode
+			d.escalationBoundaries[spec.AttachedTo] = append(d.escalationBoundaries[spec.AttachedTo], e.ID)
 		}
 	}
 	for _, e := range fe.SequenceFlows {
@@ -223,7 +234,7 @@ func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messag
 			return err
 		}
 		if sp.TriggeredByEvent {
-			spec, err := eventSubProcessStartSpec(sp.ID, sp.StartEvents[0], messages, signals, errors)
+			spec, err := eventSubProcessStartSpec(sp.ID, sp.StartEvents[0], messages, signals, errors, escalations)
 			if err == nil {
 				spec.ParentScopeID = scopeID
 				d.eventSubProcesses[sp.ID] = spec
@@ -239,14 +250,14 @@ func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messag
 				}
 			}
 		}
-		if err := d.indexScope(&sp.FlowElements, sp.ID, messages, signals, errors, associations); err != nil {
+		if err := d.indexScope(&sp.FlowElements, sp.ID, messages, signals, errors, escalations, associations); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (d *Deployment) indexCallActivities(fe *element.FlowElements, catalog map[string]*element.Process, messages []element.Message, signals []element.Signal, errors []element.Error) error {
+func (d *Deployment) indexCallActivities(fe *element.FlowElements, catalog map[string]*element.Process, messages []element.Message, signals []element.Signal, errors []element.Error, escalations []element.Escalation) error {
 	var walk func(*element.FlowElements) error
 	walk = func(fe *element.FlowElements) error {
 		for _, ca := range fe.CallActivities {
@@ -262,7 +273,7 @@ func (d *Deployment) indexCallActivities(fe *element.FlowElements, catalog map[s
 				continue
 			}
 			called := catalog[spec.CalledProcessID]
-			if err := validateM1(called, messages, signals, errors); err != nil {
+			if err := validateM1(called, messages, signals, errors, escalations); err != nil {
 				return fmt.Errorf("UNSUPPORTED_ELEMENT: called process %q: %v", spec.CalledProcessID, err)
 			}
 			if _, exists := d.calledProcessOwner[spec.CalledProcessID]; !exists {
@@ -273,7 +284,7 @@ func (d *Deployment) indexCallActivities(fe *element.FlowElements, catalog map[s
 					return fmt.Errorf("UNSUPPORTED_ELEMENT: called process id %q collides with an existing element", spec.CalledProcessID)
 				}
 				d.calledProcesses[spec.CalledProcessID] = *called
-				if err := d.indexScope(&called.FlowElements, called.ID, messages, signals, errors, collectAssociations(called)); err != nil {
+				if err := d.indexScope(&called.FlowElements, called.ID, messages, signals, errors, escalations, collectAssociations(called)); err != nil {
 					return err
 				}
 				d.elements[called.ID] = &elemEntry{Type: eventv1.Element_TYPE_PROCESS, ScopeID: ""}
@@ -293,14 +304,14 @@ func (d *Deployment) indexCallActivities(fe *element.FlowElements, catalog map[s
 	return walk(fe)
 }
 
-func validateM1(proc *element.Process, messages []element.Message, signals []element.Signal, errors []element.Error) error {
+func validateM1(proc *element.Process, messages []element.Message, signals []element.Signal, errors []element.Error, escalations []element.Escalation) error {
 	unsupported := 0
 	unsupported += len(proc.Tasks) + len(proc.ManualTasks)
 	unsupported += len(proc.SendTasks) + len(proc.ReceiveTasks) + len(proc.BusinessRuleTasks)
 	if unsupported > 0 {
 		return fmt.Errorf("UNSUPPORTED_ELEMENT: process contains elements outside M1 subset")
 	}
-	if err := validateSubProcesses(&proc.FlowElements, errors); err != nil {
+	if err := validateSubProcesses(&proc.FlowElements, errors, escalations); err != nil {
 		return err
 	}
 	if err := validateEventBasedGateways(&proc.FlowElements); err != nil {
@@ -356,14 +367,21 @@ func validateM1(proc *element.Process, messages []element.Message, signals []ele
 			attached = spec.ActivityID
 			kind = "compensate"
 		case len(e.ErrorEventDefinitions) > 0:
-			spec, err := errorBoundarySpec(e, nil)
+			spec, err := errorBoundarySpec(e, errors)
 			if err != nil {
 				return err
 			}
 			attached = spec.AttachedTo
 			kind = "error:" + spec.ErrorCode
+		case len(e.EscalationEventDefinitions) > 0:
+			spec, err := escalationBoundarySpec(e, escalations)
+			if err != nil {
+				return err
+			}
+			attached = spec.AttachedTo
+			kind = "escalation:" + spec.EscalationCode
 		default:
-			return fmt.Errorf("UNSUPPORTED_ELEMENT: boundaryEvent %q must be a timer, message, signal, error, or compensation boundary", e.ID)
+			return fmt.Errorf("UNSUPPORTED_ELEMENT: boundaryEvent %q must be a timer, message, signal, error, escalation, or compensation boundary", e.ID)
 		}
 		key := seenKey{attached, kind, disc}
 		if prev, ok := seenAttach[key]; ok {
@@ -405,7 +423,7 @@ func validateCatchAndThrow(fe *element.FlowElements) error {
 		return fmt.Errorf("UNSUPPORTED_ELEMENT: intermediateCatchEvent %q must be timer, message, or signal catch", e.ID)
 	}
 	for _, e := range fe.IntermediateThrowEvents {
-		if _, err := throwEventSpec(e, nil, nil); err != nil {
+		if _, err := throwEventSpec(e, nil, nil, nil); err != nil {
 			return err
 		}
 	}
@@ -858,15 +876,15 @@ func validateBoundaryHost(proc *element.Process, activityID string) error {
 	return fmt.Errorf("UNSUPPORTED_ELEMENT: boundary must attach to a userTask, serviceTask, subProcess, or callActivity (%q)", activityID)
 }
 
-func validateSubProcesses(fe *element.FlowElements, errors []element.Error) error {
-	return validateSubProcessesAt(fe, false, false, errors)
+func validateSubProcesses(fe *element.FlowElements, errors []element.Error, escalations []element.Escalation) error {
+	return validateSubProcessesAt(fe, false, false, errors, escalations)
 }
 
-func validateSubProcessesAt(fe *element.FlowElements, insideEmbedded, insideEventSubProcess bool, errors []element.Error) error {
+func validateSubProcessesAt(fe *element.FlowElements, insideEmbedded, insideEventSubProcess bool, errors []element.Error, escalations []element.Escalation) error {
 	for i := range fe.SubProcesses {
 		sp := &fe.SubProcesses[i]
 		if sp.TriggeredByEvent {
-			if err := validateEventSubProcess(sp, nil, nil, errors); err != nil {
+			if err := validateEventSubProcess(sp, nil, nil, errors, escalations); err != nil {
 				return err
 			}
 			for _, f := range fe.SequenceFlows {
@@ -874,7 +892,7 @@ func validateSubProcessesAt(fe *element.FlowElements, insideEmbedded, insideEven
 					return fmt.Errorf("UNSUPPORTED_ELEMENT: event subProcess %q must not have sequence flow connections", sp.ID)
 				}
 			}
-			if err := validateSubProcessesAt(&sp.FlowElements, false, true, errors); err != nil {
+			if err := validateSubProcessesAt(&sp.FlowElements, false, true, errors, escalations); err != nil {
 				return err
 			}
 			continue
@@ -882,7 +900,7 @@ func validateSubProcessesAt(fe *element.FlowElements, insideEmbedded, insideEven
 		if len(sp.StartEvents) == 0 {
 			return fmt.Errorf("UNSUPPORTED_ELEMENT: subProcess %q must have a startEvent", sp.ID)
 		}
-		if err := validateSubProcessesAt(&sp.FlowElements, true, insideEventSubProcess, errors); err != nil {
+		if err := validateSubProcessesAt(&sp.FlowElements, true, insideEventSubProcess, errors, escalations); err != nil {
 			return err
 		}
 	}

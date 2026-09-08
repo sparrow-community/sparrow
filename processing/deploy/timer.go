@@ -13,10 +13,11 @@ import (
 type CatchKind string
 
 const (
-	CatchKindTimer   CatchKind = "timer"
-	CatchKindMessage CatchKind = "message"
-	CatchKindSignal  CatchKind = "signal"
-	CatchKindError   CatchKind = "error"
+	CatchKindTimer      CatchKind = "timer"
+	CatchKindMessage    CatchKind = "message"
+	CatchKindSignal     CatchKind = "signal"
+	CatchKindError      CatchKind = "error"
+	CatchKindEscalation CatchKind = "escalation"
 )
 
 type timerCatch struct {

@@ -172,8 +172,10 @@ type EventPayload struct {
 	// BPMN element id of the event sub-process (not a process instance id).
 	// Set on START_EVENT ACTIVATED/TERMINATED while the parent scope is open.
 	EventSubProcessElementId string `protobuf:"bytes,9,opt,name=event_sub_process_element_id,json=eventSubProcessElementId,proto3" json:"event_sub_process_element_id,omitempty"`
-	unknownFields            protoimpl.UnknownFields
-	sizeCache                protoimpl.SizeCache
+	// BPMN escalation code on ESCALATION_THROWN. Empty for catch-all / generic.
+	EscalationCode string `protobuf:"bytes,10,opt,name=escalation_code,json=escalationCode,proto3" json:"escalation_code,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *EventPayload) Reset() {
@@ -265,6 +267,13 @@ func (x *EventPayload) GetTokenWait() bool {
 func (x *EventPayload) GetEventSubProcessElementId() string {
 	if x != nil {
 		return x.EventSubProcessElementId
+	}
+	return ""
+}
+
+func (x *EventPayload) GetEscalationCode() string {
+	if x != nil {
+		return x.EscalationCode
 	}
 	return ""
 }
@@ -713,7 +722,7 @@ const file_event_v1_payloads_proto_rawDesc = "" +
 	"\tvariables\x18\x01 \x03(\v2\x12.event.v1.VariableR\tvariables\x12;\n" +
 	"\x1aparent_process_instance_id\x18\x02 \x01(\tR\x17parentProcessInstanceId\x12*\n" +
 	"\x11parent_element_id\x18\x03 \x01(\tR\x0fparentElementId\x12&\n" +
-	"\x0fparent_token_id\x18\x04 \x01(\tR\rparentTokenId\"\xf6\x02\n" +
+	"\x0fparent_token_id\x18\x04 \x01(\tR\rparentTokenId\"\x9f\x03\n" +
 	"\fEventPayload\x12\x1e\n" +
 	"\vdue_unix_ms\x18\x01 \x01(\x03R\tdueUnixMs\x12\x1a\n" +
 	"\bduration\x18\x02 \x01(\tR\bduration\x12!\n" +
@@ -726,7 +735,9 @@ const file_event_v1_payloads_proto_rawDesc = "" +
 	"error_code\x18\a \x01(\tR\terrorCode\x12\x1d\n" +
 	"\n" +
 	"token_wait\x18\b \x01(\bR\ttokenWait\x12>\n" +
-	"\x1cevent_sub_process_element_id\x18\t \x01(\tR\x18eventSubProcessElementId\"\x8f\x06\n" +
+	"\x1cevent_sub_process_element_id\x18\t \x01(\tR\x18eventSubProcessElementId\x12'\n" +
+	"\x0fescalation_code\x18\n" +
+	" \x01(\tR\x0eescalationCode\"\x8f\x06\n" +
 	"\x0fActivityPayload\x120\n" +
 	"\tvariables\x18\x01 \x03(\v2\x12.event.v1.VariableR\tvariables\x12\x19\n" +
 	"\bjob_type\x18\x02 \x01(\tR\ajobType\x12#\n" +

@@ -68,6 +68,8 @@ message Element {
 
     INTENT_INCIDENT_OPENED = 14;
     INTENT_INCIDENT_RESOLVED = 15;
+
+    INTENT_ESCALATION_THROWN = 16;
   }
 
   // Type mirrors independent BPMN elements.

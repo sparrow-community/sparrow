@@ -44,6 +44,8 @@ message EventPayload {
   // BPMN element id of the event sub-process (not a process instance id).
   // Set on START_EVENT ACTIVATED/TERMINATED while the parent scope is open.
   string event_sub_process_element_id = 9;
+  // BPMN escalation code on ESCALATION_THROWN. Empty for catch-all / generic.
+  string escalation_code = 10;
 }
 
 // Shared payload for BPMN activities (tasks, subProcess, callActivity, …).

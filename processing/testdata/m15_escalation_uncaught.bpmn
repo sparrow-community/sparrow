@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             id="Definitions_escalation_uncaught"
+             targetNamespace="http://sparrow.example/escalation-uncaught">
+  <escalation id="Esc_1" name="Escalation 1" escalationCode="ESC_1"/>
+  <process id="Process_escalation_uncaught" isExecutable="true">
+    <startEvent id="Start_1">
+      <outgoing>Flow_start_to_throw</outgoing>
+    </startEvent>
+    <intermediateThrowEvent id="Throw_esc">
+      <incoming>Flow_start_to_throw</incoming>
+      <outgoing>Flow_throw_to_end</outgoing>
+      <escalationEventDefinition escalationRef="Esc_1"/>
+    </intermediateThrowEvent>
+    <endEvent id="End_ok">
+      <incoming>Flow_throw_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_throw" sourceRef="Start_1" targetRef="Throw_esc"/>
+    <sequenceFlow id="Flow_throw_to_end" sourceRef="Throw_esc" targetRef="End_ok"/>
+  </process>
+</definitions>

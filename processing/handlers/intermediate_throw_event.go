@@ -46,6 +46,25 @@ func (IntermediateThrowEventHandler) OnEnter(in EnterInput) (*Effect, error) {
 			Wait:                true,
 			TriggerCompensation: true,
 		}, nil
+	case deploy.ThrowKindEscalation:
+		code, err := in.Deployment.ThrowName(in.ElementID)
+		if err != nil {
+			return nil, err
+		}
+		records := InstantLifecycle(in.Type, in.ElementID, in.TokenID, nil)
+		for _, rec := range records {
+			if rec.GetIntent() == eventv1.Element_INTENT_ACTIVATED {
+				rec.Payload = &eventv1.Element_EventPayload{
+					EventPayload: &eventv1.EventPayload{EscalationCode: code},
+				}
+				break
+			}
+		}
+		return &Effect{
+			Records:         records,
+			ThrowEscalation: &ThrowEscalationEffect{EscalationCode: code},
+			TakeOutgoing:    true,
+		}, nil
 	default:
 		return nil, fmt.Errorf("UNSUPPORTED_ELEMENT: intermediateThrowEvent %q has unsupported kind %q", in.ElementID, string(kind))
 	}

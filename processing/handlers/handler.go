@@ -46,6 +46,8 @@ type Effect struct {
 	AdvanceCompensation bool
 	// ThrowError propagates a BPMN error after ACTIVATED (error end) or ERROR_THROWN.
 	ThrowError *ThrowErrorEffect
+	// ThrowEscalation propagates a BPMN escalation after ACTIVATED.
+	ThrowEscalation *ThrowEscalationEffect
 	// MultiInstanceStart spawns inner instances after the loop host ACTIVATED.
 	MultiInstanceStart *MultiInstanceStart
 	// MultiInstanceInnerComplete completes one inner instance and joins via the executor.
@@ -57,6 +59,11 @@ type Effect struct {
 // ThrowErrorEffect requests error propagation from the throwing element.
 type ThrowErrorEffect struct {
 	ErrorCode string
+}
+
+// ThrowEscalationEffect requests escalation propagation from the throwing element.
+type ThrowEscalationEffect struct {
+	EscalationCode string
 }
 
 // PublicationKind is a deferred engine action after Enter/Complete unlocks the instance.

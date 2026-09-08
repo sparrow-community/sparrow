@@ -9,18 +9,19 @@ import (
 
 // EventSubProcess describes a triggeredByEvent subProcess and its start trigger.
 type EventSubProcess struct {
-	ID            string
-	ParentScopeID string // process id or embedding subProcess id
-	StartEventID  string
-	Interrupting  bool
-	Kind          CatchKind
-	MessageName   string
-	SignalName    string
-	ErrorCode     string // empty = catch-all when Kind == CatchKindError
+	ID             string
+	ParentScopeID  string // process id or embedding subProcess id
+	StartEventID   string
+	Interrupting   bool
+	Kind           CatchKind
+	MessageName    string
+	SignalName     string
+	ErrorCode      string // empty = catch-all when Kind == CatchKindError
+	EscalationCode string // empty = catch-all when Kind == CatchKindEscalation
 	// Timer facts live in timerCatch[StartEventID] when Kind == CatchKindTimer.
 }
 
-func validateEventSubProcess(sp *element.SubProcess, messages []element.Message, signals []element.Signal, errors []element.Error) error {
+func validateEventSubProcess(sp *element.SubProcess, messages []element.Message, signals []element.Signal, errors []element.Error, escalations []element.Escalation) error {
 	if !sp.TriggeredByEvent {
 		return nil
 	}
@@ -31,20 +32,20 @@ func validateEventSubProcess(sp *element.SubProcess, messages []element.Message,
 		return fmt.Errorf("UNSUPPORTED_ELEMENT: event subProcess %q needs exactly one startEvent", sp.ID)
 	}
 	start := sp.StartEvents[0]
-	if _, err := eventSubProcessStartSpec(sp.ID, start, messages, signals, errors); err != nil {
+	if _, err := eventSubProcessStartSpec(sp.ID, start, messages, signals, errors, escalations); err != nil {
 		return err
 	}
 	return nil
 }
 
-func eventSubProcessStartSpec(subProcessID string, start element.StartEvent, messages []element.Message, signals []element.Signal, errors []element.Error) (EventSubProcess, error) {
+func eventSubProcessStartSpec(subProcessID string, start element.StartEvent, messages []element.Message, signals []element.Signal, errors []element.Error, escalations []element.Escalation) (EventSubProcess, error) {
 	spec := EventSubProcess{
 		ID:           subProcessID,
 		StartEventID: start.ID,
 		// BPMN default for event sub-process start is interrupting when attribute absent.
 		Interrupting: start.IsInterrupting(),
 	}
-	// Prefer message, then signal, then timer, then error.
+	// Prefer message, then signal, then timer, then error, then escalation.
 	if len(start.MessageEventDefinitions) > 0 {
 		mc, err := messageCatchFromDefs(start.ID, start.EventDefinitions, messages, strings.TrimSpace(start.Name))
 		if err != nil {
@@ -79,7 +80,16 @@ func eventSubProcessStartSpec(subProcessID string, start element.StartEvent, mes
 		spec.ErrorCode = code
 		return spec, nil
 	}
-	return EventSubProcess{}, fmt.Errorf("UNSUPPORTED_ELEMENT: event subProcess %q startEvent must be message, signal, timer, or error", subProcessID)
+	if len(start.EscalationEventDefinitions) > 0 {
+		code, err := escalationStartCatchFromDefs(start.ID, start.EventDefinitions, escalations)
+		if err != nil {
+			return EventSubProcess{}, fmt.Errorf("UNSUPPORTED_ELEMENT: event subProcess %q startEvent: %v", subProcessID, err)
+		}
+		spec.Kind = CatchKindEscalation
+		spec.EscalationCode = code
+		return spec, nil
+	}
+	return EventSubProcess{}, fmt.Errorf("UNSUPPORTED_ELEMENT: event subProcess %q startEvent must be message, signal, timer, error, or escalation", subProcessID)
 }
 
 func errorStartCatchFromDefs(startEventID string, defs element.EventDefinitions, errors []element.Error) (string, error) {
