@@ -861,9 +861,6 @@ func validateSubProcessesAt(fe *element.FlowElements, insideEmbedded, insideEven
 	for i := range fe.SubProcesses {
 		sp := &fe.SubProcesses[i]
 		if sp.TriggeredByEvent {
-			if insideEventSubProcess {
-				return fmt.Errorf("UNSUPPORTED_ELEMENT: event subProcess %q nested in event subProcess is not supported", sp.ID)
-			}
 			if err := validateEventSubProcess(sp, nil, nil, errors); err != nil {
 				return err
 			}

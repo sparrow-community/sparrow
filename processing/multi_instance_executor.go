@@ -89,7 +89,7 @@ func (x *Executor) enterWithLoopIndex(
 				return pubs, err
 			}
 		}
-		if typ == eventv1.Element_TYPE_SUB_PROCESS && !dep.IsEventSubProcess(elementID) {
+		if typ == eventv1.Element_TYPE_SUB_PROCESS {
 			if err := emitEventSubProcessStartArms(dep, inst, elementID, x.now(), emit); err != nil {
 				return pubs, err
 			}

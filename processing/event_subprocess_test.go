@@ -276,6 +276,146 @@ func TestNestedEventSubProcessDisarmedAfterComplete(t *testing.T) {
 	}
 }
 
+func TestEspInEspDeploy(t *testing.T) {
+	xml := readTestdataEventSubProcess(t, "m13_esp_in_esp_message.bpmn")
+	eng := processing.NewEngine(eventlog.NewMemory())
+	if _, err := eng.Deploy(context.Background(), xml); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestEspInEspNestedInterrupting(t *testing.T) {
+	xml := readTestdataEventSubProcess(t, "m13_esp_in_esp_message.bpmn")
+	eng := processing.NewEngine(eventlog.NewMemory())
+	ctx := context.Background()
+
+	dep, err := eng.Deploy(ctx, xml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instanceID, err := eng.CreateInstance(ctx, dep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n, err := eng.PublishMessage(ctx, processing.PublishMessageRequest{Name: "outer.event"})
+	if err != nil || n != 1 {
+		t.Fatalf("outer PublishMessage n=%d err=%v", n, err)
+	}
+	inst := mustInstance(t, eng, instanceID)
+	if waitingElement(inst) != "UserTask_outer" {
+		t.Fatalf("expected UserTask_outer, got %s tokens=%#v", waitingElement(inst), inst.Tokens)
+	}
+	if _, ok := inst.EventSubProcesses["ESP_inner"]; !ok {
+		t.Fatalf("expected ESP_inner armed while outer ESP active, arms=%#v", inst.EventSubProcesses)
+	}
+
+	n, err = eng.PublishMessage(ctx, processing.PublishMessageRequest{Name: "inner.event"})
+	if err != nil || n != 1 {
+		t.Fatalf("inner PublishMessage n=%d err=%v", n, err)
+	}
+	inst = mustInstance(t, eng, instanceID)
+	if inst.Status != projection.StatusCompleted {
+		t.Fatalf("status=%s tokens=%#v", inst.Status, inst.Tokens)
+	}
+	events, _ := eng.ListEvents(ctx, instanceID)
+	if !sawElementIntent(events, eventv1.Element_TYPE_USER_TASK, "UserTask_outer", eventv1.Element_INTENT_TERMINATED) {
+		t.Fatal("expected UserTask_outer TERMINATED by interrupting nested ESP")
+	}
+	if !sawElementIntent(events, eventv1.Element_TYPE_SUB_PROCESS, "ESP_inner", eventv1.Element_INTENT_COMPLETED) {
+		t.Fatal("expected ESP_inner COMPLETED")
+	}
+	if sawElementIntent(events, eventv1.Element_TYPE_END_EVENT, "End_ESP_outer", eventv1.Element_INTENT_COMPLETED) {
+		t.Fatal("outer happy path must not complete after nested interrupt")
+	}
+}
+
+func TestEspInEspDisarmWhenOuterCompletes(t *testing.T) {
+	xml := readTestdataEventSubProcess(t, "m13_esp_in_esp_message.bpmn")
+	eng := processing.NewEngine(eventlog.NewMemory())
+	ctx := context.Background()
+
+	dep, err := eng.Deploy(ctx, xml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instanceID, err := eng.CreateInstance(ctx, dep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := eng.PublishMessage(ctx, processing.PublishMessageRequest{Name: "outer.event"}); err != nil {
+		t.Fatal(err)
+	}
+	inst := mustInstance(t, eng, instanceID)
+	elemID, tokenID := waitingAt(inst)
+	if elemID != "UserTask_outer" {
+		t.Fatalf("expected UserTask_outer, got %s", elemID)
+	}
+	if err := eng.Complete(ctx, instanceID, elemID, tokenID, nil); err != nil {
+		t.Fatal(err)
+	}
+	inst = mustInstance(t, eng, instanceID)
+	if inst.Status != projection.StatusCompleted {
+		t.Fatalf("status=%s tokens=%#v", inst.Status, inst.Tokens)
+	}
+	if _, ok := inst.EventSubProcesses["ESP_inner"]; ok {
+		t.Fatalf("ESP_inner should be disarmed after outer completes, arms=%#v", inst.EventSubProcesses)
+	}
+	n, err := eng.PublishMessage(ctx, processing.PublishMessageRequest{Name: "inner.event"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatalf("late inner message delivered=%d want 0", n)
+	}
+}
+
+func TestEspInEspRecoverThenNestedTrigger(t *testing.T) {
+	xml := readTestdataEventSubProcess(t, "m13_esp_in_esp_message.bpmn")
+	dir := t.TempDir()
+	ctx := context.Background()
+
+	eng1, err := processing.Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dep, err := eng1.Deploy(ctx, xml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instanceID, err := eng1.CreateInstance(ctx, dep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := eng1.PublishMessage(ctx, processing.PublishMessageRequest{Name: "outer.event"}); err != nil {
+		t.Fatal(err)
+	}
+	inst := mustInstance(t, eng1, instanceID)
+	if _, ok := inst.EventSubProcesses["ESP_inner"]; !ok {
+		t.Fatalf("expected ESP_inner armed before recover, arms=%#v", inst.EventSubProcesses)
+	}
+	if err := eng1.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	eng2, err := processing.Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer eng2.Close()
+	inst = mustInstance(t, eng2, instanceID)
+	if _, ok := inst.EventSubProcesses["ESP_inner"]; !ok {
+		t.Fatalf("expected ESP_inner re-armed after Recover, arms=%#v", inst.EventSubProcesses)
+	}
+	n, err := eng2.PublishMessage(ctx, processing.PublishMessageRequest{Name: "inner.event"})
+	if err != nil || n != 1 {
+		t.Fatalf("inner PublishMessage n=%d err=%v", n, err)
+	}
+	inst = mustInstance(t, eng2, instanceID)
+	if inst.Status != projection.StatusCompleted {
+		t.Fatalf("status=%s after nested trigger post-recover", inst.Status)
+	}
+}
+
 func readTestdataEventSubProcess(t *testing.T, name string) []byte {
 	t.Helper()
 	xml, err := os.ReadFile(filepath.Join("testdata", name))

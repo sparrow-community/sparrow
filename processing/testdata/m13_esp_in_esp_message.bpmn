@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             id="Definitions_esp_in_esp"
+             targetNamespace="http://sparrow.example/esp-in-esp">
+  <message id="Msg_outer" name="outer.event"/>
+  <message id="Msg_inner" name="inner.event"/>
+  <process id="Process_esp_in_esp" name="ESP nested in ESP" isExecutable="true">
+    <startEvent id="Start_1">
+      <outgoing>Flow_start_to_main</outgoing>
+    </startEvent>
+    <userTask id="UserTask_main" name="Main work">
+      <incoming>Flow_start_to_main</incoming>
+      <outgoing>Flow_main_to_end</outgoing>
+    </userTask>
+    <endEvent id="End_main">
+      <incoming>Flow_main_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_main" sourceRef="Start_1" targetRef="UserTask_main"/>
+    <sequenceFlow id="Flow_main_to_end" sourceRef="UserTask_main" targetRef="End_main"/>
+
+    <subProcess id="ESP_outer" name="Outer handler" triggeredByEvent="true">
+      <startEvent id="Start_ESP_outer" isInterrupting="true">
+        <outgoing>Flow_outer_start_to_task</outgoing>
+        <messageEventDefinition id="MsgDef_outer" messageRef="Msg_outer"/>
+      </startEvent>
+      <userTask id="UserTask_outer" name="Handle outer">
+        <incoming>Flow_outer_start_to_task</incoming>
+        <outgoing>Flow_outer_task_to_end</outgoing>
+      </userTask>
+      <endEvent id="End_ESP_outer">
+        <incoming>Flow_outer_task_to_end</incoming>
+      </endEvent>
+      <sequenceFlow id="Flow_outer_start_to_task" sourceRef="Start_ESP_outer" targetRef="UserTask_outer"/>
+      <sequenceFlow id="Flow_outer_task_to_end" sourceRef="UserTask_outer" targetRef="End_ESP_outer"/>
+
+      <subProcess id="ESP_inner" name="Inner handler" triggeredByEvent="true">
+        <startEvent id="Start_ESP_inner" isInterrupting="true">
+          <outgoing>Flow_inner_start_to_end</outgoing>
+          <messageEventDefinition id="MsgDef_inner" messageRef="Msg_inner"/>
+        </startEvent>
+        <endEvent id="End_ESP_inner">
+          <incoming>Flow_inner_start_to_end</incoming>
+        </endEvent>
+        <sequenceFlow id="Flow_inner_start_to_end" sourceRef="Start_ESP_inner" targetRef="End_ESP_inner"/>
+      </subProcess>
+    </subProcess>
+  </process>
+</definitions>
