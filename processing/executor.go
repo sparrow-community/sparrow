@@ -134,6 +134,24 @@ func (x *Executor) Enter(
 			}
 			return pubs, nil
 		}
+		if len(effect.LinkContinue) > 0 {
+			for i, catchID := range effect.LinkContinue {
+				tid := tokenID
+				if i > 0 {
+					var err error
+					tid, err = NextID()
+					if err != nil {
+						return pubs, err
+					}
+				}
+				more, err := x.Enter(ctx, dep, inst, tid, catchID, emit)
+				pubs = append(pubs, more...)
+				if err != nil {
+					return pubs, err
+				}
+			}
+			return pubs, nil
+		}
 		if effect.Wait {
 			if effect.TriggerCompensation {
 				more, err := x.startCompensation(ctx, dep, inst, tokenID, elementID, emit)

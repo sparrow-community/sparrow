@@ -31,7 +31,7 @@ New element: handler + registry + deploy validation. Semantics stay out of `engi
 |------|----------|
 | Process / Start / End | Lifecycle; end tries scope/process complete |
 | UserTask / ServiceTask | Wait → Complete; MI supported |
-| Catch / throw / boundary | Timer, message, signal, error, escalation, compensate; multiple same-kind per activity (unique message/signal names) |
+| Catch / throw / boundary | Timer, message, signal, error, escalation, compensate; multiple same-kind per activity (unique message/signal names); link throw/catch |
 | Gateways | XOR, AND, inclusive, event-based (catch) |
 | SubProcess | Embedded scope; Event Sub-Process; MI |
 | CallActivity | Child instance; IO mapping; same-definition today |

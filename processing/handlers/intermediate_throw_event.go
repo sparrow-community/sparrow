@@ -65,6 +65,19 @@ func (IntermediateThrowEventHandler) OnEnter(in EnterInput) (*Effect, error) {
 			ThrowEscalation: &ThrowEscalationEffect{EscalationCode: code},
 			TakeOutgoing:    true,
 		}, nil
+	case deploy.ThrowKindLink:
+		name, err := in.Deployment.ThrowName(in.ElementID)
+		if err != nil {
+			return nil, err
+		}
+		catches := in.Deployment.LinkCatches(name)
+		if len(catches) == 0 {
+			return nil, fmt.Errorf("NOT_FOUND: link throw %q has no catch named %q", in.ElementID, name)
+		}
+		return &Effect{
+			Records:      InstantLifecycle(in.Type, in.ElementID, in.TokenID, nil),
+			LinkContinue: append([]string{}, catches...),
+		}, nil
 	default:
 		return nil, fmt.Errorf("UNSUPPORTED_ELEMENT: intermediateThrowEvent %q has unsupported kind %q", in.ElementID, string(kind))
 	}

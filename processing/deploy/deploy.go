@@ -30,6 +30,7 @@ type Deployment struct {
 	escalationCatch      map[string]string   // escalation boundary id -> code (empty = catch-all)
 	escalationBoundaries map[string][]string // activity id -> escalation boundary ids
 	escalationEnds       map[string]string   // escalation end event id -> code
+	linkCatch            map[string]string   // intermediate link catch id -> link name
 	callActivities      map[string]CallActivity // callActivity id -> spec
 	calledProcessOwner  map[string]string      // called process id -> callActivity id
 	calledProcesses     map[string]element.Process
@@ -111,6 +112,7 @@ func (d *Deployment) compile(messages []element.Message, signals []element.Signa
 	d.escalationCatch = make(map[string]string)
 	d.escalationBoundaries = make(map[string][]string)
 	d.escalationEnds = make(map[string]string)
+	d.linkCatch = make(map[string]string)
 	d.callActivities = make(map[string]CallActivity)
 	d.calledProcessOwner = make(map[string]string)
 	d.calledProcesses = make(map[string]element.Process)
@@ -122,6 +124,9 @@ func (d *Deployment) compile(messages []element.Message, signals []element.Signa
 		return err
 	}
 	d.elements[p.ID] = &elemEntry{Type: eventv1.Element_TYPE_PROCESS, ScopeID: ""}
+	if err := d.validateLinkPairs(); err != nil {
+		return err
+	}
 	return d.indexCallActivities(&p.FlowElements, catalog, messages, signals, errors, escalations)
 }
 
@@ -191,6 +196,8 @@ func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messag
 			d.messageCatch[e.ID] = spec.Name
 		} else if name, err := signalCatchSpec(e, signals); err == nil {
 			d.signalCatch[e.ID] = name
+		} else if name, err := linkCatchSpec(e); err == nil {
+			d.linkCatch[e.ID] = name
 		}
 	}
 	for _, e := range fe.IntermediateThrowEvents {
@@ -420,7 +427,10 @@ func validateCatchAndThrow(fe *element.FlowElements) error {
 		if _, err := signalCatchSpec(e, nil); err == nil {
 			continue
 		}
-		return fmt.Errorf("UNSUPPORTED_ELEMENT: intermediateCatchEvent %q must be timer, message, or signal catch", e.ID)
+		if _, err := linkCatchSpec(e); err == nil {
+			continue
+		}
+		return fmt.Errorf("UNSUPPORTED_ELEMENT: intermediateCatchEvent %q must be timer, message, signal, or link catch", e.ID)
 	}
 	for _, e := range fe.IntermediateThrowEvents {
 		if _, err := throwEventSpec(e, nil, nil, nil); err != nil {

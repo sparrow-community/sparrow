@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             id="Definitions_link_orphan"
+             targetNamespace="http://sparrow.example/link-orphan">
+  <process id="Process_link_orphan" isExecutable="true">
+    <startEvent id="Start_1">
+      <outgoing>Flow_start_to_throw</outgoing>
+    </startEvent>
+    <intermediateThrowEvent id="LinkThrow_1">
+      <incoming>Flow_start_to_throw</incoming>
+      <linkEventDefinition name="missing"/>
+    </intermediateThrowEvent>
+    <sequenceFlow id="Flow_start_to_throw" sourceRef="Start_1" targetRef="LinkThrow_1"/>
+  </process>
+</definitions>

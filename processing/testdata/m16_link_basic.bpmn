@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             id="Definitions_link_basic"
+             targetNamespace="http://sparrow.example/link-basic">
+  <process id="Process_link_basic" isExecutable="true">
+    <startEvent id="Start_1">
+      <outgoing>Flow_start_to_throw</outgoing>
+    </startEvent>
+    <intermediateThrowEvent id="LinkThrow_1" name="toWork">
+      <incoming>Flow_start_to_throw</incoming>
+      <linkEventDefinition name="toWork"/>
+    </intermediateThrowEvent>
+    <intermediateCatchEvent id="LinkCatch_1" name="toWork">
+      <outgoing>Flow_catch_to_task</outgoing>
+      <linkEventDefinition name="toWork"/>
+    </intermediateCatchEvent>
+    <userTask id="UserTask_1">
+      <incoming>Flow_catch_to_task</incoming>
+      <outgoing>Flow_task_to_end</outgoing>
+    </userTask>
+    <endEvent id="End_ok">
+      <incoming>Flow_task_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_throw" sourceRef="Start_1" targetRef="LinkThrow_1"/>
+    <sequenceFlow id="Flow_catch_to_task" sourceRef="LinkCatch_1" targetRef="UserTask_1"/>
+    <sequenceFlow id="Flow_task_to_end" sourceRef="UserTask_1" targetRef="End_ok"/>
+  </process>
+</definitions>

@@ -16,6 +16,7 @@ const (
 	ThrowKindSignal     ThrowKind = "signal"
 	ThrowKindCompensate ThrowKind = "compensate"
 	ThrowKindEscalation ThrowKind = "escalation"
+	ThrowKindLink       ThrowKind = "link"
 )
 
 type throwSpec struct {
@@ -83,6 +84,8 @@ func throwEventSpec(ev element.IntermediateThrowEvent, messages []element.Messag
 		return compensateThrowSpec(ev)
 	case len(ev.EscalationEventDefinitions) > 0:
 		return escalationThrowSpec(ev, escalations)
+	case len(ev.LinkEventDefinitions) > 0:
+		return linkThrowSpec(ev)
 	default:
 		return noneThrowSpec(ev)
 	}

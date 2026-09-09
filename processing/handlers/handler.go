@@ -48,6 +48,9 @@ type Effect struct {
 	ThrowError *ThrowErrorEffect
 	// ThrowEscalation propagates a BPMN escalation after ACTIVATED.
 	ThrowEscalation *ThrowEscalationEffect
+	// LinkContinue enters each listed catch after a link throw (goto).
+	// The first catch reuses the throw token; additional catches mint tokens.
+	LinkContinue []string
 	// MultiInstanceStart spawns inner instances after the loop host ACTIVATED.
 	MultiInstanceStart *MultiInstanceStart
 	// MultiInstanceInnerComplete completes one inner instance and joins via the executor.

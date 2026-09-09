@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             id="Definitions_link_multi"
+             targetNamespace="http://sparrow.example/link-multi">
+  <process id="Process_link_multi" isExecutable="true">
+    <startEvent id="Start_1">
+      <outgoing>Flow_start_to_throw</outgoing>
+    </startEvent>
+    <intermediateThrowEvent id="LinkThrow_1">
+      <incoming>Flow_start_to_throw</incoming>
+      <linkEventDefinition name="fanout"/>
+    </intermediateThrowEvent>
+    <intermediateCatchEvent id="LinkCatch_A">
+      <outgoing>Flow_a_to_end</outgoing>
+      <linkEventDefinition name="fanout"/>
+    </intermediateCatchEvent>
+    <intermediateCatchEvent id="LinkCatch_B">
+      <outgoing>Flow_b_to_end</outgoing>
+      <linkEventDefinition name="fanout"/>
+    </intermediateCatchEvent>
+    <endEvent id="End_a">
+      <incoming>Flow_a_to_end</incoming>
+    </endEvent>
+    <endEvent id="End_b">
+      <incoming>Flow_b_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_throw" sourceRef="Start_1" targetRef="LinkThrow_1"/>
+    <sequenceFlow id="Flow_a_to_end" sourceRef="LinkCatch_A" targetRef="End_a"/>
+    <sequenceFlow id="Flow_b_to_end" sourceRef="LinkCatch_B" targetRef="End_b"/>
+  </process>
+</definitions>

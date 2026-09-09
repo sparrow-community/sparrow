@@ -18,6 +18,7 @@ const (
 	CatchKindSignal     CatchKind = "signal"
 	CatchKindError      CatchKind = "error"
 	CatchKindEscalation CatchKind = "escalation"
+	CatchKindLink       CatchKind = "link"
 )
 
 type timerCatch struct {
@@ -279,6 +280,9 @@ func (d *Deployment) CatchKind(id string) (CatchKind, error) {
 	}
 	if _, ok := d.signalCatch[id]; ok {
 		return CatchKindSignal, nil
+	}
+	if _, ok := d.linkCatch[id]; ok {
+		return CatchKindLink, nil
 	}
 	return "", fmt.Errorf("NOT_FOUND: intermediate catch %q", id)
 }
