@@ -658,7 +658,7 @@ func (e *Engine) completeScopeBoundaryLocked(ctx context.Context, dep *deploy.De
 	}
 
 	// Take boundary outgoing flow
-	next, err := e.executor.takeOutgoing(dep, tokenID, boundaryID, "", emit)
+	next, err := e.executor.takeOutgoing(dep, inst, tokenID, boundaryID, "", emit)
 	if err != nil {
 		return nil, err
 	}

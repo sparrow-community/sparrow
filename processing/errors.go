@@ -274,7 +274,7 @@ func (x *Executor) fireActivityErrorBoundary(
 			return pubs, err
 		}
 	}
-	next, err := x.takeOutgoing(dep, activityTokenID, boundaryID, "", emit)
+	next, err := x.takeOutgoing(dep, inst, activityTokenID, boundaryID, "", emit)
 	if err != nil {
 		return pubs, err
 	}
@@ -320,7 +320,7 @@ func (x *Executor) fireScopeErrorBoundary(
 	}); err != nil {
 		return nil, err
 	}
-	next, err := x.takeOutgoing(dep, hostTokenID, boundaryID, "", emit)
+	next, err := x.takeOutgoing(dep, inst, hostTokenID, boundaryID, "", emit)
 	if err != nil {
 		return nil, err
 	}

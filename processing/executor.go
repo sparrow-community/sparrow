@@ -122,7 +122,7 @@ func (x *Executor) Enter(
 						return pubs, err
 					}
 				}
-				next, err := x.takeOutgoing(dep, tid, elementID, flowID, emit)
+				next, err := x.takeOutgoing(dep, inst, tid, elementID, flowID, emit)
 				if err != nil {
 					return pubs, err
 				}
@@ -227,7 +227,7 @@ func (x *Executor) Enter(
 			}
 		}
 
-		next, err := x.takeOutgoing(dep, tokenID, elementID, effect.OutgoingFlowID, emit)
+		next, err := x.takeOutgoing(dep, inst, tokenID, elementID, effect.OutgoingFlowID, emit)
 		if err != nil {
 			return pubs, err
 		}
@@ -304,7 +304,7 @@ func (x *Executor) Complete(
 				return pubs, err
 			}
 		}
-		next, err := x.takeOutgoing(dep, spawnID, spawn.ElementID, spawn.OutgoingFlowID, emit)
+		next, err := x.takeOutgoing(dep, inst, spawnID, spawn.ElementID, spawn.OutgoingFlowID, emit)
 		if err != nil {
 			return pubs, err
 		}
@@ -334,7 +334,7 @@ func (x *Executor) Complete(
 		return pubs, nil
 	}
 
-	next, err := x.takeOutgoing(dep, tokenID, elementID, effect.OutgoingFlowID, emit)
+	next, err := x.takeOutgoing(dep, inst, tokenID, elementID, effect.OutgoingFlowID, emit)
 	if err != nil {
 		return pubs, err
 	}
@@ -401,16 +401,21 @@ func (x *Executor) terminateWaitingAt(inst *projection.Instance, survivorTokenID
 
 func (x *Executor) takeOutgoing(
 	dep *deploy.Deployment,
+	inst *projection.Instance,
 	tokenID, fromElementID, preferredFlowID string,
 	emit Emitter,
 ) (string, error) {
 	flowID := preferredFlowID
 	if flowID == "" {
-		outs := dep.Outgoing(fromElementID)
-		if len(outs) == 0 {
-			return "", fmt.Errorf("NO_OUTGOING_FLOW: element %q", fromElementID)
+		var vars map[string]string
+		if inst != nil {
+			vars = inst.Variables
 		}
-		flowID = outs[0]
+		var err error
+		flowID, err = dep.ChooseConditionalOutgoing(fromElementID, vars)
+		if err != nil {
+			return "", err
+		}
 	}
 	flow, err := dep.SequenceFlow(flowID)
 	if err != nil {
@@ -548,7 +553,7 @@ func (x *Executor) tryCompleteScope(ctx context.Context, dep *deploy.Deployment,
 		return pubs, err
 	}
 	if effect.TakeOutgoing {
-		next, err := x.takeOutgoing(dep, completeTokenID, outgoingFrom, effect.OutgoingFlowID, emit)
+		next, err := x.takeOutgoing(dep, inst, completeTokenID, outgoingFrom, effect.OutgoingFlowID, emit)
 		if err != nil {
 			return pubs, err
 		}

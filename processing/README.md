@@ -35,7 +35,7 @@ New element: handler + registry + deploy validation. Semantics stay out of `engi
 | Gateways | XOR, AND, inclusive, event-based (catch) |
 | SubProcess | Embedded scope; Event Sub-Process; MI |
 | CallActivity | Child instance; IO mapping; same-definition today |
-| SequenceFlow | `SEQUENCE_FLOW_TAKEN` |
+| SequenceFlow | `SEQUENCE_FLOW_TAKEN`; conditions on gateway and activity outgoings (+ `default`) |
 
 Full snapshot + roadmap: [`../AGENTS.md`](../AGENTS.md).
 

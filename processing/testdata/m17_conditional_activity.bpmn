@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             id="Definitions_conditional_activity"
+             targetNamespace="http://sparrow.example/conditional-activity">
+  <process id="Process_conditional_activity" isExecutable="true">
+    <startEvent id="Start_1">
+      <outgoing>Flow_start_to_task</outgoing>
+    </startEvent>
+    <userTask id="UserTask_1" name="Decide" default="Flow_task_to_default">
+      <incoming>Flow_start_to_task</incoming>
+      <outgoing>Flow_task_to_yes</outgoing>
+      <outgoing>Flow_task_to_default</outgoing>
+    </userTask>
+    <endEvent id="End_yes">
+      <incoming>Flow_task_to_yes</incoming>
+    </endEvent>
+    <endEvent id="End_default">
+      <incoming>Flow_task_to_default</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_task" sourceRef="Start_1" targetRef="UserTask_1"/>
+    <sequenceFlow id="Flow_task_to_yes" sourceRef="UserTask_1" targetRef="End_yes">
+      <conditionExpression xsi:type="tFormalExpression">${approved == true}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="Flow_task_to_default" sourceRef="UserTask_1" targetRef="End_default"/>
+  </process>
+</definitions>

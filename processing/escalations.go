@@ -75,7 +75,7 @@ func (x *Executor) fireNonInterruptingScopeEscalationBoundary(
 			return nil, err
 		}
 	}
-	next, err := x.takeOutgoing(dep, spawnID, boundaryID, "", emit)
+	next, err := x.takeOutgoing(dep, inst, spawnID, boundaryID, "", emit)
 	if err != nil {
 		return nil, err
 	}

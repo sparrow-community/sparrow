@@ -760,14 +760,67 @@ func ConditionText(f element.SequenceFlow) string {
 	}
 }
 
-// ChooseExclusiveOutgoing picks the first matching non-default condition, else default.
-func (d *Deployment) ChooseExclusiveOutgoing(gatewayID string, vars map[string]string) (string, error) {
-	g := findExclusiveGatewayIn(&d.Process.FlowElements, gatewayID)
-	if g == nil {
-		return "", fmt.Errorf("NOT_FOUND: exclusive gateway %q", gatewayID)
+// DefaultOutgoing returns the BPMN default sequence flow id for an exclusive
+// gateway or activity, or empty if none.
+func (d *Deployment) DefaultOutgoing(elementID string) string {
+	if g := findExclusiveGatewayIn(&d.Process.FlowElements, elementID); g != nil {
+		return g.Default
 	}
-	for _, flowID := range d.Outgoing(gatewayID) {
-		if g.Default != "" && flowID == g.Default {
+	return findActivityDefaultIn(&d.Process.FlowElements, elementID)
+}
+
+func findActivityDefaultIn(fe *element.FlowElements, id string) string {
+	for i := range fe.UserTasks {
+		if fe.UserTasks[i].ID == id {
+			return fe.UserTasks[i].Default
+		}
+	}
+	for i := range fe.ServiceTasks {
+		if fe.ServiceTasks[i].ID == id {
+			return fe.ServiceTasks[i].Default
+		}
+	}
+	for i := range fe.CallActivities {
+		if fe.CallActivities[i].ID == id {
+			return fe.CallActivities[i].Default
+		}
+	}
+	for i := range fe.SubProcesses {
+		if fe.SubProcesses[i].ID == id {
+			return fe.SubProcesses[i].Default
+		}
+		if def := findActivityDefaultIn(&fe.SubProcesses[i].FlowElements, id); def != "" {
+			return def
+		}
+	}
+	return ""
+}
+
+// ChooseConditionalOutgoing picks an outgoing flow: first matching non-default
+// condition, else default. If there are no conditions and no default, returns the
+// first outgoing (legacy take-first).
+func (d *Deployment) ChooseConditionalOutgoing(elementID string, vars map[string]string) (string, error) {
+	outs := d.Outgoing(elementID)
+	if len(outs) == 0 {
+		return "", fmt.Errorf("NO_OUTGOING_FLOW: element %q", elementID)
+	}
+	def := d.DefaultOutgoing(elementID)
+	hasCondition := false
+	for _, flowID := range outs {
+		flow, err := d.SequenceFlow(flowID)
+		if err != nil {
+			return "", err
+		}
+		if ConditionText(flow) != "" {
+			hasCondition = true
+			break
+		}
+	}
+	if !hasCondition && def == "" {
+		return outs[0], nil
+	}
+	for _, flowID := range outs {
+		if def != "" && flowID == def {
 			continue
 		}
 		flow, err := d.SequenceFlow(flowID)
@@ -786,12 +839,20 @@ func (d *Deployment) ChooseExclusiveOutgoing(gatewayID string, vars map[string]s
 			return flowID, nil
 		}
 	}
-	if g.Default != "" {
-		if _, err := d.SequenceFlow(g.Default); err == nil {
-			return g.Default, nil
+	if def != "" {
+		if _, err := d.SequenceFlow(def); err == nil {
+			return def, nil
 		}
 	}
-	return "", fmt.Errorf("NO_OUTGOING_FLOW")
+	return "", fmt.Errorf("NO_OUTGOING_FLOW: element %q", elementID)
+}
+
+// ChooseExclusiveOutgoing picks the first matching non-default condition, else default.
+func (d *Deployment) ChooseExclusiveOutgoing(gatewayID string, vars map[string]string) (string, error) {
+	if findExclusiveGatewayIn(&d.Process.FlowElements, gatewayID) == nil {
+		return "", fmt.Errorf("NOT_FOUND: exclusive gateway %q", gatewayID)
+	}
+	return d.ChooseConditionalOutgoing(gatewayID, vars)
 }
 
 // ChooseInclusiveOutgoing evaluates all outgoing flows; returns all whose condition is true.
