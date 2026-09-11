@@ -108,7 +108,7 @@ func multiInstanceInnerComplete(in CompleteInput, records []*eventv1.Element) *E
 	records = append(records, cancelAttachedBoundary(in.Deployment, in.ElementID, in.TokenID)...)
 	records = append(records, subscribeCompensation(in.Deployment, in.ElementID, in.TokenID)...)
 	return &Effect{
-		Records:                  records,
+		Records:                    records,
 		MultiInstanceInnerComplete: true,
 	}
 }

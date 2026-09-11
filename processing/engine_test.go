@@ -141,7 +141,7 @@ func TestCompleteInvalidState(t *testing.T) {
 }
 
 func TestDeployRejectsUnsupportedElement(t *testing.T) {
-	xml, err := os.ReadFile(filepath.Join("testdata", "m1_unsupported_inclusive.bpmn"))
+	xml, err := os.ReadFile(filepath.Join("testdata", "m18_receive_instantiate.bpmn"))
 	if err != nil {
 		t.Fatal(err)
 	}

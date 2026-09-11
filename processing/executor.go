@@ -87,6 +87,22 @@ func (x *Executor) Enter(
 		if effect.Publish != nil {
 			pubs = append(pubs, *effect.Publish)
 		}
+		if effect.TerminateScope {
+			more, err := x.terminateEnclosingScope(dep, inst, tokenID, elementID, emit)
+			pubs = append(pubs, more...)
+			if err != nil {
+				return pubs, err
+			}
+		}
+		if effect.MultiInstanceInnerComplete {
+			innerIdx := int32(-1)
+			if tok := inst.Tokens[tokenID]; tok != nil {
+				innerIdx = tok.LoopInstanceIndex
+			}
+			more, err := x.runMultiInstanceInnerComplete(ctx, dep, inst, elementID, tokenID, innerIdx, emit)
+			pubs = append(pubs, more...)
+			return pubs, err
+		}
 		if effect.MultiInstanceStart != nil {
 			more, err := x.runMultiInstanceStart(ctx, dep, inst, effect.MultiInstanceStart, emit)
 			pubs = append(pubs, more...)
@@ -113,6 +129,11 @@ func (x *Executor) Enter(
 			continue
 		}
 		if len(effect.Fork) > 0 {
+			type forkBranch struct {
+				tid  string
+				next string
+			}
+			var rest, terms []forkBranch
 			for i, flowID := range effect.Fork {
 				tid := tokenID
 				if i > 0 {
@@ -126,7 +147,15 @@ func (x *Executor) Enter(
 				if err != nil {
 					return pubs, err
 				}
-				more, err := x.Enter(ctx, dep, inst, tid, next, emit)
+				b := forkBranch{tid: tid, next: next}
+				if dep.IsTerminateEnd(next) {
+					terms = append(terms, b)
+				} else {
+					rest = append(rest, b)
+				}
+			}
+			for _, b := range append(rest, terms...) {
+				more, err := x.Enter(ctx, dep, inst, b.tid, b.next, emit)
 				pubs = append(pubs, more...)
 				if err != nil {
 					return pubs, err

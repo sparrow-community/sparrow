@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             id="Definitions_br"
+             targetNamespace="http://sparrow.example/business-rule">
+  <process id="Process_br" name="Business Rule Task" isExecutable="true">
+    <startEvent id="StartEvent_1">
+      <outgoing>Flow_start_to_br</outgoing>
+    </startEvent>
+    <businessRuleTask id="BusinessRuleTask_1" name="Decide" implementation="decide.v1">
+      <incoming>Flow_start_to_br</incoming>
+      <outgoing>Flow_br_to_end</outgoing>
+    </businessRuleTask>
+    <endEvent id="EndEvent_1">
+      <incoming>Flow_br_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_br" sourceRef="StartEvent_1" targetRef="BusinessRuleTask_1"/>
+    <sequenceFlow id="Flow_br_to_end" sourceRef="BusinessRuleTask_1" targetRef="EndEvent_1"/>
+  </process>
+</definitions>

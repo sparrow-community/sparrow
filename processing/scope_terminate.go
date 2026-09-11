@@ -1,7 +1,10 @@
 package processing
 
 import (
+	"sort"
+
 	"github.com/sparrow-community/sparrow/processing/deploy"
+	"github.com/sparrow-community/sparrow/processing/handlers"
 	"github.com/sparrow-community/sparrow/processing/projection"
 	eventv1 "github.com/sparrow-community/sparrow/protocol/gen/go/event/v1"
 )
@@ -140,4 +143,69 @@ func tokenInOrIsScope(dep *deploy.Deployment, tok *projection.Token, scopeID str
 	}
 	tokScope, _ := dep.ScopeOf(tok.ElementID)
 	return tokScope == scopeID || isInScope(dep, tokScope, scopeID)
+}
+
+func (x *Executor) terminateEnclosingScope(
+	dep *deploy.Deployment,
+	inst *projection.Instance,
+	keepTokenID, elementID string,
+	emit Emitter,
+) ([]handlers.Publication, error) {
+	scopeID, _ := dep.ScopeOf(elementID)
+	processID := inst.ProcessID
+	if processID == "" {
+		processID = dep.ProcessID()
+	}
+	if scopeID == "" {
+		scopeID = processID
+	}
+	ids := make([]string, 0, len(inst.Tokens))
+	for tid := range inst.Tokens {
+		ids = append(ids, tid)
+	}
+	sort.Strings(ids)
+	var pubs []handlers.Publication
+	for _, tid := range ids {
+		if tid == keepTokenID {
+			continue
+		}
+		tok := inst.Tokens[tid]
+		if tok == nil {
+			continue
+		}
+		if scopeID != processID {
+			if isScopeHostToken(dep, tok, scopeID) {
+				continue
+			}
+			if !tokenInOrIsScope(dep, tok, scopeID) {
+				continue
+			}
+		}
+		if tok.CalledProcessInstanceID != "" {
+			pubs = append(pubs, handlers.Publication{
+				Kind:            handlers.PublicationTerminateChild,
+				ChildInstanceID: tok.CalledProcessInstanceID,
+				CallActivityID:  tok.ElementID,
+				HostTokenID:     tid,
+			})
+		}
+		tokType, err := dep.TypeOf(tok.ElementID)
+		if err != nil {
+			tokType = eventv1.Element_TYPE_UNSPECIFIED
+		}
+		for _, intent := range []eventv1.Element_Intent{
+			eventv1.Element_INTENT_TERMINATING,
+			eventv1.Element_INTENT_TERMINATED,
+		} {
+			if err := emit(&eventv1.Element{
+				Intent:  intent,
+				Type:    tokType,
+				Id:      tok.ElementID,
+				TokenId: tid,
+			}); err != nil {
+				return pubs, err
+			}
+		}
+	}
+	return pubs, nil
 }

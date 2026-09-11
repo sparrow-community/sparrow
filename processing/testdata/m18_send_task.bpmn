@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             id="Definitions_send"
+             targetNamespace="http://sparrow.example/send">
+  <message id="message_1" name="order.confirmed"/>
+  <process id="Process_send" name="Send Task" isExecutable="true">
+    <startEvent id="StartEvent_1">
+      <outgoing>Flow_start_to_send</outgoing>
+    </startEvent>
+    <sendTask id="SendTask_1" name="Notify" messageRef="message_1">
+      <incoming>Flow_start_to_send</incoming>
+      <outgoing>Flow_send_to_end</outgoing>
+    </sendTask>
+    <endEvent id="EndEvent_1">
+      <incoming>Flow_send_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_send" sourceRef="StartEvent_1" targetRef="SendTask_1"/>
+    <sequenceFlow id="Flow_send_to_end" sourceRef="SendTask_1" targetRef="EndEvent_1"/>
+  </process>
+</definitions>

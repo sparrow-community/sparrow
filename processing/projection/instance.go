@@ -149,11 +149,11 @@ type Instance struct {
 // CompensationSub is created when a host activity COMPLETED and a compensation
 // boundary ACTIVATED (ledger-backed via EventPayload.compensation_handler_id).
 type CompensationSub struct {
-	BoundaryID   string
-	ActivityID   string
-	HandlerID    string
-	Seq          int64 // subscription order (later compensated first)
-	HostTokenID  string
+	BoundaryID  string
+	ActivityID  string
+	HandlerID   string
+	Seq         int64 // subscription order (later compensated first)
+	HostTokenID string
 }
 
 // PendingCompensation tracks an in-flight compensate throw waiting for handlers.
@@ -168,16 +168,16 @@ type PendingCompensation struct {
 
 func NewInstance(id, deploymentID string, version int32) *Instance {
 	return &Instance{
-		ID:                id,
-		DeploymentID:      deploymentID,
-		Version:           version,
-		Status:            StatusActive,
-		Variables:         make(map[string]string),
-		Tokens:            make(map[string]*Token),
-		ElementIntent:     make(map[string]eventv1.Element_Intent),
-		ScopeBoundaries:   make(map[string]*ScopeBoundary),
-		EventSubProcesses: make(map[string]*EventSubProcessArm),
-		CompensationSubs:  make(map[string]*CompensationSub),
+		ID:                 id,
+		DeploymentID:       deploymentID,
+		Version:            version,
+		Status:             StatusActive,
+		Variables:          make(map[string]string),
+		Tokens:             make(map[string]*Token),
+		ElementIntent:      make(map[string]eventv1.Element_Intent),
+		ScopeBoundaries:    make(map[string]*ScopeBoundary),
+		EventSubProcesses:  make(map[string]*EventSubProcessArm),
+		CompensationSubs:   make(map[string]*CompensationSub),
 		MultiInstanceLoops: make(map[string]*MultiInstanceLoop),
 	}
 }
@@ -562,7 +562,7 @@ func boundaryRearmOnWaitingHost(hostElementID string, el *eventv1.Element, tok *
 
 func waitingActivation(t eventv1.Element_Type) bool {
 	switch t {
-	case eventv1.Element_TYPE_USER_TASK, eventv1.Element_TYPE_SERVICE_TASK, eventv1.Element_TYPE_INTERMEDIATE_CATCH_EVENT, eventv1.Element_TYPE_INTERMEDIATE_THROW_EVENT, eventv1.Element_TYPE_PARALLEL_GATEWAY, eventv1.Element_TYPE_INCLUSIVE_GATEWAY, eventv1.Element_TYPE_SUB_PROCESS, eventv1.Element_TYPE_CALL_ACTIVITY:
+	case eventv1.Element_TYPE_USER_TASK, eventv1.Element_TYPE_SERVICE_TASK, eventv1.Element_TYPE_MANUAL_TASK, eventv1.Element_TYPE_RECEIVE_TASK, eventv1.Element_TYPE_SEND_TASK, eventv1.Element_TYPE_BUSINESS_RULE_TASK, eventv1.Element_TYPE_INTERMEDIATE_CATCH_EVENT, eventv1.Element_TYPE_INTERMEDIATE_THROW_EVENT, eventv1.Element_TYPE_PARALLEL_GATEWAY, eventv1.Element_TYPE_INCLUSIVE_GATEWAY, eventv1.Element_TYPE_SUB_PROCESS, eventv1.Element_TYPE_CALL_ACTIVITY:
 		return true
 	default:
 		return false
@@ -643,10 +643,10 @@ func (inst *Instance) applyScopeBoundary(scopeID, tokenID string, p *eventv1.Act
 	if p.GetSignalBoundaryId() != "" {
 		if _, ok := inst.ScopeBoundaries[p.GetSignalBoundaryId()]; !ok {
 			inst.ScopeBoundaries[p.GetSignalBoundaryId()] = &ScopeBoundary{
-				BoundaryID:  p.GetSignalBoundaryId(),
-				ScopeID:     scopeID,
-				TokenID:     tokenID,
-				SignalName:  p.GetSignalName(),
+				BoundaryID: p.GetSignalBoundaryId(),
+				ScopeID:    scopeID,
+				TokenID:    tokenID,
+				SignalName: p.GetSignalName(),
 			}
 		}
 	}

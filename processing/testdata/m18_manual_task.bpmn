@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             id="Definitions_manual"
+             targetNamespace="http://sparrow.example/manual">
+  <process id="Process_manual" name="Manual Task" isExecutable="true">
+    <startEvent id="StartEvent_1">
+      <outgoing>Flow_start_to_manual</outgoing>
+    </startEvent>
+    <manualTask id="ManualTask_1" name="Do by hand">
+      <incoming>Flow_start_to_manual</incoming>
+      <outgoing>Flow_manual_to_end</outgoing>
+    </manualTask>
+    <endEvent id="EndEvent_1">
+      <incoming>Flow_manual_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_manual" sourceRef="StartEvent_1" targetRef="ManualTask_1"/>
+    <sequenceFlow id="Flow_manual_to_end" sourceRef="ManualTask_1" targetRef="EndEvent_1"/>
+  </process>
+</definitions>

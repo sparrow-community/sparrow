@@ -41,7 +41,7 @@ func (e *Engine) ThrowError(ctx context.Context, instanceID, elementID, tokenID,
 		return e.reject(ctx, inst, elementID, tokenID, typ, eventv1.Element_INTENT_ERROR_THROWN, "NOT_FOUND", "element not found")
 	}
 	switch typ {
-	case eventv1.Element_TYPE_USER_TASK, eventv1.Element_TYPE_SERVICE_TASK, eventv1.Element_TYPE_CALL_ACTIVITY:
+	case eventv1.Element_TYPE_USER_TASK, eventv1.Element_TYPE_SERVICE_TASK, eventv1.Element_TYPE_MANUAL_TASK, eventv1.Element_TYPE_RECEIVE_TASK, eventv1.Element_TYPE_BUSINESS_RULE_TASK, eventv1.Element_TYPE_CALL_ACTIVITY:
 	default:
 		lock.Unlock()
 		return e.reject(ctx, inst, elementID, tokenID, typ, eventv1.Element_INTENT_ERROR_THROWN, "INVALID_STATE", "element cannot throw an error")
@@ -87,7 +87,7 @@ func (e *Engine) ThrowError(ctx context.Context, instanceID, elementID, tokenID,
 		lock.Unlock()
 		return err
 	}
-	if typ == eventv1.Element_TYPE_SERVICE_TASK && tok.JobType != "" {
+	if (typ == eventv1.Element_TYPE_SERVICE_TASK || typ == eventv1.Element_TYPE_BUSINESS_RULE_TASK) && tok.JobType != "" {
 		e.releaseLease(instanceID, tokenID)
 		e.notifyJobs()
 	}
@@ -111,7 +111,7 @@ func (x *Executor) propagateError(
 ) ([]handlers.Publication, error) {
 	if throwTyp, err := dep.TypeOf(throwElementID); err == nil {
 		switch throwTyp {
-		case eventv1.Element_TYPE_USER_TASK, eventv1.Element_TYPE_SERVICE_TASK, eventv1.Element_TYPE_CALL_ACTIVITY:
+		case eventv1.Element_TYPE_USER_TASK, eventv1.Element_TYPE_SERVICE_TASK, eventv1.Element_TYPE_MANUAL_TASK, eventv1.Element_TYPE_RECEIVE_TASK, eventv1.Element_TYPE_BUSINESS_RULE_TASK, eventv1.Element_TYPE_CALL_ACTIVITY:
 			if bid, ok := dep.MatchErrorBoundary(throwElementID, errorCode); ok {
 				return x.fireActivityErrorBoundary(ctx, dep, inst, throwElementID, throwTokenID, bid, emit)
 			}

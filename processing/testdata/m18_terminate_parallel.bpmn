@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             id="Definitions_terminate_parallel"
+             targetNamespace="http://sparrow.example/terminate-parallel">
+  <process id="Process_terminate_parallel" name="Terminate Parallel" isExecutable="true">
+    <startEvent id="StartEvent_1">
+      <outgoing>Flow_start_to_fork</outgoing>
+    </startEvent>
+    <parallelGateway id="Gateway_fork">
+      <incoming>Flow_start_to_fork</incoming>
+      <outgoing>Flow_fork_to_a</outgoing>
+      <outgoing>Flow_fork_to_term</outgoing>
+    </parallelGateway>
+    <userTask id="UserTask_a" name="Branch A">
+      <incoming>Flow_fork_to_a</incoming>
+      <outgoing>Flow_a_to_end</outgoing>
+    </userTask>
+    <endEvent id="End_a">
+      <incoming>Flow_a_to_end</incoming>
+    </endEvent>
+    <endEvent id="TerminateEnd_1">
+      <incoming>Flow_fork_to_term</incoming>
+      <terminateEventDefinition id="TermDef_1"/>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_fork" sourceRef="StartEvent_1" targetRef="Gateway_fork"/>
+    <sequenceFlow id="Flow_fork_to_a" sourceRef="Gateway_fork" targetRef="UserTask_a"/>
+    <sequenceFlow id="Flow_fork_to_term" sourceRef="Gateway_fork" targetRef="TerminateEnd_1"/>
+    <sequenceFlow id="Flow_a_to_end" sourceRef="UserTask_a" targetRef="End_a"/>
+  </process>
+</definitions>

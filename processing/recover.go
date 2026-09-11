@@ -281,7 +281,7 @@ func (e *Engine) redriveThrowError(ctx context.Context, dep *deploy.Deployment, 
 	}); err != nil {
 		return nil, err
 	}
-	if el.GetType() == eventv1.Element_TYPE_SERVICE_TASK {
+	if el.GetType() == eventv1.Element_TYPE_SERVICE_TASK || el.GetType() == eventv1.Element_TYPE_BUSINESS_RULE_TASK {
 		e.releaseLease(inst.ID, el.GetTokenId())
 		e.notifyJobs()
 	}

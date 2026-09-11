@@ -147,15 +147,18 @@ func (e *Engine) collectMessageWaiters(name, instanceID string, keys []*eventv1.
 			if tok == nil || tok.Status != projection.TokenWaiting {
 				continue
 			}
+			boundaryNames := map[string]bool{}
 			if len(tok.BoundaryWaits) > 0 {
 				for _, w := range tok.BoundaryWaits {
-					if w.Kind == "message" && w.MessageName == name {
-						waiters = append(waiters, dueWait{instanceID: iid, elementID: w.BoundaryID, tokenID: tok.ID, MessageName: w.MessageName})
+					if w.Kind == "message" {
+						boundaryNames[w.MessageName] = true
+						if w.MessageName == name {
+							waiters = append(waiters, dueWait{instanceID: iid, elementID: w.BoundaryID, tokenID: tok.ID, MessageName: w.MessageName})
+						}
 					}
 				}
-				continue
 			}
-			if tok.MessageName != "" && tok.MessageName == name {
+			if tok.MessageName != "" && tok.MessageName == name && !boundaryNames[name] {
 				waiters = append(waiters, dueWait{instanceID: iid, elementID: messageWaiterElementID(tok), tokenID: tok.ID, MessageName: tok.MessageName})
 			}
 		}

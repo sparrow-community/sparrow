@@ -51,6 +51,9 @@ type Effect struct {
 	// LinkContinue enters each listed catch after a link throw (goto).
 	// The first catch reuses the throw token; additional catches mint tokens.
 	LinkContinue []string
+	// TerminateScope cancels remaining tokens in the enclosing process/SubProcess
+	// (except the current token and a parked SubProcess host).
+	TerminateScope bool
 	// MultiInstanceStart spawns inner instances after the loop host ACTIVATED.
 	MultiInstanceStart *MultiInstanceStart
 	// MultiInstanceInnerComplete completes one inner instance and joins via the executor.
@@ -85,14 +88,14 @@ type Publication struct {
 	Kind PublicationKind
 	Name string
 	// StartChild / ResumeParent / TerminateChild fields (ignored for message/signal).
-	ChildInstanceID  string
-	ParentInstanceID string
-	CallActivityID   string
-	HostTokenID      string
-	CalledProcessID     string
-	DeploymentID        string
-	CalledDeploymentID  string
-	Completed           bool // ResumeParent: true=complete CallActivity, false=terminate
+	ChildInstanceID    string
+	ParentInstanceID   string
+	CallActivityID     string
+	HostTokenID        string
+	CalledProcessID    string
+	DeploymentID       string
+	CalledDeploymentID string
+	Completed          bool // ResumeParent: true=complete CallActivity, false=terminate
 	// ChildVariables are snapped Call Activity inputs for StartChild (MI-safe).
 	ChildVariables []*eventv1.Variable
 }
@@ -164,6 +167,10 @@ func DefaultRegistry() *Registry {
 		EventBasedGatewayHandler{},
 		IntermediateThrowEventHandler{},
 		CallActivityHandler{},
+		ManualTaskHandler{},
+		ReceiveTaskHandler{},
+		SendTaskHandler{},
+		BusinessRuleTaskHandler{},
 	)
 }
 

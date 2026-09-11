@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             id="Definitions_terminate_sp"
+             targetNamespace="http://sparrow.example/terminate-sp">
+  <process id="Process_terminate_sp" name="Terminate SubProcess" isExecutable="true">
+    <startEvent id="StartEvent_1">
+      <outgoing>Flow_start_to_sp</outgoing>
+    </startEvent>
+    <subProcess id="SubProcess_1" name="Inner">
+      <incoming>Flow_start_to_sp</incoming>
+      <outgoing>Flow_sp_to_end</outgoing>
+      <startEvent id="Sub_Start">
+        <outgoing>Flow_sub_to_fork</outgoing>
+      </startEvent>
+      <parallelGateway id="Fork_1">
+        <incoming>Flow_sub_to_fork</incoming>
+        <outgoing>Flow_fork_to_task</outgoing>
+        <outgoing>Flow_fork_to_term</outgoing>
+      </parallelGateway>
+      <userTask id="UserTask_sp" name="Inner work">
+        <incoming>Flow_fork_to_task</incoming>
+        <outgoing>Flow_task_to_end</outgoing>
+      </userTask>
+      <endEvent id="Sub_End_task">
+        <incoming>Flow_task_to_end</incoming>
+      </endEvent>
+      <endEvent id="Sub_Terminate">
+        <incoming>Flow_fork_to_term</incoming>
+        <terminateEventDefinition id="TermDef_sp"/>
+      </endEvent>
+      <sequenceFlow id="Flow_sub_to_fork" sourceRef="Sub_Start" targetRef="Fork_1"/>
+      <sequenceFlow id="Flow_fork_to_task" sourceRef="Fork_1" targetRef="UserTask_sp"/>
+      <sequenceFlow id="Flow_fork_to_term" sourceRef="Fork_1" targetRef="Sub_Terminate"/>
+      <sequenceFlow id="Flow_task_to_end" sourceRef="UserTask_sp" targetRef="Sub_End_task"/>
+    </subProcess>
+    <endEvent id="EndEvent_1">
+      <incoming>Flow_sp_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_sp" sourceRef="StartEvent_1" targetRef="SubProcess_1"/>
+    <sequenceFlow id="Flow_sp_to_end" sourceRef="SubProcess_1" targetRef="EndEvent_1"/>
+  </process>
+</definitions>

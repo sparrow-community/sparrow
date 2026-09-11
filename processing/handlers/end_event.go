@@ -54,6 +54,13 @@ func (EndEventHandler) OnEnter(in EnterInput) (*Effect, error) {
 			TriggerCompensation: true,
 		}, nil
 	}
+	if in.Deployment != nil && in.Deployment.IsTerminateEnd(in.ElementID) {
+		return &Effect{
+			Records:            InstantLifecycle(in.Type, in.ElementID, in.TokenID, nil),
+			TerminateScope:     true,
+			TryCompleteProcess: true,
+		}, nil
+	}
 	return &Effect{
 		Records:            InstantLifecycle(in.Type, in.ElementID, in.TokenID, nil),
 		TryCompleteProcess: true,

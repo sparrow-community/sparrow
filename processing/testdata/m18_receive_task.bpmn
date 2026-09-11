@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             id="Definitions_receive"
+             targetNamespace="http://sparrow.example/receive">
+  <message id="message_1" name="order.confirmed"/>
+  <process id="Process_receive" name="Receive Task" isExecutable="true">
+    <startEvent id="StartEvent_1">
+      <outgoing>Flow_start_to_recv</outgoing>
+    </startEvent>
+    <receiveTask id="ReceiveTask_1" name="Wait order" messageRef="message_1">
+      <incoming>Flow_start_to_recv</incoming>
+      <outgoing>Flow_recv_to_end</outgoing>
+    </receiveTask>
+    <endEvent id="EndEvent_1">
+      <incoming>Flow_recv_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_recv" sourceRef="StartEvent_1" targetRef="ReceiveTask_1"/>
+    <sequenceFlow id="Flow_recv_to_end" sourceRef="ReceiveTask_1" targetRef="EndEvent_1"/>
+  </process>
+</definitions>

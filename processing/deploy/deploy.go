@@ -3,6 +3,7 @@ package deploy
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/sparrow-community/sparrow/bpmn"
 	"github.com/sparrow-community/sparrow/bpmn/element"
@@ -17,27 +18,28 @@ type Deployment struct {
 	Version int32
 	Process element.Process
 
-	timerCatch        map[string]timerCatch // catch or interrupting timer boundary id
-	messageCatch      map[string]string     // intermediate catch or interrupting message boundary id -> name
-	signalCatch       map[string]string     // intermediate signal catch id -> name
-	throwEvents       map[string]throwSpec  // intermediate throw id -> spec
-	eventSubProcesses map[string]EventSubProcess
-	compensations     map[string]Compensation // activity id -> compensation
-	errorCatch        map[string]string       // error boundary id -> error code (empty = catch-all)
-	errorBoundaries   map[string][]string     // activity id -> error boundary ids
-	errorEnds         map[string]string       // error end event id -> error code
-	compensateEnds    map[string]string       // compensate end event id -> optional activityRef
-	escalationCatch      map[string]string   // escalation boundary id -> code (empty = catch-all)
-	escalationBoundaries map[string][]string // activity id -> escalation boundary ids
-	escalationEnds       map[string]string   // escalation end event id -> code
-	linkCatch            map[string]string   // intermediate link catch id -> link name
-	callActivities      map[string]CallActivity // callActivity id -> spec
-	calledProcessOwner  map[string]string      // called process id -> callActivity id
-	calledProcesses     map[string]element.Process
-	multiInstances      map[string]MultiInstanceSpec
-	incidentThresholds  map[string]int
-	elements            map[string]*elemEntry // flat index of all elements (recursive into subprocesses)
-	seqFlows            map[string]*seqFlowEntry
+	timerCatch           map[string]timerCatch // catch or interrupting timer boundary id
+	messageCatch         map[string]string     // intermediate catch or interrupting message boundary id -> name
+	signalCatch          map[string]string     // intermediate signal catch id -> name
+	throwEvents          map[string]throwSpec  // intermediate throw id -> spec
+	eventSubProcesses    map[string]EventSubProcess
+	compensations        map[string]Compensation // activity id -> compensation
+	errorCatch           map[string]string       // error boundary id -> error code (empty = catch-all)
+	errorBoundaries      map[string][]string     // activity id -> error boundary ids
+	errorEnds            map[string]string       // error end event id -> error code
+	compensateEnds       map[string]string       // compensate end event id -> optional activityRef
+	terminateEnds        map[string]bool         // terminate end event ids
+	escalationCatch      map[string]string       // escalation boundary id -> code (empty = catch-all)
+	escalationBoundaries map[string][]string     // activity id -> escalation boundary ids
+	escalationEnds       map[string]string       // escalation end event id -> code
+	linkCatch            map[string]string       // intermediate link catch id -> link name
+	callActivities       map[string]CallActivity // callActivity id -> spec
+	calledProcessOwner   map[string]string       // called process id -> callActivity id
+	calledProcesses      map[string]element.Process
+	multiInstances       map[string]MultiInstanceSpec
+	incidentThresholds   map[string]int
+	elements             map[string]*elemEntry // flat index of all elements (recursive into subprocesses)
+	seqFlows             map[string]*seqFlowEntry
 }
 
 type elemEntry struct {
@@ -109,6 +111,7 @@ func (d *Deployment) compile(messages []element.Message, signals []element.Signa
 	d.errorBoundaries = make(map[string][]string)
 	d.errorEnds = make(map[string]string)
 	d.compensateEnds = make(map[string]string)
+	d.terminateEnds = make(map[string]bool)
 	d.escalationCatch = make(map[string]string)
 	d.escalationBoundaries = make(map[string][]string)
 	d.escalationEnds = make(map[string]string)
@@ -159,6 +162,10 @@ func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messag
 			d.escalationEnds[e.ID] = code
 		} else if spec, err := compensateEndSpec(e); err == nil {
 			d.compensateEnds[e.ID] = spec.ActivityRef
+		} else if err := terminateEndSpec(e); err == nil {
+			d.terminateEnds[e.ID] = true
+		} else if endHasEventDefinitions(e) {
+			return fmt.Errorf("UNSUPPORTED_ELEMENT: endEvent %q has unsupported event definitions", e.ID)
 		}
 	}
 	for _, e := range fe.UserTasks {
@@ -169,6 +176,38 @@ func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messag
 	}
 	for _, e := range fe.ServiceTasks {
 		reg(e.ID, eventv1.Element_TYPE_SERVICE_TASK, e.Outgoing, e.Incoming)
+		if err := indexMultiInstance(d, e.ID, e.LoopCharacteristicsElements); err != nil {
+			return err
+		}
+		if err := indexIncidentThreshold(d, e.ID, e.ExtensionElements); err != nil {
+			return err
+		}
+	}
+	for _, e := range fe.ManualTasks {
+		reg(e.ID, eventv1.Element_TYPE_MANUAL_TASK, e.Outgoing, e.Incoming)
+		if err := indexMultiInstance(d, e.ID, e.LoopCharacteristicsElements); err != nil {
+			return err
+		}
+	}
+	for _, e := range fe.ReceiveTasks {
+		if e.Instantiate {
+			return fmt.Errorf("UNSUPPORTED_ELEMENT: receiveTask %q instantiate is not supported", e.ID)
+		}
+		reg(e.ID, eventv1.Element_TYPE_RECEIVE_TASK, e.Outgoing, e.Incoming)
+		if err := indexMultiInstance(d, e.ID, e.LoopCharacteristicsElements); err != nil {
+			return err
+		}
+		d.messageCatch[e.ID] = resolveTaskMessageName(e.MessageRef, e.Name, e.ID, messages)
+	}
+	for _, e := range fe.SendTasks {
+		reg(e.ID, eventv1.Element_TYPE_SEND_TASK, e.Outgoing, e.Incoming)
+		if err := indexMultiInstance(d, e.ID, e.LoopCharacteristicsElements); err != nil {
+			return err
+		}
+		d.throwEvents[e.ID] = throwSpec{Kind: ThrowKindMessage, Name: resolveTaskMessageName(e.MessageRef, e.Name, e.ID, messages)}
+	}
+	for _, e := range fe.BusinessRuleTasks {
+		reg(e.ID, eventv1.Element_TYPE_BUSINESS_RULE_TASK, e.Outgoing, e.Incoming)
 		if err := indexMultiInstance(d, e.ID, e.LoopCharacteristicsElements); err != nil {
 			return err
 		}
@@ -312,10 +351,7 @@ func (d *Deployment) indexCallActivities(fe *element.FlowElements, catalog map[s
 }
 
 func validateM1(proc *element.Process, messages []element.Message, signals []element.Signal, errors []element.Error, escalations []element.Escalation) error {
-	unsupported := 0
-	unsupported += len(proc.Tasks) + len(proc.ManualTasks)
-	unsupported += len(proc.SendTasks) + len(proc.ReceiveTasks) + len(proc.BusinessRuleTasks)
-	if unsupported > 0 {
+	if n := countAbstractTasks(&proc.FlowElements); n > 0 {
 		return fmt.Errorf("UNSUPPORTED_ELEMENT: process contains elements outside M1 subset")
 	}
 	if err := validateSubProcesses(&proc.FlowElements, errors, escalations); err != nil {
@@ -750,6 +786,24 @@ func findServiceTaskIn(fe *element.FlowElements, id string) (element.ServiceTask
 	return element.ServiceTask{}, fmt.Errorf("NOT_FOUND: service task %q", id)
 }
 
+func (d *Deployment) BusinessRuleTask(id string) (element.BusinessRuleTask, error) {
+	return findBusinessRuleTaskIn(&d.Process.FlowElements, id)
+}
+
+func findBusinessRuleTaskIn(fe *element.FlowElements, id string) (element.BusinessRuleTask, error) {
+	for _, st := range fe.BusinessRuleTasks {
+		if st.ID == id {
+			return st, nil
+		}
+	}
+	for i := range fe.SubProcesses {
+		if st, err := findBusinessRuleTaskIn(&fe.SubProcesses[i].FlowElements, id); err == nil {
+			return st, nil
+		}
+	}
+	return element.BusinessRuleTask{}, fmt.Errorf("NOT_FOUND: business rule task %q", id)
+}
+
 // ConditionText returns the sequence flow condition body, or empty if none.
 func ConditionText(f element.SequenceFlow) string {
 	switch e := f.ConditionExpression.ExpressionSubstitution.(type) {
@@ -778,6 +832,26 @@ func findActivityDefaultIn(fe *element.FlowElements, id string) string {
 	for i := range fe.ServiceTasks {
 		if fe.ServiceTasks[i].ID == id {
 			return fe.ServiceTasks[i].Default
+		}
+	}
+	for i := range fe.ManualTasks {
+		if fe.ManualTasks[i].ID == id {
+			return fe.ManualTasks[i].Default
+		}
+	}
+	for i := range fe.ReceiveTasks {
+		if fe.ReceiveTasks[i].ID == id {
+			return fe.ReceiveTasks[i].Default
+		}
+	}
+	for i := range fe.SendTasks {
+		if fe.SendTasks[i].ID == id {
+			return fe.SendTasks[i].Default
+		}
+	}
+	for i := range fe.BusinessRuleTasks {
+		if fe.BusinessRuleTasks[i].ID == id {
+			return fe.BusinessRuleTasks[i].Default
 		}
 	}
 	for i := range fe.CallActivities {
@@ -923,28 +997,76 @@ func findExclusiveGatewayIn(fe *element.FlowElements, id string) *element.Exclus
 	return nil
 }
 
+func countAbstractTasks(fe *element.FlowElements) int {
+	n := len(fe.Tasks)
+	for i := range fe.SubProcesses {
+		n += countAbstractTasks(&fe.SubProcesses[i].FlowElements)
+	}
+	return n
+}
+
+func resolveTaskMessageName(messageRef, name, id string, messages []element.Message) string {
+	if n := resolveMessageName(messageRef, messages); n != "" {
+		return n
+	}
+	if n := strings.TrimSpace(name); n != "" {
+		return n
+	}
+	return id
+}
+
 func validateBoundaryHost(proc *element.Process, activityID string) error {
-	for _, e := range proc.UserTasks {
+	if boundaryHostExists(&proc.FlowElements, activityID) {
+		return nil
+	}
+	return fmt.Errorf("UNSUPPORTED_ELEMENT: boundary must attach to a userTask, serviceTask, manualTask, receiveTask, sendTask, businessRuleTask, subProcess, or callActivity (%q)", activityID)
+}
+
+func boundaryHostExists(fe *element.FlowElements, activityID string) bool {
+	for _, e := range fe.UserTasks {
 		if e.ID == activityID {
-			return nil
+			return true
 		}
 	}
-	for _, e := range proc.ServiceTasks {
+	for _, e := range fe.ServiceTasks {
 		if e.ID == activityID {
-			return nil
+			return true
 		}
 	}
-	for _, e := range proc.SubProcesses {
+	for _, e := range fe.ManualTasks {
 		if e.ID == activityID {
-			return nil
+			return true
 		}
 	}
-	for _, e := range proc.CallActivities {
+	for _, e := range fe.ReceiveTasks {
 		if e.ID == activityID {
-			return nil
+			return true
 		}
 	}
-	return fmt.Errorf("UNSUPPORTED_ELEMENT: boundary must attach to a userTask, serviceTask, subProcess, or callActivity (%q)", activityID)
+	for _, e := range fe.SendTasks {
+		if e.ID == activityID {
+			return true
+		}
+	}
+	for _, e := range fe.BusinessRuleTasks {
+		if e.ID == activityID {
+			return true
+		}
+	}
+	for _, e := range fe.SubProcesses {
+		if e.ID == activityID {
+			return true
+		}
+		if boundaryHostExists(&e.FlowElements, activityID) {
+			return true
+		}
+	}
+	for _, e := range fe.CallActivities {
+		if e.ID == activityID {
+			return true
+		}
+	}
+	return false
 }
 
 func validateSubProcesses(fe *element.FlowElements, errors []element.Error, escalations []element.Escalation) error {
