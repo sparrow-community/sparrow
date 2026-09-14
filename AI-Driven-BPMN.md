@@ -1,42 +1,42 @@
 # AI Driven BPMN
 
-Engine first ([`AGENTS.md`](./AGENTS.md)); AI Driven is how agents **consume** the engine — same BPMN definitions, same event log, explicit COMMANDs only.
+This note explains **why Sparrow exists** and **how agents may use it**. It is not an element-completeness roadmap. Element coverage and semantic completeness for OMG BPMN process execution are defined in [`AGENTS.md`](./AGENTS.md) and remain the engine prerequisite.
 
-## Idea
+## Why Sparrow
 
-AI drafts and drives; BPMN is the versioned contract; Sparrow executes and records facts.
+Process work needs a durable, shared contract across people and time: a versioned definition, deterministic execution, and an auditable trail. Agent plans are short-lived. Sparrow is the execution and fact layer—BPMN in, COMMAND → EVENT out—so generated or conversational intent cannot silently rewrite a running contract.
 
 ```text
-Agent / 对话
-    ↓  tools · MCP
-Sparrow（COMMAND → EVENT）
-    ↓
-BPMN 定义 + 事件日志
+Agent / tools / MCP
+        ↓
+   Sparrow (COMMAND → EVENT)
+        ↓
+BPMN definitions + event log
 ```
 
-**生成可变，契约不可默改。** 定义与实例的生效变更必须落 COMMAND/EVENT，不能只在对话里发生。
+Generation may change. The effective definition and instance state change only through COMMAND/EVENT.
 
-## Why BPMN
+## How AI combines with Sparrow
 
-流程需要跨人、跨时间的一致符号与版本；Agent 计划短命，契约层提供共享上下文、责任边界与回放事实。Sparrow 提供：**版本化定义 + 确定性执行 + 审计回放**。
+| Role | Responsibility |
+|------|----------------|
+| Agent | Draft definitions, query instances, assist waits, propose next COMMANDs |
+| Sparrow | Deploy, create instances, complete waits, reject invalid work, recover from the log |
+| BPMN | Versioned contract; agent behavior maps onto existing constructs and extensions |
 
-## Sparrow 的角色
+Drive mode: conversation and tools prepare work; the engine accepts only COMMANDs. Custom agent behavior maps onto Service Task, User Task, and BPMN extensions—not new non-OMG core element types.
 
-- **执行与审计** — Deploy、启停实例、Complete 等待点、REJECTION
-- **Agent 接口** — gRPC（`engine.v1` / `job.v1`）；MCP 等作为外部 consumer
-- **行为映射** — Agent 逻辑落在 Service Task、User Task、BPMN 扩展上
+## Prerequisite
 
-**Drive 模式：** 对话起草定义、查询实例、辅助待办；引擎只收 COMMAND。
+BPMN executable-process completeness ([`AGENTS.md`](./AGENTS.md) Supported / Planned / Excluded) is the foundation. AI Driven consumes that engine; it does not replace Planned element work, invent ledger subjects, or mutate projections outside COMMAND/EVENT.
 
-**前置：** [`AGENTS.md`](./AGENTS.md) § Remaining 中引擎项优先完成。
+## Later consumer work (after / beside Planned)
 
-## 后续（引擎就绪后）
+| Item | Goal |
+|------|------|
+| Task extensions | Agent metadata via extension attributes (not new core types) |
+| Correlation query | Look up instances by business key |
+| Agent playbook | Deploy → create → complete → list events |
+| Failure handling | Align with engine incident semantics |
 
-| 项 | 目标 |
-|----|------|
-| Task extensions | Agent 元数据约定（扩展属性，非新 core 元素） |
-| Correlation 查询 | 按业务键查实例 |
-| Agent 操作指南 | deploy → create → complete → list events |
-| 失败恢复 | 对齐引擎 Incident increment |
-
-AI 相关能力不得绕过 COMMAND/EVENT 或无声改投影。
+AI features must not bypass COMMAND/EVENT or silently rewrite projections.
