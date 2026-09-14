@@ -55,6 +55,25 @@ func (e *Engine) FireDue(ctx context.Context) error {
 			}
 		}
 	}
+	for _, arm := range e.collectDueTimerStarts(now) {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		e.mu.Lock()
+		dep := e.deployments[arm.deploymentID]
+		e.mu.Unlock()
+		if dep == nil {
+			e.consumeOrRearmTimerStart(arm)
+			continue
+		}
+		if _, err := e.createInstanceAt(ctx, dep, arm.startEventID, nil); err != nil {
+			if first == nil {
+				first = err
+			}
+			continue
+		}
+		e.consumeOrRearmTimerStart(arm)
+	}
 	return first
 }
 

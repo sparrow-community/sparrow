@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             id="Definitions_none_and_message"
+             targetNamespace="http://sparrow.example/none_and_message">
+  <message id="message_1" name="order.created"/>
+  <process id="Process_none_and_message" name="None and Message" isExecutable="true">
+    <startEvent id="StartEvent_none">
+      <outgoing>Flow_none_to_end</outgoing>
+    </startEvent>
+    <startEvent id="StartEvent_msg">
+      <outgoing>Flow_msg_to_ut</outgoing>
+      <messageEventDefinition id="MsgStartDef_1" messageRef="message_1"/>
+    </startEvent>
+    <userTask id="UserTask_1" name="From message">
+      <incoming>Flow_msg_to_ut</incoming>
+      <outgoing>Flow_ut_to_end</outgoing>
+    </userTask>
+    <endEvent id="EndEvent_none">
+      <incoming>Flow_none_to_end</incoming>
+    </endEvent>
+    <endEvent id="EndEvent_msg">
+      <incoming>Flow_ut_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_none_to_end" sourceRef="StartEvent_none" targetRef="EndEvent_none"/>
+    <sequenceFlow id="Flow_msg_to_ut" sourceRef="StartEvent_msg" targetRef="UserTask_1"/>
+    <sequenceFlow id="Flow_ut_to_end" sourceRef="UserTask_1" targetRef="EndEvent_msg"/>
+  </process>
+</definitions>

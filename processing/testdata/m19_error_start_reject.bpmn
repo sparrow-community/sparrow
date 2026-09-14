@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             id="Definitions_error_start"
+             targetNamespace="http://sparrow.example/error_start">
+  <error id="error_1" errorCode="E1" name="E1"/>
+  <process id="Process_error_start" name="Error Start Reject" isExecutable="true">
+    <startEvent id="StartEvent_err">
+      <outgoing>Flow_start_to_end</outgoing>
+      <errorEventDefinition id="ErrStartDef_1" errorRef="error_1"/>
+    </startEvent>
+    <endEvent id="EndEvent_1">
+      <incoming>Flow_start_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_end" sourceRef="StartEvent_err" targetRef="EndEvent_1"/>
+  </process>
+</definitions>

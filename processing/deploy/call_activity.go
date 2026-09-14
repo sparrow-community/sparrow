@@ -48,9 +48,9 @@ func validateCallActivity(ca element.CallActivity, catalog map[string]*element.P
 		spec.ExternalCallee = true
 		return spec, nil
 	}
-	startID, err := StartEventID(proc)
+	startID, err := CreateInstanceEntryID(proc)
 	if err != nil {
-		return CallActivity{}, fmt.Errorf("UNSUPPORTED_ELEMENT: callActivity %q called process %q: %v", ca.ID, called, err)
+		return CallActivity{}, fmt.Errorf("UNSUPPORTED_ELEMENT: callActivity %q called process %q must have a none start or instantiate event-based gateway: %v", ca.ID, called, err)
 	}
 	spec.StartEventID = startID
 	return spec, nil

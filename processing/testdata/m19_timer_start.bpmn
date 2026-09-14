@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             id="Definitions_timer_start"
+             targetNamespace="http://sparrow.example/timer_start">
+  <process id="Process_timer_start" name="Timer Start" isExecutable="true">
+    <startEvent id="StartEvent_timer">
+      <outgoing>Flow_start_to_end</outgoing>
+      <timerEventDefinition id="TimerStartDef_1">
+        <timeDuration xsi:type="tFormalExpression">PT0S</timeDuration>
+      </timerEventDefinition>
+    </startEvent>
+    <endEvent id="EndEvent_1">
+      <incoming>Flow_start_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_end" sourceRef="StartEvent_timer" targetRef="EndEvent_1"/>
+  </process>
+</definitions>

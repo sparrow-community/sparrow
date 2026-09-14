@@ -1,12 +1,12 @@
 # Sparrow
 
-Sparrow is a single-node BPMN **execution engine**. It executes OMG BPMN 2.0 **process** models, records every accepted behavior on an append-only event log, and rebuilds state by replay. Event = behavior; Element = subject.
+Sparrow is a single-node BPMN **execution engine**. Completeness targets the OMG BPMN 2.0 **executable process** subset (process FlowElements and event definitions that carry runtime token behavior)—not Collaboration, Choreography, or the full meta-model. It records every accepted behavior on an append-only event log and rebuilds state by replay. Event = behavior; Element = subject.
 
 ## Purpose
 
 Sparrow provides three properties together:
 
-1. **Element coverage** — Every executable process FlowElement and event-definition combination is either Supported or Excluded. Unsupported combinations are rejected at deploy. Silence is not exclusion.
+1. **Element coverage** — Every executable-process FlowElement and event-definition combination is either Supported or Excluded. Unsupported combinations are rejected at deploy. Silence is not exclusion.
 2. **Semantic completeness** — Each Supported combination implements the BPMN runtime semantics required for that combination (token movement, waits, throws, joins, scopes, boundaries, multi-instance, compensation, and related rules). Deploy acceptance alone is insufficient.
 3. **Executable lightness** — The engine runs processes through COMMAND → EVENT with Recover, jobs, messages, timers, and incidents. It stays a ledger-backed execution kernel: no modeler, ops console, cluster, or choreography/collaboration runtime.
 
@@ -24,9 +24,9 @@ Work proceeds `/speckit-specify` → plan → tasks → implement (`.cursor/skil
 
 ## Supported
 
-Process lifecycle; User Task; Service Task + Job; Manual / Receive / Send / Business Rule Task; exclusive / parallel / inclusive / event-based gateways (catch, including exclusive instantiate entry); SubProcess; Call Activity (child instance, IO mapping, cross-deployment, boundary and compensation parity, multi-instance); Event Sub-Process (including nested); intermediate and boundary catches/throws for timer, message, signal, error, escalation, compensate (multiple same-kind boundaries); link throw/catch; conditional sequence flows on activities and gateways; terminate end; compensation into an unfinished embedded SubProcess; multi-instance on User Task, Service Task, Manual / Receive / Send / Business Rule, SubProcess, Call Activity; incident open / resolve / retry; coexisting process revisions.
+Process lifecycle; process-level none start and typed starts (message, timer, signal, conditional — CreateInstance only for none / instantiate exclusive EBG; typed mint via PublishMessage / PublishSignal / FireDue / EvaluateConditionalStarts); User Task; Service Task + Job; Manual / Receive / Send / Business Rule Task; exclusive / parallel / inclusive / event-based gateways (catch, including exclusive instantiate entry); SubProcess; Call Activity (child instance, IO mapping, cross-deployment, boundary and compensation parity, multi-instance; called process requires none start or instantiate EBG); Event Sub-Process (including nested); intermediate and boundary catches/throws for timer, message, signal, error, escalation, compensate (multiple same-kind boundaries); link throw/catch; conditional sequence flows on activities and gateways; terminate end; compensation into an unfinished embedded SubProcess; multi-instance on User Task, Service Task, Manual / Receive / Send / Business Rule, SubProcess, Call Activity; incident open / resolve / retry; coexisting process revisions.
 
-Shipped: M1–M4c, specs [`001`](./specs/001-engine-completeness/)–[`014`](./specs/014-terminate-and-tasks/).
+Shipped: M1–M4c, specs [`001`](./specs/001-engine-completeness/)–[`015`](./specs/015-process-typed-start/).
 
 ## Planned
 
@@ -34,7 +34,6 @@ Open executable-process gaps. Priority guides sequencing; a feature plan may reo
 
 | P | Topic |
 |---|--------|
-| 1 | Process-level typed start: message, timer, signal, conditional, error |
 | 1 | Message end; signal end |
 | 1 | Conditional catch: intermediate and boundary |
 | 1 | Script Task |
@@ -78,7 +77,7 @@ Non-goals. Moving an item out of Excluded requires an AGENTS and constitution am
 
 ## API and persistence
 
-`Deploy` · `CreateInstance` · `Complete` · `ThrowError` · `ResolveIncident` · `FireDue` · `PublishMessage` · `PublishSignal` · Job Activate / Fail / Heartbeat · `GetInstance` · `ListEvents`
+`Deploy` · `CreateInstance` · `Complete` · `ThrowError` · `ResolveIncident` · `FireDue` · `PublishMessage` · `PublishSignal` · `EvaluateConditionalStarts` · Job Activate / Fail / Heartbeat · `GetInstance` · `ListEvents`
 
 `EventLog` + `deploy.Store` + optional `runtime.Store` · `Recover` / `Open` · gRPC in `gateway` only
 

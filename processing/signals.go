@@ -37,6 +37,9 @@ func (e *Engine) PublishSignal(ctx context.Context, req PublishSignalRequest) (i
 	scopeWaiters := e.collectScopeSignalWaiters(name, instanceID)
 	eventSubProcessWaiters := e.collectEventSubProcessSignalArms(name, instanceID)
 	if len(waiters) == 0 && len(scopeWaiters) == 0 && len(eventSubProcessWaiters) == 0 {
+		if instanceID == "" {
+			return e.createSignalStartInstances(ctx, name, req.Variables)
+		}
 		return 0, nil
 	}
 	delivered := 0
@@ -82,6 +85,9 @@ func (e *Engine) PublishSignal(ctx context.Context, req PublishSignalRequest) (i
 	}
 	if delivered == 0 && first != nil {
 		return 0, first
+	}
+	if delivered == 0 && instanceID == "" {
+		return e.createSignalStartInstances(ctx, name, req.Variables)
 	}
 	return delivered, first
 }

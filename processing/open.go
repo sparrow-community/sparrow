@@ -26,6 +26,7 @@ func Recover(ctx context.Context, l eventlog.EventLog, depStore deploy.Store, rt
 	if err := e.loadDeployments(); err != nil {
 		return nil, err
 	}
+	e.rearmAllProcessTimerStarts()
 	if err := e.replay(ctx); err != nil {
 		return nil, err
 	}

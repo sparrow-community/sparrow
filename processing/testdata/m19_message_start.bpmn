@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             id="Definitions_message_start"
+             targetNamespace="http://sparrow.example/message_start">
+  <message id="message_1" name="order.created"/>
+  <process id="Process_message_start" name="Message Start" isExecutable="true">
+    <startEvent id="StartEvent_msg">
+      <outgoing>Flow_start_to_ut</outgoing>
+      <messageEventDefinition id="MsgStartDef_1" messageRef="message_1"/>
+    </startEvent>
+    <userTask id="UserTask_1" name="Handle">
+      <incoming>Flow_start_to_ut</incoming>
+      <outgoing>Flow_ut_to_end</outgoing>
+    </userTask>
+    <endEvent id="EndEvent_1">
+      <incoming>Flow_ut_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_ut" sourceRef="StartEvent_msg" targetRef="UserTask_1"/>
+    <sequenceFlow id="Flow_ut_to_end" sourceRef="UserTask_1" targetRef="EndEvent_1"/>
+  </process>
+</definitions>

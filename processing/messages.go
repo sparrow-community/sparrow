@@ -57,6 +57,15 @@ func (e *Engine) PublishMessage(ctx context.Context, req PublishMessageRequest) 
 	scopeWaiters := e.collectScopeMessageWaiters(name, instanceID, keys)
 	eventSubProcessWaiters := e.collectEventSubProcessMessageArms(name, instanceID, keys)
 	if len(waiters) == 0 && len(scopeWaiters) == 0 && len(eventSubProcessWaiters) == 0 {
+		if instanceID == "" {
+			created, err := e.createMessageStartInstances(ctx, name, req.Variables)
+			if created > 0 {
+				return created, err
+			}
+			if err != nil {
+				return 0, err
+			}
+		}
 		if err := e.enqueueBuffered(name, instanceID, keys, req.Variables); err != nil {
 			return 0, err
 		}
@@ -107,6 +116,15 @@ func (e *Engine) PublishMessage(ctx context.Context, req PublishMessageRequest) 
 		return 0, first
 	}
 	if delivered == 0 {
+		if instanceID == "" {
+			created, err := e.createMessageStartInstances(ctx, name, req.Variables)
+			if created > 0 {
+				return created, err
+			}
+			if err != nil {
+				return 0, err
+			}
+		}
 		if err := e.enqueueBuffered(name, instanceID, keys, req.Variables); err != nil {
 			return 0, err
 		}

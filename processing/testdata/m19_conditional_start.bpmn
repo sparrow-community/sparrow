@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             id="Definitions_conditional_start"
+             targetNamespace="http://sparrow.example/conditional_start">
+  <process id="Process_conditional_start" name="Conditional Start" isExecutable="true">
+    <startEvent id="StartEvent_cond">
+      <outgoing>Flow_start_to_end</outgoing>
+      <conditionalEventDefinition id="CondStartDef_1">
+        <condition xsi:type="tFormalExpression">${approved == true}</condition>
+      </conditionalEventDefinition>
+    </startEvent>
+    <endEvent id="EndEvent_1">
+      <incoming>Flow_start_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_end" sourceRef="StartEvent_cond" targetRef="EndEvent_1"/>
+  </process>
+</definitions>

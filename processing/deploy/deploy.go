@@ -40,6 +40,12 @@ type Deployment struct {
 	incidentThresholds   map[string]int
 	elements             map[string]*elemEntry // flat index of all elements (recursive into subprocesses)
 	seqFlows             map[string]*seqFlowEntry
+
+	noneStartID       string
+	messageStarts     map[string][]string // message name -> start event ids
+	signalStarts      map[string][]string // signal name -> start event ids
+	timerStarts       map[string]timerCatch
+	conditionalStarts map[string]string // start event id -> condition text
 }
 
 type elemEntry struct {
@@ -122,8 +128,15 @@ func (d *Deployment) compile(messages []element.Message, signals []element.Signa
 	d.multiInstances = make(map[string]MultiInstanceSpec)
 	d.elements = make(map[string]*elemEntry)
 	d.seqFlows = make(map[string]*seqFlowEntry)
+	d.messageStarts = make(map[string][]string)
+	d.signalStarts = make(map[string][]string)
+	d.timerStarts = make(map[string]timerCatch)
+	d.conditionalStarts = make(map[string]string)
 
 	if err := d.indexScope(&p.FlowElements, p.ID, messages, signals, errors, escalations, collectAssociations(p)); err != nil {
+		return err
+	}
+	if err := d.indexProcessLevelStarts(p, messages, signals); err != nil {
 		return err
 	}
 	d.elements[p.ID] = &elemEntry{Type: eventv1.Element_TYPE_PROCESS, ScopeID: ""}

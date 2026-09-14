@@ -3,6 +3,7 @@ package processing
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -38,6 +39,9 @@ type Engine struct {
 	msgMu  sync.Mutex
 	msgBuf []bufferedMessage
 
+	timerStartMu   sync.Mutex
+	timerStartArms map[string]timerStartArm // key: deploymentID/startEventID
+
 	seenMu sync.Mutex
 	seen   map[string]struct{}
 
@@ -49,14 +53,15 @@ func NewEngine(l eventlog.EventLog) *Engine {
 		l = eventlog.NewMemory()
 	}
 	e := &Engine{
-		log:         l,
-		deployments: make(map[string]*deploy.Deployment),
-		revisions:   make(map[string][]deploy.Revision),
-		instances:   make(map[string]*projection.Instance),
-		instMu:      make(map[string]*sync.Mutex),
-		leases:      make(map[string]jobLease),
-		jobWake:     make(chan struct{}, 1),
-		seen:        make(map[string]struct{}),
+		log:            l,
+		deployments:    make(map[string]*deploy.Deployment),
+		revisions:      make(map[string][]deploy.Revision),
+		instances:      make(map[string]*projection.Instance),
+		instMu:         make(map[string]*sync.Mutex),
+		leases:         make(map[string]jobLease),
+		jobWake:        make(chan struct{}, 1),
+		timerStartArms: make(map[string]timerStartArm),
+		seen:           make(map[string]struct{}),
 	}
 	e.executor = NewExecutor(handlers.DefaultRegistry())
 	e.executor.Now = e.now
@@ -82,6 +87,7 @@ func (e *Engine) Deploy(_ context.Context, bpmnXML []byte) (string, error) {
 	e.deployments[id] = dep
 	e.revisions = deploy.AssignProcessVersions(e.deployments)
 	e.mu.Unlock()
+	e.armProcessTimerStarts(dep)
 	return id, nil
 }
 
@@ -107,11 +113,22 @@ func (e *Engine) CreateInstanceRequest(ctx context.Context, req CreateInstanceRe
 	if err != nil {
 		return "", err
 	}
-	deploymentID := dep.ID
-
-	startID, err := dep.StartEventID()
+	startID, err := dep.CreateInstanceEntryID()
 	if err != nil {
 		return "", err
+	}
+	return e.createInstanceAt(ctx, dep, startID, req.Variables)
+}
+
+// createInstanceAt mints a process instance and enters at startElementID (none or typed start).
+func (e *Engine) createInstanceAt(ctx context.Context, dep *deploy.Deployment, startElementID string, vars map[string]any) (string, error) {
+	if dep == nil {
+		return "", fmt.Errorf("NOT_FOUND: deployment")
+	}
+	deploymentID := dep.ID
+	startID := strings.TrimSpace(startElementID)
+	if startID == "" {
+		return "", fmt.Errorf("INVALID_ARGUMENT: start element is required")
 	}
 
 	instanceID, err := NextID()
@@ -127,7 +144,7 @@ func (e *Engine) CreateInstanceRequest(ctx context.Context, req CreateInstanceRe
 		return "", err
 	}
 
-	pv, err := projection.VariablesFromMap(req.Variables)
+	pv, err := projection.VariablesFromMap(vars)
 	if err != nil {
 		return "", err
 	}
@@ -402,6 +419,18 @@ func (e *Engine) GetInstance(instanceID string) (*projection.Instance, bool) {
 	lock.Lock()
 	defer lock.Unlock()
 	return inst.Clone(), true
+}
+
+// ListInstanceIDs returns known process instance ids (sorted).
+func (e *Engine) ListInstanceIDs() []string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	out := make([]string, 0, len(e.instances))
+	for id := range e.instances {
+		out = append(out, id)
+	}
+	sort.Strings(out)
+	return out
 }
 
 func (e *Engine) ListEvents(ctx context.Context, processInstanceID string) ([]*eventv1.Event, error) {

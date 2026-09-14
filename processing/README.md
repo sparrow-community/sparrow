@@ -29,7 +29,7 @@ New element: handler + registry + deploy validation. Semantics stay out of `engi
 
 | Type | Behavior |
 |------|----------|
-| Process / Start / End | Lifecycle; end tries scope/process complete; **terminate end** cancels remaining tokens in the enclosing scope then completes it |
+| Process / Start / End | Lifecycle; **process-level typed starts** (message/timer/signal/conditional) mint via PublishMessage / PublishSignal / FireDue / EvaluateConditionalStarts; CreateInstance uses none start or instantiate EBG only; process-level error start rejected; end tries scope/process complete; **terminate end** cancels remaining tokens in the enclosing scope then completes it |
 | UserTask / ManualTask | Wait → Complete; MI supported |
 | ServiceTask / BusinessRuleTask | Wait as Job → Complete; MI supported |
 | SendTask | Publish message then continue |

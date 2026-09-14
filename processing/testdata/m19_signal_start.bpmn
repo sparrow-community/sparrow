@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             id="Definitions_signal_start"
+             targetNamespace="http://sparrow.example/signal_start">
+  <signal id="signal_1" name="go.ahead"/>
+  <process id="Process_signal_start" name="Signal Start" isExecutable="true">
+    <startEvent id="StartEvent_sig">
+      <outgoing>Flow_start_to_end</outgoing>
+      <signalEventDefinition id="SigStartDef_1" signalRef="signal_1"/>
+    </startEvent>
+    <endEvent id="EndEvent_1">
+      <incoming>Flow_start_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_end" sourceRef="StartEvent_sig" targetRef="EndEvent_1"/>
+  </process>
+</definitions>
