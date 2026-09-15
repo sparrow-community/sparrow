@@ -18,6 +18,7 @@ const (
 	CatchKindSignal      CatchKind = "signal"
 	CatchKindError       CatchKind = "error"
 	CatchKindEscalation  CatchKind = "escalation"
+	CatchKindCompensate  CatchKind = "compensate"
 	CatchKindLink        CatchKind = "link"
 	CatchKindConditional CatchKind = "conditional"
 )

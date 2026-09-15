@@ -341,6 +341,10 @@ func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messag
 					if tc, err := timerCatchFromDefs(spec.StartEventID, sp.StartEvents[0].EventDefinitions); err == nil {
 						d.timerCatch[spec.StartEventID] = tc
 					}
+				case CatchKindCompensate:
+					if err := d.registerCompensationEventSubProcess(scopeID, spec, d.Process.ID); err != nil {
+						return err
+					}
 				}
 			}
 		}

@@ -38,6 +38,9 @@ func emitEventSubProcessStartArms(
 		return nil
 	}
 	for _, spec := range dep.EventSubProcessesInScope(scopeID) {
+		if spec.Kind == deploy.CatchKindCompensate {
+			continue
+		}
 		if eventSubProcessRunning(dep, inst, spec.ID) {
 			continue
 		}

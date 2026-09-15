@@ -173,6 +173,20 @@ type PendingCompensation struct {
 	ActiveTokenID  string
 	ActiveHandler  string
 	Consumed       []string // boundary ids consumed by this throw
+	// Parent is the outer pending throw when this compensation runs as a nested
+	// throw (for example inside a compensation event sub-process).
+	Parent *PendingCompensation
+}
+
+func clonePendingCompensation(pc *PendingCompensation) *PendingCompensation {
+	if pc == nil {
+		return nil
+	}
+	out := *pc
+	out.Queue = append([]string{}, pc.Queue...)
+	out.Consumed = append([]string{}, pc.Consumed...)
+	out.Parent = clonePendingCompensation(pc.Parent)
+	return &out
 }
 
 func NewInstance(id, deploymentID string, version int32) *Instance {
@@ -259,10 +273,7 @@ func (inst *Instance) Clone() *Instance {
 		out.CompensationSubs[k] = &cp
 	}
 	if inst.PendingCompensation != nil {
-		pc := *inst.PendingCompensation
-		pc.Queue = append([]string{}, inst.PendingCompensation.Queue...)
-		pc.Consumed = append([]string{}, inst.PendingCompensation.Consumed...)
-		out.PendingCompensation = &pc
+		out.PendingCompensation = clonePendingCompensation(inst.PendingCompensation)
 	}
 	for k, loop := range inst.MultiInstanceLoops {
 		if loop == nil {
