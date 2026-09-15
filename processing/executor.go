@@ -513,6 +513,7 @@ func (x *Executor) tryCompleteScope(ctx context.Context, dep *deploy.Deployment,
 		completeTokenID = tokenID
 	}
 	// Drop finished child tokens; host (if any) continues via OnComplete.
+	// Emit TERMINATED so Recover replay does not revive EndEvent children.
 	for tid, tok := range inst.Tokens {
 		if tok == nil || tid == completeTokenID {
 			continue
@@ -525,7 +526,23 @@ func (x *Executor) tryCompleteScope(ctx context.Context, dep *deploy.Deployment,
 		}
 		tokScope, _ := dep.ScopeOf(tok.ElementID)
 		if tokScope == scopeID || isInScope(dep, tokScope, scopeID) {
-			delete(inst.Tokens, tid)
+			typ, err := dep.TypeOf(tok.ElementID)
+			if err != nil {
+				return nil, err
+			}
+			for _, intent := range []eventv1.Element_Intent{
+				eventv1.Element_INTENT_TERMINATING,
+				eventv1.Element_INTENT_TERMINATED,
+			} {
+				if err := emit(&eventv1.Element{
+					Intent:  intent,
+					Type:    typ,
+					Id:      tok.ElementID,
+					TokenId: tid,
+				}); err != nil {
+					return nil, err
+				}
+			}
 		}
 	}
 	// All tokens in this scope are at EndEvents; disarm scope boundaries and complete
@@ -575,11 +592,16 @@ func (x *Executor) tryCompleteScope(ctx context.Context, dep *deploy.Deployment,
 		delete(inst.Tokens, completeTokenID)
 	}
 	if dep.IsEventSubProcess(scopeID) {
-		if spec, ok := dep.EventSubProcessSpec(scopeID); ok && !spec.Interrupting {
+		if spec, ok := dep.EventSubProcessSpec(scopeID); ok && !spec.Interrupting && spec.Kind != deploy.CatchKindCompensate {
 			if err := emit(eventSubProcessStartActivated(dep, spec, x.now())); err != nil {
 				return pubs, err
 			}
 		}
+	}
+	if effect.AdvanceCompensation {
+		more, err := x.advanceCompensation(ctx, dep, inst, emit)
+		pubs = append(pubs, more...)
+		return pubs, err
 	}
 	if effect.TryCompleteProcess {
 		more, err := x.tryCompleteProcessScope(dep, inst, emit)
@@ -649,6 +671,11 @@ func (x *Executor) startCompensation(
 		return nil, err
 	}
 	throwScope, _ := dep.ScopeOf(throwElementID)
+	// Compensate throws inside a compensation event sub-process undo work in the
+	// enclosing compensated SubProcess, not inside the event sub-process itself.
+	if esp, ok := dep.EventSubProcessSpec(throwScope); ok && esp.Kind == deploy.CatchKindCompensate {
+		throwScope = esp.ParentScopeID
+	}
 
 	type item struct {
 		boundaryID string
@@ -753,6 +780,7 @@ func (x *Executor) startCompensation(
 		ThrowElementID: throwElementID,
 		Queue:          queue,
 		Consumed:       consumed,
+		Parent:         inst.PendingCompensation,
 	}
 	return x.advanceCompensation(ctx, dep, inst, emit)
 }
@@ -842,7 +870,7 @@ func (x *Executor) advanceCompensation(
 	}
 	if len(pc.Queue) == 0 {
 		throwTok, throwEl := pc.ThrowTokenID, pc.ThrowElementID
-		inst.PendingCompensation = nil
+		inst.PendingCompensation = pc.Parent
 		return x.Complete(ctx, dep, inst, throwTok, throwEl, nil, emit)
 	}
 	handler := pc.Queue[0]

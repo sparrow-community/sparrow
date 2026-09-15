@@ -87,10 +87,15 @@ func (SubProcessHandler) OnComplete(in CompleteInput) (*Effect, error) {
 		},
 	}
 	if in.Deployment != nil && in.Deployment.IsEventSubProcess(in.ElementID) {
-		// Event sub-process has no outgoing sequence flow; drop the token and
-		// try to complete the enclosing process/scope.
+		// Event sub-process has no outgoing sequence flow; drop the token.
+		// Compensation event sub-process advances the pending compensate throw;
+		// other event sub-processes try to complete the enclosing scope.
 		effect.DiscardToken = true
-		effect.TryCompleteProcess = true
+		if in.Deployment.IsCompensationHandler(in.ElementID) {
+			effect.AdvanceCompensation = true
+		} else {
+			effect.TryCompleteProcess = true
+		}
 		return effect, nil
 	}
 	if _, ok := in.Deployment.MultiInstanceSpec(in.ElementID); ok && in.Token != nil && in.Token.ScopeHost && !in.Token.MultiInstanceHost {

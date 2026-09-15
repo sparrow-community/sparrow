@@ -109,7 +109,8 @@ func (d *Deployment) CompensationByBoundary(boundaryID string) (Compensation, bo
 	return Compensation{}, false
 }
 
-// IsCompensationHandler reports whether id is a compensation handler activity.
+// IsCompensationHandler reports whether id is a compensation handler activity
+// (isForCompensation task) or a compensation event sub-process.
 func (d *Deployment) IsCompensationHandler(id string) bool {
 	for _, c := range d.compensations {
 		if c.HandlerID == id {
@@ -117,6 +118,28 @@ func (d *Deployment) IsCompensationHandler(id string) bool {
 		}
 	}
 	return false
+}
+
+// registerCompensationEventSubProcess links an enclosing SubProcess to its
+// compensation event sub-process handler (subscription key = compensate start id).
+func (d *Deployment) registerCompensationEventSubProcess(parentScopeID string, spec EventSubProcess, processID string) error {
+	if parentScopeID == "" || parentScopeID == processID {
+		return fmt.Errorf("UNSUPPORTED_ELEMENT: compensation event subProcess %q must be nested in an embedded subProcess", spec.ID)
+	}
+	if existing, ok := d.compensations[parentScopeID]; ok {
+		return fmt.Errorf("UNSUPPORTED_ELEMENT: subProcess %q already has compensation handler %q; cannot also use compensation event subProcess %q", parentScopeID, existing.HandlerID, spec.ID)
+	}
+	for _, other := range d.eventSubProcesses {
+		if other.Kind == CatchKindCompensate && other.ParentScopeID == parentScopeID && other.ID != spec.ID {
+			return fmt.Errorf("UNSUPPORTED_ELEMENT: subProcess %q already has compensation event subProcess %q", parentScopeID, other.ID)
+		}
+	}
+	d.compensations[parentScopeID] = Compensation{
+		BoundaryID: spec.StartEventID,
+		ActivityID: parentScopeID,
+		HandlerID:  spec.ID,
+	}
+	return nil
 }
 
 // CompensateActivityRef returns optional activityRef on a compensate throw/end (empty = all in scope).

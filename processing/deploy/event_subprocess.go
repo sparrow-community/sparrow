@@ -89,7 +89,30 @@ func eventSubProcessStartSpec(subProcessID string, start element.StartEvent, mes
 		spec.EscalationCode = code
 		return spec, nil
 	}
-	return EventSubProcess{}, fmt.Errorf("UNSUPPORTED_ELEMENT: event subProcess %q startEvent must be message, signal, timer, error, or escalation", subProcessID)
+	if len(start.CompensateEventDefinitions) > 0 {
+		if err := compensateEventSubProcessStartFromDefs(start.ID, start.EventDefinitions); err != nil {
+			return EventSubProcess{}, fmt.Errorf("UNSUPPORTED_ELEMENT: event subProcess %q startEvent: %v", subProcessID, err)
+		}
+		spec.Kind = CatchKindCompensate
+		// Compensation event sub-process starts are never interrupting live waits.
+		spec.Interrupting = false
+		return spec, nil
+	}
+	return EventSubProcess{}, fmt.Errorf("UNSUPPORTED_ELEMENT: event subProcess %q startEvent must be message, signal, timer, error, escalation, or compensate", subProcessID)
+}
+
+func compensateEventSubProcessStartFromDefs(startEventID string, defs element.EventDefinitions) error {
+	if len(defs.CompensateEventDefinitions) != 1 {
+		return fmt.Errorf("startEvent %q must have exactly one compensateEventDefinition", startEventID)
+	}
+	other := extraCatchDefinitions(defs) - len(defs.CompensateEventDefinitions)
+	if other > 0 {
+		return fmt.Errorf("startEvent %q must be a compensate start", startEventID)
+	}
+	if ref := strings.TrimSpace(defs.CompensateEventDefinitions[0].ActivityRef); ref != "" {
+		return fmt.Errorf("startEvent %q compensateEventDefinition activityRef is not supported", startEventID)
+	}
+	return nil
 }
 
 func errorStartCatchFromDefs(startEventID string, defs element.EventDefinitions, errors []element.Error) (string, error) {
