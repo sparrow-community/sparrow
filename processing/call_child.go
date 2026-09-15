@@ -189,13 +189,19 @@ func (e *Engine) resumeParentCall(ctx context.Context, p handlers.Publication) e
 
 	if !p.Completed {
 		lock.Lock()
-		defer lock.Unlock()
 		tok := parent.Tokens[p.HostTokenID]
 		if tok == nil || tok.ElementID != p.CallActivityID || tok.Status != projection.TokenWaiting {
-			return nil
+			// Host may already be gone; still continue parent unfinished-call compensation.
+			pubs, err := e.continueParentAfterUnfinishedCallChild(ctx, parent, callerDep, lock)
+			lock.Unlock()
+			if err != nil {
+				return err
+			}
+			return e.flushPublications(ctx, pubs)
 		}
 		cmdID, err := NextID()
 		if err != nil {
+			lock.Unlock()
 			return err
 		}
 		cmd := &eventv1.Event{
@@ -213,6 +219,7 @@ func (e *Engine) resumeParentCall(ctx context.Context, p handlers.Publication) e
 			},
 		}
 		if _, err := e.log.Append(ctx, cmd); err != nil {
+			lock.Unlock()
 			return err
 		}
 		emit := e.emitter(ctx, parent, cmdID)
@@ -229,10 +236,16 @@ func (e *Engine) resumeParentCall(ctx context.Context, p handlers.Publication) e
 					ActivityPayload: &eventv1.ActivityPayload{CalledProcessInstanceId: p.ChildInstanceID},
 				},
 			}); err != nil {
+				lock.Unlock()
 				return err
 			}
 		}
-		return nil
+		pubs, err := e.continueParentAfterUnfinishedCallChild(ctx, parent, callerDep, lock)
+		lock.Unlock()
+		if err != nil {
+			return err
+		}
+		return e.flushPublications(ctx, pubs)
 	}
 
 	var outVars map[string]any
@@ -338,4 +351,188 @@ func terminateChildPub(tok *projection.Token, callActivityID string) *handlers.P
 		CallActivityID:  callActivityID,
 		HostTokenID:     tok.ID,
 	}
+}
+
+// continueParentAfterUnfinishedCallChild decrements WaitingChildren and advances
+// parent compensation when all unfinished Call Activity children are done.
+// Caller must hold parent instance lock.
+func (e *Engine) continueParentAfterUnfinishedCallChild(
+	ctx context.Context,
+	parent *projection.Instance,
+	callerDep *deploy.Deployment,
+	_ *sync.Mutex,
+) ([]handlers.Publication, error) {
+	if parent == nil || callerDep == nil {
+		return nil, nil
+	}
+	if parent.PendingCompensation == nil {
+		parent.PendingCompensation = rebuildPendingCompensation(parent, callerDep)
+	}
+	pc := parent.PendingCompensation
+	if pc == nil {
+		return nil, nil
+	}
+	if pc.WaitingChildren > 0 {
+		pc.WaitingChildren--
+	}
+	if pc.WaitingChildren > 0 {
+		return nil, nil
+	}
+	cmdID, err := NextID()
+	if err != nil {
+		return nil, err
+	}
+	cmd := &eventv1.Event{
+		Id:                cmdID,
+		Timestamp:         nowMillis(),
+		RecordType:        eventv1.Event_RECORD_TYPE_COMMAND,
+		DeploymentId:      parent.DeploymentID,
+		ProcessInstanceId: parent.ID,
+		ProcessVersion:    parent.Version,
+		Element: &eventv1.Element{
+			Intent:  eventv1.Element_INTENT_COMPLETING,
+			Type:    eventv1.Element_TYPE_INTERMEDIATE_THROW_EVENT,
+			Id:      pc.ThrowElementID,
+			TokenId: pc.ThrowTokenID,
+		},
+	}
+	if _, err := e.log.Append(ctx, cmd); err != nil {
+		return nil, err
+	}
+	emit := e.emitter(ctx, parent, cmdID)
+	return e.executor.advanceCompensation(ctx, callerDep, parent, emit)
+}
+
+func (e *Engine) compensateUnfinishedChild(ctx context.Context, p handlers.Publication) error {
+	childID := p.ChildInstanceID
+	if childID == "" {
+		return e.resumeParentCall(ctx, handlers.Publication{
+			Kind:             handlers.PublicationResumeParent,
+			ParentInstanceID: p.ParentInstanceID,
+			CallActivityID:   p.CallActivityID,
+			HostTokenID:      p.HostTokenID,
+			ChildInstanceID:  childID,
+			Completed:        false,
+		})
+	}
+	e.mu.Lock()
+	inst := e.instances[childID]
+	lock := e.instMu[childID]
+	var dep *deploy.Deployment
+	if inst != nil {
+		dep = e.deployments[inst.DeploymentID]
+	}
+	e.mu.Unlock()
+	if inst == nil || dep == nil || lock == nil || inst.Status != projection.StatusActive {
+		return e.resumeParentCall(ctx, handlers.Publication{
+			Kind:             handlers.PublicationResumeParent,
+			ParentInstanceID: p.ParentInstanceID,
+			CallActivityID:   p.CallActivityID,
+			HostTokenID:      p.HostTokenID,
+			ChildInstanceID:  childID,
+			Completed:        false,
+		})
+	}
+
+	lock.Lock()
+	cmdID, err := NextID()
+	if err != nil {
+		lock.Unlock()
+		return err
+	}
+	pid := inst.ProcessID
+	if pid == "" {
+		pid = dep.ProcessID()
+	}
+	cmd := &eventv1.Event{
+		Id:                cmdID,
+		Timestamp:         nowMillis(),
+		RecordType:        eventv1.Event_RECORD_TYPE_COMMAND,
+		DeploymentId:      inst.DeploymentID,
+		ProcessInstanceId: childID,
+		ProcessVersion:    inst.Version,
+		Element: &eventv1.Element{
+			Intent: eventv1.Element_INTENT_TERMINATING,
+			Type:   eventv1.Element_TYPE_PROCESS,
+			Id:     pid,
+		},
+	}
+	if _, err := e.log.Append(ctx, cmd); err != nil {
+		lock.Unlock()
+		return err
+	}
+	emit := e.emitter(ctx, inst, cmdID)
+
+	if err := terminateScopeTokens(dep, inst, pid, emit, scopeTerminateOpts{
+		IncludeHost: false,
+		DropTokens:  true,
+	}); err != nil {
+		lock.Unlock()
+		return err
+	}
+	inst.RemoveScopeBoundariesForScope(pid)
+	if err := emitEventSubProcessStartDisarmInScope(dep, pid, inst, emit); err != nil {
+		lock.Unlock()
+		return err
+	}
+
+	type item struct {
+		boundaryID string
+		handlerID  string
+		seq        int64
+	}
+	var items []item
+	for bid, sub := range inst.CompensationSubs {
+		if sub == nil {
+			continue
+		}
+		c, ok := dep.CompensationByBoundary(bid)
+		if !ok {
+			continue
+		}
+		items = append(items, item{boundaryID: bid, handlerID: c.HandlerID, seq: sub.Seq})
+	}
+	for i := 0; i < len(items); i++ {
+		for j := i + 1; j < len(items); j++ {
+			if items[j].seq > items[i].seq {
+				items[i], items[j] = items[j], items[i]
+			}
+		}
+	}
+	queue := make([]string, 0, len(items))
+	consumed := make([]string, 0, len(items))
+	for _, it := range items {
+		queue = append(queue, it.handlerID)
+		consumed = append(consumed, it.boundaryID)
+	}
+	for _, bid := range consumed {
+		if err := emit(&eventv1.Element{
+			Intent: eventv1.Element_INTENT_COMPLETING,
+			Type:   eventv1.Element_TYPE_BOUNDARY_EVENT,
+			Id:     bid,
+		}); err != nil {
+			lock.Unlock()
+			return err
+		}
+		if err := emit(&eventv1.Element{
+			Intent: eventv1.Element_INTENT_COMPLETED,
+			Type:   eventv1.Element_TYPE_BOUNDARY_EVENT,
+			Id:     bid,
+		}); err != nil {
+			lock.Unlock()
+			return err
+		}
+	}
+
+	inst.PendingCompensation = &projection.PendingCompensation{
+		Queue:                      queue,
+		Consumed:                   consumed,
+		NotifyParentUnfinishedCall: true,
+	}
+	pubs, err := e.executor.advanceCompensation(ctx, dep, inst, emit)
+	lock.Unlock()
+	if err != nil {
+		return err
+	}
+	return e.flushPublications(ctx, pubs)
 }

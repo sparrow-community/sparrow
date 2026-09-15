@@ -206,6 +206,10 @@ func (e *Engine) flushPublications(ctx context.Context, pubs []handlers.Publicat
 			if err := e.terminateCalledInstance(ctx, p.ChildInstanceID); err != nil {
 				return err
 			}
+		case handlers.PublicationCompensateUnfinishedChild:
+			if err := e.compensateUnfinishedChild(ctx, p); err != nil {
+				return err
+			}
 		default:
 			return fmt.Errorf("UNSUPPORTED_ELEMENT: unknown publication kind %q", p.Kind)
 		}

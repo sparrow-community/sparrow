@@ -176,6 +176,12 @@ type PendingCompensation struct {
 	// Parent is the outer pending throw when this compensation runs as a nested
 	// throw (for example inside a compensation event sub-process).
 	Parent *PendingCompensation
+	// WaitingChildren counts unfinished Call Activity children still compensating
+	// before this throw may complete.
+	WaitingChildren int
+	// NotifyParentUnfinishedCall means this pending state is child-side unfinished
+	// Call Activity compensation (no local compensate throw token).
+	NotifyParentUnfinishedCall bool
 }
 
 func clonePendingCompensation(pc *PendingCompensation) *PendingCompensation {
