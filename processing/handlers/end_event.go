@@ -61,6 +61,28 @@ func (EndEventHandler) OnEnter(in EnterInput) (*Effect, error) {
 			TryCompleteProcess: true,
 		}, nil
 	}
+	if name, ok := in.Deployment.MessageEndName(in.ElementID); ok {
+		return &Effect{
+			Records: InstantLifecycle(in.Type, in.ElementID, in.TokenID, func(el *eventv1.Element) {
+				el.Payload = &eventv1.Element_EventPayload{
+					EventPayload: &eventv1.EventPayload{MessageName: name},
+				}
+			}),
+			Publish:            &Publication{Kind: PublicationMessage, Name: name},
+			TryCompleteProcess: true,
+		}, nil
+	}
+	if name, ok := in.Deployment.SignalEndName(in.ElementID); ok {
+		return &Effect{
+			Records: InstantLifecycle(in.Type, in.ElementID, in.TokenID, func(el *eventv1.Element) {
+				el.Payload = &eventv1.Element_EventPayload{
+					EventPayload: &eventv1.EventPayload{SignalName: name},
+				}
+			}),
+			Publish:            &Publication{Kind: PublicationSignal, Name: name},
+			TryCompleteProcess: true,
+		}, nil
+	}
 	return &Effect{
 		Records:            InstantLifecycle(in.Type, in.ElementID, in.TokenID, nil),
 		TryCompleteProcess: true,

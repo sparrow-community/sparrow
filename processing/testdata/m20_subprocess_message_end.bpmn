@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             id="Definitions_subprocess_message_end"
+             targetNamespace="http://sparrow.example/sp_message_end">
+  <message id="message_1" name="order.confirmed"/>
+  <process id="Process_sp_message_end" name="SubProcess Message End" isExecutable="true">
+    <startEvent id="StartEvent_1">
+      <outgoing>Flow_start_to_sp</outgoing>
+    </startEvent>
+    <subProcess id="SubProcess_1" name="Inner">
+      <incoming>Flow_start_to_sp</incoming>
+      <outgoing>Flow_sp_to_end</outgoing>
+      <startEvent id="StartEvent_inner">
+        <outgoing>Flow_inner_to_msg_end</outgoing>
+      </startEvent>
+      <endEvent id="MessageEnd_inner">
+        <incoming>Flow_inner_to_msg_end</incoming>
+        <messageEventDefinition id="MsgEndDef_1" messageRef="message_1"/>
+      </endEvent>
+      <sequenceFlow id="Flow_inner_to_msg_end" sourceRef="StartEvent_inner" targetRef="MessageEnd_inner"/>
+    </subProcess>
+    <endEvent id="EndEvent_1">
+      <incoming>Flow_sp_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_sp" sourceRef="StartEvent_1" targetRef="SubProcess_1"/>
+    <sequenceFlow id="Flow_sp_to_end" sourceRef="SubProcess_1" targetRef="EndEvent_1"/>
+  </process>
+</definitions>

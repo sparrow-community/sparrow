@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             id="Definitions_mixed_end"
+             targetNamespace="http://sparrow.example/mixed_end">
+  <message id="message_1" name="order.confirmed"/>
+  <process id="Process_mixed_end" name="Mixed End Reject" isExecutable="true">
+    <startEvent id="StartEvent_1">
+      <outgoing>Flow_start_to_end</outgoing>
+    </startEvent>
+    <endEvent id="MixedEnd_1">
+      <incoming>Flow_start_to_end</incoming>
+      <messageEventDefinition id="MsgDef_1" messageRef="message_1"/>
+      <terminateEventDefinition id="TermDef_1"/>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_end" sourceRef="StartEvent_1" targetRef="MixedEnd_1"/>
+  </process>
+</definitions>

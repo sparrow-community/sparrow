@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             id="Definitions_message_end"
+             targetNamespace="http://sparrow.example/message_end">
+  <message id="message_1" name="order.confirmed"/>
+  <process id="Process_message_end" name="Message End" isExecutable="true">
+    <startEvent id="StartEvent_1">
+      <outgoing>Flow_start_to_end</outgoing>
+    </startEvent>
+    <endEvent id="MessageEnd_1" name="Done">
+      <incoming>Flow_start_to_end</incoming>
+      <messageEventDefinition id="MsgEndDef_1" messageRef="message_1"/>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_end" sourceRef="StartEvent_1" targetRef="MessageEnd_1"/>
+  </process>
+</definitions>

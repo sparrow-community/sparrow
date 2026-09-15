@@ -29,6 +29,8 @@ type Deployment struct {
 	errorEnds            map[string]string       // error end event id -> error code
 	compensateEnds       map[string]string       // compensate end event id -> optional activityRef
 	terminateEnds        map[string]bool         // terminate end event ids
+	messageEnds          map[string]string       // message end id -> message name
+	signalEnds           map[string]string       // signal end id -> signal name
 	escalationCatch      map[string]string       // escalation boundary id -> code (empty = catch-all)
 	escalationBoundaries map[string][]string     // activity id -> escalation boundary ids
 	escalationEnds       map[string]string       // escalation end event id -> code
@@ -118,6 +120,8 @@ func (d *Deployment) compile(messages []element.Message, signals []element.Signa
 	d.errorEnds = make(map[string]string)
 	d.compensateEnds = make(map[string]string)
 	d.terminateEnds = make(map[string]bool)
+	d.messageEnds = make(map[string]string)
+	d.signalEnds = make(map[string]string)
 	d.escalationCatch = make(map[string]string)
 	d.escalationBoundaries = make(map[string][]string)
 	d.escalationEnds = make(map[string]string)
@@ -177,6 +181,10 @@ func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messag
 			d.compensateEnds[e.ID] = spec.ActivityRef
 		} else if err := terminateEndSpec(e); err == nil {
 			d.terminateEnds[e.ID] = true
+		} else if name, err := messageEndSpec(e, messages); err == nil {
+			d.messageEnds[e.ID] = name
+		} else if name, err := signalEndSpec(e, signals); err == nil {
+			d.signalEnds[e.ID] = name
 		} else if endHasEventDefinitions(e) {
 			return fmt.Errorf("UNSUPPORTED_ELEMENT: endEvent %q has unsupported event definitions", e.ID)
 		}
