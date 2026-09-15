@@ -119,5 +119,25 @@ func eventBasedSiblingCatches(in CompleteInput) []string {
 		return nil
 	}
 	_, siblings := in.Deployment.EventBasedSiblings(in.ElementID)
-	return siblings
+	peers := in.Deployment.InstantiateAlternativePeers(in.ElementID)
+	if len(peers) == 0 {
+		return siblings
+	}
+	seen := make(map[string]bool, len(siblings)+len(peers))
+	out := make([]string, 0, len(siblings)+len(peers))
+	for _, id := range siblings {
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	for _, id := range peers {
+		if id == "" || seen[id] || id == in.ElementID {
+			continue
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	return out
 }

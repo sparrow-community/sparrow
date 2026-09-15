@@ -24,9 +24,9 @@ Work proceeds `/speckit-specify` → plan → tasks → implement (`.cursor/skil
 
 ## Supported
 
-Process lifecycle; process-level none start and typed starts (message, timer, signal, conditional — CreateInstance only for none / instantiate exclusive EBG; typed mint via PublishMessage / PublishSignal / FireDue / EvaluateConditionalStarts); User Task; Service Task + Job; Manual / abstract Task (wait → Complete); Receive / Send; Business Rule / Script Task (job-backed); exclusive / parallel / inclusive / event-based gateways (catch, including exclusive instantiate entry); SubProcess; Call Activity (child instance, IO mapping, cross-deployment, boundary and compensation parity, multi-instance; called process requires none start or instantiate EBG); Event Sub-Process (including nested); intermediate and boundary catches/throws for timer, message, signal, error, escalation, compensate, conditional (multiple same-kind boundaries); link throw/catch; conditional sequence flows on activities and gateways; terminate end; message end; signal end; compensation into an unfinished embedded SubProcess; multi-instance on User Task, Service Task, Manual / abstract Task / Receive / Send / Business Rule / Script, SubProcess, Call Activity (including `complexBehaviorDefinition` and none/one behavior event refs for signal/message); `standardLoopCharacteristics` on waiting tasks (testBefore / loopCondition / loopMaximum); incident open / resolve / retry; coexisting process revisions.
+Process lifecycle; process-level none start and typed starts (message, timer, signal, conditional — CreateInstance for none start, instantiate exclusive/parallel event-based gateway entries, and instantiate receive task; typed mint via PublishMessage / PublishSignal / FireDue / EvaluateConditionalStarts); User Task; Service Task + Job; Manual / abstract Task (wait → Complete); Receive / Send (including instantiate receive as process entry); Business Rule / Script Task (job-backed); exclusive / parallel / inclusive / event-based gateways (catch, including instantiate entries and receive-task targets); SubProcess; Call Activity (child instance, IO mapping, cross-deployment, boundary and compensation parity, multi-instance; called process requires none start, instantiate event-based gateway, or instantiate receive); Event Sub-Process (including nested); intermediate and boundary catches/throws for timer, message, signal, error, escalation, compensate, conditional (multiple same-kind boundaries); link throw/catch; conditional sequence flows on activities and gateways; terminate end; message end; signal end; compensation into an unfinished embedded SubProcess; multi-instance on User Task, Service Task, Manual / abstract Task / Receive / Send / Business Rule / Script, SubProcess, Call Activity (including `complexBehaviorDefinition` and none/one behavior event refs for signal/message); `standardLoopCharacteristics` on waiting tasks (testBefore / loopCondition / loopMaximum); incident open / resolve / retry; coexisting process revisions.
 
-Shipped: M1–M4c, specs [`001`](./specs/001-engine-completeness/)–[`021`](./specs/021-mi-complex-behavior/).
+Shipped: M1–M4c, specs [`001`](./specs/001-engine-completeness/)–[`022`](./specs/022-instantiate-receive-event-gateway/).
 
 ## Planned
 
@@ -34,7 +34,6 @@ Open executable-process gaps. Priority guides sequencing; a feature plan may reo
 
 | P | Topic |
 |---|--------|
-| 2 | Instantiate Receive Task; parallel instantiate event-based gateway; event-based gateway targeting Receive Task; multiple instantiate event-based gateway entries |
 | 2 | Compensation Event Sub-Process |
 | 2 | Compensation into an unfinished Call Activity child instance |
 | 2 | Standalone intermediate escalation catch |

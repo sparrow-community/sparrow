@@ -32,30 +32,49 @@ const (
 	ProcessStartConditional ProcessStartKind = "conditional"
 )
 
-// CreateInstanceEntryID returns the none start or instantiate exclusive EBG entry.
+// CreateInstanceEntryID returns the none start or first instantiate entry.
 // Typed-only processes return an error — use PublishMessage / PublishSignal / FireDue / EvaluateConditionalStarts.
+// Prefer CreateInstanceEntryIDs when multiple instantiate entries must all be armed.
 func CreateInstanceEntryID(proc *element.Process) (string, error) {
+	ids, err := CreateInstanceEntryIDs(proc)
+	if err != nil {
+		return "", err
+	}
+	return ids[0], nil
+}
+
+// CreateInstanceEntryIDs returns none start (single) or all instantiate entry element ids.
+func CreateInstanceEntryIDs(proc *element.Process) ([]string, error) {
 	if proc == nil {
-		return "", fmt.Errorf("no process")
+		return nil, fmt.Errorf("no process")
 	}
 	if id, ok := noneStartEventID(proc); ok {
-		return id, nil
+		return []string{id}, nil
 	}
 	if len(proc.StartEvents) == 0 {
-		return instantiateEntryID(proc)
+		return instantiateEntryIDs(proc)
 	}
-	return "", fmt.Errorf("INVALID_ARGUMENT: process has no none start; use typed start triggers")
+	return nil, fmt.Errorf("INVALID_ARGUMENT: process has no none start; use typed start triggers")
 }
 
 // CreateInstanceEntryID returns the CreateInstance entry for this deployment.
 func (d *Deployment) CreateInstanceEntryID() (string, error) {
+	ids, err := d.CreateInstanceEntryIDs()
+	if err != nil {
+		return "", err
+	}
+	return ids[0], nil
+}
+
+// CreateInstanceEntryIDs returns all CreateInstance entry element ids.
+func (d *Deployment) CreateInstanceEntryIDs() ([]string, error) {
 	if d.noneStartID != "" {
-		return d.noneStartID, nil
+		return []string{d.noneStartID}, nil
 	}
 	if len(d.Process.StartEvents) == 0 {
-		return instantiateEntryID(&d.Process)
+		return instantiateEntryIDs(&d.Process)
 	}
-	return "", fmt.Errorf("INVALID_ARGUMENT: process has no none start; use typed start triggers")
+	return nil, fmt.Errorf("INVALID_ARGUMENT: process has no none start; use typed start triggers")
 }
 
 func noneStartEventID(proc *element.Process) (string, bool) {

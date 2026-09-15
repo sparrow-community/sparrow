@@ -276,7 +276,6 @@ func TestInstantiateEventBasedGatewayRejectInvalid(t *testing.T) {
 		sub  string
 	}{
 		{"m11_instantiate_ebg_incoming.bpmn", "incoming"},
-		{"m11_instantiate_ebg_parallel.bpmn", "parallel"},
 		{"m11_instantiate_ebg_with_start.bpmn", "combine startEvent"},
 		{"m11_instantiate_ebg_one_catch.bpmn", "at least two"},
 	}
@@ -292,6 +291,37 @@ func TestInstantiateEventBasedGatewayRejectInvalid(t *testing.T) {
 				t.Fatalf("err=%v want UNSUPPORTED_ELEMENT (hint %q)", err, tc.sub)
 			}
 		})
+	}
+}
+
+func TestParallelInstantiateEventBasedGateway(t *testing.T) {
+	xml := readTestdata(t, "m11_instantiate_ebg_parallel.bpmn")
+	eng := processing.NewEngine(eventlog.NewMemory())
+	ctx := context.Background()
+	dep, err := eng.Deploy(ctx, xml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := eng.CreateInstance(ctx, dep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := eng.FireDue(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := eng.PublishMessage(ctx, processing.PublishMessageRequest{Name: "escalate", ProcessInstanceID: id}); err != nil || n != 1 {
+		t.Fatalf("publish n=%d err=%v", n, err)
+	}
+	inst := mustInstance(t, eng, id)
+	if inst.Status != projection.StatusCompleted {
+		t.Fatalf("status=%s tokens=%#v", inst.Status, inst.Tokens)
+	}
+	events, _ := eng.ListEvents(ctx, id)
+	if sawElementIntent(events, eventv1.Element_TYPE_INTERMEDIATE_CATCH_EVENT, "TimerCatch_1", eventv1.Element_INTENT_TERMINATED) {
+		t.Fatal("parallel instantiate must not terminate sibling catch")
+	}
+	if sawElementIntent(events, eventv1.Element_TYPE_INTERMEDIATE_CATCH_EVENT, "MessageCatch_1", eventv1.Element_INTENT_TERMINATED) {
+		t.Fatal("parallel instantiate must not terminate sibling catch")
 	}
 }
 

@@ -19,5 +19,12 @@ func (ReceiveTaskHandler) OnEnter(in EnterInput) (*Effect, error) {
 }
 
 func (ReceiveTaskHandler) OnComplete(in CompleteInput) (*Effect, error) {
-	return waitingTaskComplete(in)
+	eff, err := waitingTaskComplete(in)
+	if err != nil || eff == nil {
+		return eff, err
+	}
+	if siblings := eventBasedSiblingCatches(in); len(siblings) > 0 {
+		eff.TerminateWaitingAt = append(append([]string{}, eff.TerminateWaitingAt...), siblings...)
+	}
+	return eff, nil
 }

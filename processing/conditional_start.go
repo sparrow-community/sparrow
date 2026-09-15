@@ -75,7 +75,7 @@ func (e *Engine) EvaluateConditionalStarts(ctx context.Context, req EvaluateCond
 			if !match {
 				continue
 			}
-			if _, err := e.createInstanceAt(ctx, dep, startID, req.Variables); err != nil {
+			if _, err := e.createInstanceAt(ctx, dep, req.Variables, startID); err != nil {
 				if first == nil {
 					first = err
 				}

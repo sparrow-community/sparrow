@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             id="Definitions_ebg_receive"
+             targetNamespace="http://sparrow.example/ebg-receive">
+  <message id="Msg_a" name="order.a"/>
+  <message id="Msg_b" name="order.b"/>
+  <process id="Process_ebg_receive" isExecutable="true">
+    <startEvent id="StartEvent_1">
+      <outgoing>Flow_to_ebg</outgoing>
+    </startEvent>
+    <eventBasedGateway id="EBG_1">
+      <incoming>Flow_to_ebg</incoming>
+      <outgoing>Flow_to_receive</outgoing>
+      <outgoing>Flow_to_catch</outgoing>
+    </eventBasedGateway>
+    <receiveTask id="ReceiveTask_1" name="Recv A" messageRef="Msg_a">
+      <incoming>Flow_to_receive</incoming>
+      <outgoing>Flow_recv_end</outgoing>
+    </receiveTask>
+    <intermediateCatchEvent id="MessageCatch_1">
+      <incoming>Flow_to_catch</incoming>
+      <outgoing>Flow_catch_end</outgoing>
+      <messageEventDefinition messageRef="Msg_b"/>
+    </intermediateCatchEvent>
+    <endEvent id="End_recv"><incoming>Flow_recv_end</incoming></endEvent>
+    <endEvent id="End_catch"><incoming>Flow_catch_end</incoming></endEvent>
+    <sequenceFlow id="Flow_to_ebg" sourceRef="StartEvent_1" targetRef="EBG_1"/>
+    <sequenceFlow id="Flow_to_receive" sourceRef="EBG_1" targetRef="ReceiveTask_1"/>
+    <sequenceFlow id="Flow_to_catch" sourceRef="EBG_1" targetRef="MessageCatch_1"/>
+    <sequenceFlow id="Flow_recv_end" sourceRef="ReceiveTask_1" targetRef="End_recv"/>
+    <sequenceFlow id="Flow_catch_end" sourceRef="MessageCatch_1" targetRef="End_catch"/>
+  </process>
+</definitions>

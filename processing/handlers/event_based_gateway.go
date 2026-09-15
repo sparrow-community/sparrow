@@ -7,9 +7,9 @@ import (
 )
 
 // EventBasedGatewayHandler implements event-based gateway:
-// fork tokens to all outgoing intermediate catches.
-// Exclusive (default): the first catch to complete cancels sibling waiting catches.
-// Parallel: siblings stay armed; each catch continues on its own path when its event arrives.
+// fork tokens to all outgoing intermediate catches or receive tasks.
+// Exclusive (default): the first target to complete cancels sibling waiting targets.
+// Parallel: siblings stay armed; each target continues on its own path when its event arrives.
 type EventBasedGatewayHandler struct{}
 
 func (EventBasedGatewayHandler) Type() eventv1.Element_Type {

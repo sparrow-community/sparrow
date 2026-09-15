@@ -225,8 +225,8 @@ func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messag
 		}
 	}
 	for _, e := range fe.ReceiveTasks {
-		if e.Instantiate {
-			return fmt.Errorf("UNSUPPORTED_ELEMENT: receiveTask %q instantiate is not supported", e.ID)
+		if e.Instantiate && scopeID != d.Process.ID {
+			return fmt.Errorf("UNSUPPORTED_ELEMENT: receiveTask %q instantiate inside subProcess is not supported", e.ID)
 		}
 		reg(e.ID, eventv1.Element_TYPE_RECEIVE_TASK, e.Outgoing, e.Incoming)
 		if err := indexMultiInstance(d, e.ID, e.LoopCharacteristicsElements); err != nil {
@@ -489,7 +489,7 @@ func validateM1(proc *element.Process, messages []element.Message, signals []ele
 		seenAttach[key] = e.ID
 	}
 	if len(proc.StartEvents) == 0 {
-		if _, err := instantiateEntryID(proc); err != nil {
+		if _, err := instantiateEntryIDs(proc); err != nil {
 			return fmt.Errorf("no startEvent in process")
 		}
 		return nil
@@ -497,6 +497,11 @@ func validateM1(proc *element.Process, messages []element.Message, signals []ele
 	for _, g := range proc.EventBasedGatewaies {
 		if g.Instantiate {
 			return fmt.Errorf("UNSUPPORTED_ELEMENT: process cannot combine startEvent with instantiate eventBasedGateway %q", g.ID)
+		}
+	}
+	for _, e := range proc.ReceiveTasks {
+		if e.Instantiate {
+			return fmt.Errorf("UNSUPPORTED_ELEMENT: process cannot combine startEvent with instantiate receiveTask %q", e.ID)
 		}
 	}
 	return nil
@@ -541,7 +546,11 @@ func (d *Deployment) ProcessID() string { return d.Process.ID }
 
 func StartEventID(proc *element.Process) (string, error) {
 	if len(proc.StartEvents) == 0 {
-		return instantiateEntryID(proc)
+		ids, err := instantiateEntryIDs(proc)
+		if err != nil {
+			return "", err
+		}
+		return ids[0], nil
 	}
 	id := proc.StartEvents[0].ID
 	outs := Outgoing(proc, id)
@@ -557,45 +566,128 @@ func StartEventID(proc *element.Process) (string, error) {
 	return id, nil
 }
 
-// instantiateEntryID returns the sole process-level exclusive instantiate
-// event-based gateway when the process has no startEvent.
-func instantiateEntryID(proc *element.Process) (string, error) {
-	var found string
-	for _, g := range proc.EventBasedGatewaies {
-		if !g.Instantiate {
-			continue
-		}
-		if g.EventGatewayType == element.EventGatewayTypeParallel {
-			return "", fmt.Errorf("UNSUPPORTED_ELEMENT: eventBasedGateway %q parallel instantiate is not supported", g.ID)
-		}
-		if len(g.Incoming) > 0 {
-			return "", fmt.Errorf("UNSUPPORTED_ELEMENT: eventBasedGateway %q instantiate must have no incoming sequence flow", g.ID)
+// instantiateEntryIDs returns process-level instantiate entries: event-based
+// gateways and/or receive tasks with instantiate=true and no incoming flows.
+func instantiateEntryIDs(proc *element.Process) ([]string, error) {
+	var ids []string
+	hasIncoming := func(elementID string, declaredIncoming []string) bool {
+		if len(declaredIncoming) > 0 {
+			return true
 		}
 		for _, f := range proc.SequenceFlows {
-			if f.TargetRef == g.ID {
-				return "", fmt.Errorf("UNSUPPORTED_ELEMENT: eventBasedGateway %q instantiate must have no incoming sequence flow", g.ID)
+			if f.TargetRef == elementID {
+				return true
 			}
 		}
-		outs := g.Outgoing
+		return false
+	}
+	outgoingOf := func(elementID string, declared []string) []string {
+		outs := declared
 		if len(outs) == 0 {
 			for _, f := range proc.SequenceFlows {
-				if f.SourceRef == g.ID {
+				if f.SourceRef == elementID {
 					outs = append(outs, f.ID)
 				}
 			}
 		}
+		return outs
+	}
+	for _, g := range proc.EventBasedGatewaies {
+		if !g.Instantiate {
+			continue
+		}
+		if hasIncoming(g.ID, g.Incoming) {
+			return nil, fmt.Errorf("UNSUPPORTED_ELEMENT: eventBasedGateway %q instantiate must have no incoming sequence flow", g.ID)
+		}
+		outs := outgoingOf(g.ID, g.Outgoing)
 		if len(outs) < 2 {
-			return "", fmt.Errorf("UNSUPPORTED_ELEMENT: eventBasedGateway %q must have at least two outgoing flows", g.ID)
+			return nil, fmt.Errorf("UNSUPPORTED_ELEMENT: eventBasedGateway %q must have at least two outgoing flows", g.ID)
 		}
-		if found != "" {
-			return "", fmt.Errorf("UNSUPPORTED_ELEMENT: process has multiple instantiate eventBasedGateway entries")
+		ids = append(ids, g.ID)
+	}
+	for _, e := range proc.ReceiveTasks {
+		if !e.Instantiate {
+			continue
 		}
-		found = g.ID
+		if hasIncoming(e.ID, e.Incoming) {
+			return nil, fmt.Errorf("UNSUPPORTED_ELEMENT: receiveTask %q instantiate must have no incoming sequence flow", e.ID)
+		}
+		ids = append(ids, e.ID)
 	}
-	if found == "" {
-		return "", fmt.Errorf("no startEvent in process")
+	if len(ids) == 0 {
+		return nil, fmt.Errorf("no startEvent in process")
 	}
-	return found, nil
+	return ids, nil
+}
+
+// InstantiateEntryIDs returns all CreateInstance entry element ids for instantiate-only processes.
+func (d *Deployment) InstantiateEntryIDs() ([]string, error) {
+	if d == nil {
+		return nil, fmt.Errorf("no deployment")
+	}
+	return instantiateEntryIDs(&d.Process)
+}
+
+// InstantiateAlternativePeers returns other instantiate-entry wait element ids to cancel
+// when winningElementID completes as part of an exclusive instantiate race.
+// Parallel event-based gateway targets only cancel peers from *other* instantiate entries.
+func (d *Deployment) InstantiateAlternativePeers(winningElementID string) []string {
+	if d == nil {
+		return nil
+	}
+	entries, err := instantiateEntryIDs(&d.Process)
+	if err != nil || len(entries) == 0 {
+		return nil
+	}
+	winningEntry := ""
+	for _, entryID := range entries {
+		if entryID == winningElementID {
+			winningEntry = entryID
+			break
+		}
+		for _, outID := range d.Outgoing(entryID) {
+			sf, err := d.SequenceFlow(outID)
+			if err != nil {
+				continue
+			}
+			if sf.TargetRef == winningElementID {
+				winningEntry = entryID
+				break
+			}
+		}
+		if winningEntry != "" {
+			break
+		}
+	}
+	if winningEntry == "" {
+		return nil
+	}
+	// Exclusive race across alternative entries: cancel waits on other entries.
+	// Same-gateway siblings are handled by EventBasedSiblings.
+	var peers []string
+	for _, entryID := range entries {
+		if entryID == winningEntry {
+			continue
+		}
+		typ, err := d.TypeOf(entryID)
+		if err != nil {
+			continue
+		}
+		if typ == eventv1.Element_TYPE_RECEIVE_TASK {
+			peers = append(peers, entryID)
+			continue
+		}
+		for _, outID := range d.Outgoing(entryID) {
+			sf, err := d.SequenceFlow(outID)
+			if err != nil {
+				continue
+			}
+			if sf.TargetRef != "" && sf.TargetRef != winningElementID {
+				peers = append(peers, sf.TargetRef)
+			}
+		}
+	}
+	return peers
 }
 
 func (d *Deployment) StartEventID() (string, error) {
@@ -1195,13 +1287,14 @@ func validateEventBasedGatewaysAt(fe *element.FlowElements, insideSubProcess boo
 	for _, e := range fe.IntermediateCatchEvents {
 		catchIDs[e.ID] = true
 	}
+	receiveIDs := make(map[string]bool, len(fe.ReceiveTasks))
+	for _, e := range fe.ReceiveTasks {
+		receiveIDs[e.ID] = true
+	}
 	for _, g := range fe.EventBasedGatewaies {
 		if g.Instantiate {
 			if insideSubProcess {
 				return fmt.Errorf("UNSUPPORTED_ELEMENT: eventBasedGateway %q instantiate inside subProcess is not supported", g.ID)
-			}
-			if g.EventGatewayType == element.EventGatewayTypeParallel {
-				return fmt.Errorf("UNSUPPORTED_ELEMENT: eventBasedGateway %q parallel instantiate is not supported", g.ID)
 			}
 			if len(g.Incoming) > 0 {
 				return fmt.Errorf("UNSUPPORTED_ELEMENT: eventBasedGateway %q instantiate must have no incoming sequence flow", g.ID)
@@ -1212,7 +1305,7 @@ func validateEventBasedGatewaysAt(fe *element.FlowElements, insideSubProcess boo
 				}
 			}
 		}
-		// Exclusive (default) and Parallel intermediate event-based gateways are supported.
+		// Exclusive (default) and Parallel intermediate / instantiate event-based gateways are supported.
 		outs := g.Outgoing
 		if len(outs) == 0 {
 			for _, f := range fe.SequenceFlows {
@@ -1235,8 +1328,8 @@ func validateEventBasedGatewaysAt(fe *element.FlowElements, insideSubProcess boo
 			if target == "" {
 				return fmt.Errorf("UNSUPPORTED_ELEMENT: eventBasedGateway %q outgoing flow %q not found", g.ID, flowID)
 			}
-			if !catchIDs[target] {
-				return fmt.Errorf("UNSUPPORTED_ELEMENT: eventBasedGateway %q must target intermediateCatchEvent (%q)", g.ID, target)
+			if !catchIDs[target] && !receiveIDs[target] {
+				return fmt.Errorf("UNSUPPORTED_ELEMENT: eventBasedGateway %q must target intermediateCatchEvent or receiveTask (%q)", g.ID, target)
 			}
 		}
 	}

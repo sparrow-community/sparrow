@@ -66,7 +66,7 @@ func (e *Engine) FireDue(ctx context.Context) error {
 			e.consumeOrRearmTimerStart(arm)
 			continue
 		}
-		if _, err := e.createInstanceAt(ctx, dep, arm.startEventID, nil); err != nil {
+		if _, err := e.createInstanceAt(ctx, dep, nil, arm.startEventID); err != nil {
 			if first == nil {
 				first = err
 			}

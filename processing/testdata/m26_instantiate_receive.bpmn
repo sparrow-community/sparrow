@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             id="Definitions_inst_receive"
+             targetNamespace="http://sparrow.example/inst-receive">
+  <message id="message_1" name="order.confirmed"/>
+  <process id="Process_inst_receive" name="Instantiate Receive" isExecutable="true">
+    <receiveTask id="ReceiveTask_1" name="Start" messageRef="message_1" instantiate="true">
+      <outgoing>Flow_to_end</outgoing>
+    </receiveTask>
+    <endEvent id="EndEvent_1">
+      <incoming>Flow_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_to_end" sourceRef="ReceiveTask_1" targetRef="EndEvent_1"/>
+  </process>
+</definitions>

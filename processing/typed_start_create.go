@@ -46,7 +46,7 @@ func (e *Engine) createMessageStartInstances(ctx context.Context, name string, v
 			if err := ctx.Err(); err != nil {
 				return created, err
 			}
-			if _, err := e.createInstanceAt(ctx, dep, startID, vars); err != nil {
+			if _, err := e.createInstanceAt(ctx, dep, vars, startID); err != nil {
 				if first == nil {
 					first = err
 				}
@@ -68,7 +68,7 @@ func (e *Engine) createSignalStartInstances(ctx context.Context, name string, va
 			if err := ctx.Err(); err != nil {
 				return created, err
 			}
-			if _, err := e.createInstanceAt(ctx, dep, startID, vars); err != nil {
+			if _, err := e.createInstanceAt(ctx, dep, vars, startID); err != nil {
 				if first == nil {
 					first = err
 				}

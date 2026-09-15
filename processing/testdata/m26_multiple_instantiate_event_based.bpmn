@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             id="Definitions_multi_inst_ebg"
+             targetNamespace="http://sparrow.example/multi-inst-ebg">
+  <message id="Msg_a" name="path.a"/>
+  <message id="Msg_b" name="path.b"/>
+  <message id="Msg_c" name="path.c"/>
+  <message id="Msg_d" name="path.d"/>
+  <process id="Process_multi_inst_ebg" isExecutable="true">
+    <eventBasedGateway id="EBG_a" instantiate="true">
+      <outgoing>Flow_a1</outgoing>
+      <outgoing>Flow_a2</outgoing>
+    </eventBasedGateway>
+    <intermediateCatchEvent id="Catch_a1">
+      <incoming>Flow_a1</incoming>
+      <outgoing>Flow_a1_end</outgoing>
+      <messageEventDefinition messageRef="Msg_a"/>
+    </intermediateCatchEvent>
+    <intermediateCatchEvent id="Catch_a2">
+      <incoming>Flow_a2</incoming>
+      <outgoing>Flow_a2_end</outgoing>
+      <messageEventDefinition messageRef="Msg_b"/>
+    </intermediateCatchEvent>
+    <eventBasedGateway id="EBG_b" instantiate="true">
+      <outgoing>Flow_b1</outgoing>
+      <outgoing>Flow_b2</outgoing>
+    </eventBasedGateway>
+    <intermediateCatchEvent id="Catch_b1">
+      <incoming>Flow_b1</incoming>
+      <outgoing>Flow_b1_end</outgoing>
+      <messageEventDefinition messageRef="Msg_c"/>
+    </intermediateCatchEvent>
+    <intermediateCatchEvent id="Catch_b2">
+      <incoming>Flow_b2</incoming>
+      <outgoing>Flow_b2_end</outgoing>
+      <messageEventDefinition messageRef="Msg_d"/>
+    </intermediateCatchEvent>
+    <endEvent id="End_a1"><incoming>Flow_a1_end</incoming></endEvent>
+    <endEvent id="End_a2"><incoming>Flow_a2_end</incoming></endEvent>
+    <endEvent id="End_b1"><incoming>Flow_b1_end</incoming></endEvent>
+    <endEvent id="End_b2"><incoming>Flow_b2_end</incoming></endEvent>
+    <sequenceFlow id="Flow_a1" sourceRef="EBG_a" targetRef="Catch_a1"/>
+    <sequenceFlow id="Flow_a2" sourceRef="EBG_a" targetRef="Catch_a2"/>
+    <sequenceFlow id="Flow_b1" sourceRef="EBG_b" targetRef="Catch_b1"/>
+    <sequenceFlow id="Flow_b2" sourceRef="EBG_b" targetRef="Catch_b2"/>
+    <sequenceFlow id="Flow_a1_end" sourceRef="Catch_a1" targetRef="End_a1"/>
+    <sequenceFlow id="Flow_a2_end" sourceRef="Catch_a2" targetRef="End_a2"/>
+    <sequenceFlow id="Flow_b1_end" sourceRef="Catch_b1" targetRef="End_b1"/>
+    <sequenceFlow id="Flow_b2_end" sourceRef="Catch_b2" targetRef="End_b2"/>
+  </process>
+</definitions>

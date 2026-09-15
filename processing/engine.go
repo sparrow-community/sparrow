@@ -113,23 +113,30 @@ func (e *Engine) CreateInstanceRequest(ctx context.Context, req CreateInstanceRe
 	if err != nil {
 		return "", err
 	}
-	startID, err := dep.CreateInstanceEntryID()
+	startIDs, err := dep.CreateInstanceEntryIDs()
 	if err != nil {
 		return "", err
 	}
-	return e.createInstanceAt(ctx, dep, startID, req.Variables)
+	return e.createInstanceAt(ctx, dep, req.Variables, startIDs...)
 }
 
-// createInstanceAt mints a process instance and enters at startElementID (none or typed start).
-func (e *Engine) createInstanceAt(ctx context.Context, dep *deploy.Deployment, startElementID string, vars map[string]any) (string, error) {
+// createInstanceAt mints a process instance and enters each start element id
+// (none start, typed start, or one or more instantiate entries).
+func (e *Engine) createInstanceAt(ctx context.Context, dep *deploy.Deployment, vars map[string]any, startElementIDs ...string) (string, error) {
 	if dep == nil {
 		return "", fmt.Errorf("NOT_FOUND: deployment")
 	}
-	deploymentID := dep.ID
-	startID := strings.TrimSpace(startElementID)
-	if startID == "" {
+	if len(startElementIDs) == 0 {
 		return "", fmt.Errorf("INVALID_ARGUMENT: start element is required")
 	}
+	for i := range startElementIDs {
+		startElementIDs[i] = strings.TrimSpace(startElementIDs[i])
+		if startElementIDs[i] == "" {
+			return "", fmt.Errorf("INVALID_ARGUMENT: start element is required")
+		}
+	}
+	startID := startElementIDs[0]
+	deploymentID := dep.ID
 
 	instanceID, err := NextID()
 	if err != nil {
@@ -190,11 +197,27 @@ func (e *Engine) createInstanceAt(ctx context.Context, dep *deploy.Deployment, s
 		lock.Unlock()
 		return "", err
 	}
-	pubs, err := e.executor.Enter(ctx, dep, inst, tokenID, startID, emit)
+	var pubs []handlers.Publication
+	more, err := e.executor.Enter(ctx, dep, inst, tokenID, startID, emit)
+	pubs = append(pubs, more...)
 	if err != nil {
 		e.rejectEnterFailure(ctx, dep, inst, err)
 		lock.Unlock()
 		return "", err
+	}
+	for _, extraID := range startElementIDs[1:] {
+		extraTok, err := NextID()
+		if err != nil {
+			lock.Unlock()
+			return "", err
+		}
+		more, err := e.executor.Enter(ctx, dep, inst, extraTok, extraID, emit)
+		pubs = append(pubs, more...)
+		if err != nil {
+			e.rejectEnterFailure(ctx, dep, inst, err)
+			lock.Unlock()
+			return "", err
+		}
 	}
 	lock.Unlock()
 	if err := e.flushPublications(ctx, pubs); err != nil {

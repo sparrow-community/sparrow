@@ -29,15 +29,15 @@ New element: handler + registry + deploy validation. Semantics stay out of `engi
 
 | Type | Behavior |
 |------|----------|
-| Process / Start / End | Lifecycle; **process-level typed starts** (message/timer/signal/conditional) mint via PublishMessage / PublishSignal / FireDue / EvaluateConditionalStarts; CreateInstance uses none start or instantiate EBG only; process-level error start rejected; end tries scope/process complete; **terminate end** cancels remaining tokens in the enclosing scope then completes it; **message/signal end** publish then complete |
-| UserTask / ManualTask / Task | Wait → Complete; MI and **standardLoopCharacteristics** supported (Task = abstract `bpmn:task`) |
-| ServiceTask / BusinessRuleTask / ScriptTask | Wait as Job → Complete; MI and standard loop supported (Script: job type from scriptFormat → name → id; no in-engine script runtime) |
+| Process / Start / End | Lifecycle; **process-level typed starts** (message/timer/signal/conditional) mint via PublishMessage / PublishSignal / FireDue / EvaluateConditionalStarts; CreateInstance uses none start, instantiate event-based gateway entry(ies), or instantiate receive task; process-level error start rejected; end tries scope/process complete; **terminate end** cancels remaining tokens in the enclosing scope then completes it; **message/signal end** publish then complete |
+| UserTask / ManualTask / Task | Wait → Complete; multi-instance and **standardLoopCharacteristics** supported (Task = abstract `bpmn:task`) |
+| ServiceTask / BusinessRuleTask / ScriptTask | Wait as Job → Complete; multi-instance and standard loop supported (Script: job type from scriptFormat → name → id; no in-engine script runtime) |
 | SendTask | Publish message then continue |
-| ReceiveTask | Wait for PublishMessage; instantiate receive rejected |
+| ReceiveTask | Wait for PublishMessage; **instantiate** receive may be process entry |
 | Catch / throw / boundary | Timer, message, signal, error, escalation, compensate, **conditional** (EvaluateConditions); multiple same-kind per activity (unique message/signal names / condition text); link throw/catch |
-| Gateways | XOR, AND, inclusive, event-based (catch) |
-| SubProcess | Embedded scope; Event Sub-Process; MI |
-| CallActivity | Child instance; IO mapping; cross-deployment; boundary & compensation; MI |
+| Gateways | XOR, AND, inclusive, event-based (catch; exclusive/parallel; instantiate; targets may be catch or receive) |
+| SubProcess | Embedded scope; Event Sub-Process; multi-instance |
+| CallActivity | Child instance; IO mapping; cross-deployment; boundary & compensation; multi-instance |
 | SequenceFlow | `SEQUENCE_FLOW_TAKEN`; conditions on gateway and activity outgoings (+ `default`) |
 
 Full snapshot + roadmap: [`../AGENTS.md`](../AGENTS.md).
