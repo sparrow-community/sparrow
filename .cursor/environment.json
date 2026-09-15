@@ -1,0 +1,16 @@
+{
+  "name": "Sparrow (Go 1.26.5)",
+  "install": "go build ./bpmn/... ./gateway/... ./processing/... ./protocol/...",
+  "terminals": [
+    {
+      "name": "sparrow-server",
+      "command": "go run ./gateway/cmd/sparrow -data-dir ./data -listen :50051"
+    }
+  ],
+  "ports": [
+    {
+      "name": "grpc",
+      "port": 50051
+    }
+  ]
+}
