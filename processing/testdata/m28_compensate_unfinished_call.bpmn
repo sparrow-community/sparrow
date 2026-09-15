@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             id="Definitions_comp_unfinished_call"
+             targetNamespace="http://sparrow.example/comp-unfinished-call">
+  <process id="Process_caller" name="M28 Unfinished Call Compensate" isExecutable="true">
+    <startEvent id="Start_1">
+      <outgoing>Flow_start_to_fork</outgoing>
+    </startEvent>
+    <parallelGateway id="Fork_1">
+      <incoming>Flow_start_to_fork</incoming>
+      <outgoing>Flow_fork_to_call</outgoing>
+      <outgoing>Flow_fork_to_sib</outgoing>
+    </parallelGateway>
+    <callActivity id="CallActivity_1" name="Call child" calledElement="Process_called">
+      <incoming>Flow_fork_to_call</incoming>
+    </callActivity>
+    <userTask id="Task_sib" name="Sibling">
+      <incoming>Flow_fork_to_sib</incoming>
+      <outgoing>Flow_sib_to_throw</outgoing>
+    </userTask>
+    <intermediateThrowEvent id="CompensateThrow_1">
+      <incoming>Flow_sib_to_throw</incoming>
+      <outgoing>Flow_throw_to_end</outgoing>
+      <compensateEventDefinition id="CompensateThrowDef_1"/>
+    </intermediateThrowEvent>
+    <endEvent id="End_1">
+      <incoming>Flow_throw_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_fork" sourceRef="Start_1" targetRef="Fork_1"/>
+    <sequenceFlow id="Flow_fork_to_call" sourceRef="Fork_1" targetRef="CallActivity_1"/>
+    <sequenceFlow id="Flow_fork_to_sib" sourceRef="Fork_1" targetRef="Task_sib"/>
+    <sequenceFlow id="Flow_sib_to_throw" sourceRef="Task_sib" targetRef="CompensateThrow_1"/>
+    <sequenceFlow id="Flow_throw_to_end" sourceRef="CompensateThrow_1" targetRef="End_1"/>
+  </process>
+  <process id="Process_called" name="M28 Called" isExecutable="false">
+    <startEvent id="Start_called">
+      <outgoing>Flow_called_to_a</outgoing>
+    </startEvent>
+    <userTask id="Task_A" name="Reserve">
+      <incoming>Flow_called_to_a</incoming>
+      <outgoing>Flow_a_to_b</outgoing>
+    </userTask>
+    <boundaryEvent id="CompensateBoundary_A" attachedToRef="Task_A" cancelActivity="false">
+      <compensateEventDefinition id="CompensateDef_A"/>
+    </boundaryEvent>
+    <userTask id="Undo_A" name="Cancel Reserve" isForCompensation="true"/>
+    <association id="Assoc_A" sourceRef="CompensateBoundary_A" targetRef="Undo_A" associationDirection="One"/>
+    <userTask id="Task_B" name="Review">
+      <incoming>Flow_a_to_b</incoming>
+      <outgoing>Flow_b_to_end</outgoing>
+    </userTask>
+    <endEvent id="End_called">
+      <incoming>Flow_b_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_called_to_a" sourceRef="Start_called" targetRef="Task_A"/>
+    <sequenceFlow id="Flow_a_to_b" sourceRef="Task_A" targetRef="Task_B"/>
+    <sequenceFlow id="Flow_b_to_end" sourceRef="Task_B" targetRef="End_called"/>
+  </process>
+</definitions>

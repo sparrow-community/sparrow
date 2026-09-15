@@ -355,6 +355,11 @@ func (x *Executor) Complete(
 		delete(inst.Tokens, tokenID)
 	}
 	if effect.AdvanceCompensation {
+		if inst.PendingCompensation == nil && dep.IsCompensationHandler(elementID) && instHasParentCall(inst) {
+			inst.PendingCompensation = &projection.PendingCompensation{
+				NotifyParentUnfinishedCall: true,
+			}
+		}
 		more, err := x.advanceCompensation(ctx, dep, inst, emit)
 		pubs = append(pubs, more...)
 		return pubs, err
@@ -726,7 +731,23 @@ func (x *Executor) startCompensation(
 		}
 	}
 
-	if unfinishedSubProcessHost(dep, inst, activityRef) && scopeParentIs(dep, activityRef, throwScope) {
+	var pubs []handlers.Publication
+	appendUnfinishedCall := func(callActivityID, hostTokenID, childInstanceID string) {
+		if childInstanceID == "" {
+			return
+		}
+		pubs = append(pubs, handlers.Publication{
+			Kind:            handlers.PublicationCompensateUnfinishedChild,
+			ChildInstanceID: childInstanceID,
+			ParentInstanceID: inst.ID,
+			CallActivityID:  callActivityID,
+			HostTokenID:     hostTokenID,
+		})
+	}
+
+	if hostTok, childID, ok := unfinishedCallActivityHost(dep, inst, activityRef); ok && scopeParentIs(dep, activityRef, throwScope) {
+		appendUnfinishedCall(activityRef, hostTok, childID)
+	} else if unfinishedSubProcessHost(dep, inst, activityRef) && scopeParentIs(dep, activityRef, throwScope) {
 		if err := x.terminateScope(ctx, dep, inst, activityRef, emit); err != nil {
 			return nil, err
 		}
@@ -734,6 +755,9 @@ func (x *Executor) startCompensation(
 	} else if activityRef != "" {
 		collectSameScope()
 	} else {
+		for _, ca := range unfinishedChildCallActivities(dep, inst, throwScope) {
+			appendUnfinishedCall(ca.callActivityID, ca.hostTokenID, ca.childInstanceID)
+		}
 		for _, spID := range unfinishedChildSubProcesses(dep, inst, throwScope) {
 			if err := x.terminateScope(ctx, dep, inst, spID, emit); err != nil {
 				return nil, err
@@ -764,7 +788,7 @@ func (x *Executor) startCompensation(
 			Id:      bid,
 			TokenId: throwTokenID,
 		}); err != nil {
-			return nil, err
+			return pubs, err
 		}
 		if err := emit(&eventv1.Element{
 			Intent:  eventv1.Element_INTENT_COMPLETED,
@@ -772,17 +796,20 @@ func (x *Executor) startCompensation(
 			Id:      bid,
 			TokenId: throwTokenID,
 		}); err != nil {
-			return nil, err
+			return pubs, err
 		}
 	}
 	inst.PendingCompensation = &projection.PendingCompensation{
-		ThrowTokenID:   throwTokenID,
-		ThrowElementID: throwElementID,
-		Queue:          queue,
-		Consumed:       consumed,
-		Parent:         inst.PendingCompensation,
+		ThrowTokenID:    throwTokenID,
+		ThrowElementID:  throwElementID,
+		Queue:           queue,
+		Consumed:        consumed,
+		Parent:          inst.PendingCompensation,
+		WaitingChildren: len(pubs),
 	}
-	return x.advanceCompensation(ctx, dep, inst, emit)
+	more, err := x.advanceCompensation(ctx, dep, inst, emit)
+	pubs = append(pubs, more...)
+	return pubs, err
 }
 
 // activityInScopeTree reports whether activityID lives under rootScopeID
@@ -869,6 +896,13 @@ func (x *Executor) advanceCompensation(
 		inst.PendingCompensation = pc
 	}
 	if len(pc.Queue) == 0 {
+		if pc.WaitingChildren > 0 {
+			return nil, nil
+		}
+		if pc.NotifyParentUnfinishedCall {
+			inst.PendingCompensation = pc.Parent
+			return x.terminateInstancePubs(ctx, dep, inst, emit)
+		}
 		throwTok, throwEl := pc.ThrowTokenID, pc.ThrowElementID
 		inst.PendingCompensation = pc.Parent
 		return x.Complete(ctx, dep, inst, throwTok, throwEl, nil, emit)
@@ -906,9 +940,6 @@ func rebuildPendingCompensation(inst *projection.Instance, dep *deploy.Deploymen
 		throwElementID = tok.ElementID
 		break
 	}
-	if throwTokenID == "" {
-		return nil
-	}
 	var activeTokenID, activeHandler string
 	for tid, tok := range inst.Tokens {
 		if tok == nil || tok.Status != projection.TokenWaiting {
@@ -921,10 +952,97 @@ func rebuildPendingCompensation(inst *projection.Instance, dep *deploy.Deploymen
 		activeHandler = tok.ElementID
 		break
 	}
-	return &projection.PendingCompensation{
-		ThrowTokenID:   throwTokenID,
-		ThrowElementID: throwElementID,
-		ActiveTokenID:  activeTokenID,
-		ActiveHandler:  activeHandler,
+	if throwTokenID == "" {
+		if !instHasParentCall(inst) || activeHandler == "" {
+			return nil
+		}
+		return &projection.PendingCompensation{
+			ActiveTokenID:              activeTokenID,
+			ActiveHandler:              activeHandler,
+			NotifyParentUnfinishedCall: true,
+		}
 	}
+	waitingChildren := 0
+	for _, tok := range inst.Tokens {
+		if tok == nil || tok.Status != projection.TokenWaiting {
+			continue
+		}
+		typ, err := dep.TypeOf(tok.ElementID)
+		if err != nil || typ != eventv1.Element_TYPE_CALL_ACTIVITY {
+			continue
+		}
+		if tok.CalledProcessInstanceID != "" {
+			waitingChildren++
+		}
+	}
+	return &projection.PendingCompensation{
+		ThrowTokenID:    throwTokenID,
+		ThrowElementID:  throwElementID,
+		ActiveTokenID:   activeTokenID,
+		ActiveHandler:   activeHandler,
+		WaitingChildren: waitingChildren,
+	}
+}
+
+func instHasParentCall(inst *projection.Instance) bool {
+	return inst != nil && inst.ParentProcessInstanceID != "" && inst.ParentElementID != "" && inst.ParentTokenID != ""
+}
+
+type unfinishedCallHost struct {
+	callActivityID  string
+	hostTokenID     string
+	childInstanceID string
+}
+
+func unfinishedCallActivityHost(dep *deploy.Deployment, inst *projection.Instance, callActivityID string) (hostTokenID, childInstanceID string, ok bool) {
+	if dep == nil || inst == nil || callActivityID == "" {
+		return "", "", false
+	}
+	typ, err := dep.TypeOf(callActivityID)
+	if err != nil || typ != eventv1.Element_TYPE_CALL_ACTIVITY {
+		return "", "", false
+	}
+	for tid, tok := range inst.Tokens {
+		if tok == nil || tok.ElementID != callActivityID {
+			continue
+		}
+		if tok.CalledProcessInstanceID == "" {
+			continue
+		}
+		return tid, tok.CalledProcessInstanceID, true
+	}
+	return "", "", false
+}
+
+func unfinishedChildCallActivities(dep *deploy.Deployment, inst *projection.Instance, throwScope string) []unfinishedCallHost {
+	if dep == nil || inst == nil {
+		return nil
+	}
+	seen := make(map[string]bool)
+	var out []unfinishedCallHost
+	for tid, tok := range inst.Tokens {
+		if tok == nil || tok.CalledProcessInstanceID == "" {
+			continue
+		}
+		caID := tok.ElementID
+		if seen[caID] {
+			continue
+		}
+		typ, err := dep.TypeOf(caID)
+		if err != nil || typ != eventv1.Element_TYPE_CALL_ACTIVITY {
+			continue
+		}
+		parent, ok := dep.ScopeOf(caID)
+		if !ok || parent != throwScope {
+			continue
+		}
+		seen[caID] = true
+		out = append(out, unfinishedCallHost{
+			callActivityID:  caID,
+			hostTokenID:     tid,
+			childInstanceID: tok.CalledProcessInstanceID,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].callActivityID < out[j].callActivityID })
+	return out
 }

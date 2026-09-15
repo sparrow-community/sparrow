@@ -82,7 +82,8 @@ const (
 	PublicationSignal         PublicationKind = "signal"
 	PublicationStartChild     PublicationKind = "start_child"
 	PublicationResumeParent   PublicationKind = "resume_parent"
-	PublicationTerminateChild PublicationKind = "terminate_child"
+	PublicationTerminateChild            PublicationKind = "terminate_child"
+	PublicationCompensateUnfinishedChild PublicationKind = "compensate_unfinished_child"
 )
 
 // Publication is delivered by the engine after Enter/Complete unlocks the instance.
