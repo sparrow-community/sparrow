@@ -39,6 +39,7 @@ type Deployment struct {
 	calledProcessOwner   map[string]string       // called process id -> callActivity id
 	calledProcesses      map[string]element.Process
 	multiInstances       map[string]MultiInstanceSpec
+	standardLoops        map[string]StandardLoopSpec
 	incidentThresholds   map[string]int
 	elements             map[string]*elemEntry // flat index of all elements (recursive into subprocesses)
 	seqFlows             map[string]*seqFlowEntry

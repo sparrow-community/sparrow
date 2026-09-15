@@ -20,6 +20,9 @@ func waitingTaskEnter(in EnterInput, extra *eventv1.ActivityPayload) (*Effect, e
 			}
 		})
 	}
+	if eff, err, handled := maybeStandardLoopEnter(in); handled {
+		return eff, err
+	}
 	idx := in.LoopInstanceIndex
 	if idx < 0 && in.Instance != nil {
 		if tok := in.Instance.Tokens[in.TokenID]; tok != nil {
@@ -82,6 +85,11 @@ func waitingTaskComplete(in CompleteInput) (*Effect, error) {
 	}
 	if _, ok := in.Deployment.MultiInstanceSpec(in.ElementID); ok && in.Token != nil && !in.Token.MultiInstanceHost {
 		return multiInstanceInnerComplete(in, records), nil
+	}
+	if eff, err := standardLoopComplete(in, records); err != nil {
+		return nil, err
+	} else if eff != nil {
+		return eff, nil
 	}
 	if in.Deployment != nil && in.Deployment.IsCompensationHandler(in.ElementID) {
 		return &Effect{

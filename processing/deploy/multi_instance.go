@@ -33,8 +33,11 @@ type MultiInstanceSpec struct {
 }
 
 func compileMultiInstance(elementID string, lc element.LoopCharacteristicsElements) (MultiInstanceSpec, error) {
+	if len(lc.StandardLoopCharacteristics) > 0 && len(lc.MultielementLoopCharacteristics) > 0 {
+		return MultiInstanceSpec{}, fmt.Errorf("UNSUPPORTED_ELEMENT: %q cannot combine standardLoopCharacteristics and multiInstanceLoopCharacteristics", elementID)
+	}
 	if len(lc.StandardLoopCharacteristics) > 0 {
-		return MultiInstanceSpec{}, fmt.Errorf("UNSUPPORTED_ELEMENT: %q standardLoopCharacteristics not supported", elementID)
+		return MultiInstanceSpec{}, fmt.Errorf("NOT_FOUND")
 	}
 	if len(lc.MultielementLoopCharacteristics) == 0 {
 		return MultiInstanceSpec{}, fmt.Errorf("NOT_FOUND")
@@ -88,7 +91,7 @@ func indexMultiInstance(d *Deployment, id string, lc element.LoopCharacteristics
 	spec, err := compileMultiInstance(id, lc)
 	if err != nil {
 		if err.Error() == "NOT_FOUND" {
-			return nil
+			return indexStandardLoop(d, id, lc)
 		}
 		return err
 	}

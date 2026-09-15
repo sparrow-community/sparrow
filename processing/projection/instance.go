@@ -62,6 +62,9 @@ type Token struct {
 	LoopInstanceIndex int32
 	// MultiInstanceHost is true while the incoming token is parked on a multi-instance loop host.
 	MultiInstanceHost bool
+	// StandardLoopIteration is the 1-based count of ACTIVATED on this element for the current
+	// standard-loop visit (0 before the first activation). Rebuilt by EVENT replay.
+	StandardLoopIteration int
 	// ScopeHostTokenID links an embedded SubProcess child token to its parked scope-host token.
 	ScopeHostTokenID string
 	// JobFailCount is consecutive FAILED events since last ACTIVATED or INCIDENT_RESOLVED.
@@ -349,6 +352,7 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 			return
 		}
 	}
+	prevElementID := tok.ElementID
 	tok.ElementID = el.GetId()
 
 	// Tokens are updated only from EVENT records (not by the executor).
@@ -378,9 +382,16 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 			if p.GetLoopInstanceIndex() >= 0 {
 				tok.LoopInstanceIndex = p.GetLoopInstanceIndex()
 				tok.MultiInstanceHost = false
+				tok.StandardLoopIteration = 0
 			} else if p.GetLoopTotalInstances() > 0 {
 				tok.MultiInstanceHost = true
 				tok.LoopInstanceIndex = -1
+				tok.StandardLoopIteration = 0
+			} else {
+				if prevElementID != el.GetId() {
+					tok.StandardLoopIteration = 0
+				}
+				tok.StandardLoopIteration++
 			}
 			if el.GetType() == eventv1.Element_TYPE_SUB_PROCESS {
 				inst.applyScopeBoundary(el.GetId(), tokenID, p)
@@ -397,6 +408,13 @@ func applyToken(inst *Instance, el *eventv1.Element) {
 				tok.JobFailCount = 0
 				tok.IncidentErrorMessage = ""
 				tok.BoundaryWaits = boundaryWaitsFromPayload(p)
+			}
+		} else {
+			if prevElementID != el.GetId() {
+				tok.StandardLoopIteration = 0
+			}
+			if waitingActivation(el.GetType()) {
+				tok.StandardLoopIteration++
 			}
 		}
 		if p := el.GetEventPayload(); p != nil {

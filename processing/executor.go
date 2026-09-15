@@ -317,6 +317,11 @@ func (x *Executor) Complete(
 			return pubs, err
 		}
 	}
+	if effect.ReEnter {
+		more, err := x.Enter(ctx, dep, inst, tokenID, elementID, emit)
+		pubs = append(pubs, more...)
+		return pubs, err
+	}
 	if len(effect.TerminateWaitingAt) > 0 {
 		if err := x.terminateWaitingAt(inst, tokenID, effect.TerminateWaitingAt, emit); err != nil {
 			return pubs, err

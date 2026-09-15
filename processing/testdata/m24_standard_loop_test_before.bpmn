@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             id="Definitions_std_loop_tb"
+             targetNamespace="http://sparrow.example/stdloop">
+  <process id="Process_std_loop_tb" name="Standard Loop Test Before" isExecutable="true">
+    <startEvent id="StartEvent_1">
+      <outgoing>Flow_start</outgoing>
+    </startEvent>
+    <userTask id="UserTask_1" name="Maybe">
+      <incoming>Flow_start</incoming>
+      <outgoing>Flow_end</outgoing>
+      <standardLoopCharacteristics testBefore="true">
+        <loopCondition xsi:type="tFormalExpression">run</loopCondition>
+      </standardLoopCharacteristics>
+    </userTask>
+    <endEvent id="EndEvent_1">
+      <incoming>Flow_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start" sourceRef="StartEvent_1" targetRef="UserTask_1"/>
+    <sequenceFlow id="Flow_end" sourceRef="UserTask_1" targetRef="EndEvent_1"/>
+  </process>
+</definitions>

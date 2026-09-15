@@ -30,8 +30,8 @@ New element: handler + registry + deploy validation. Semantics stay out of `engi
 | Type | Behavior |
 |------|----------|
 | Process / Start / End | Lifecycle; **process-level typed starts** (message/timer/signal/conditional) mint via PublishMessage / PublishSignal / FireDue / EvaluateConditionalStarts; CreateInstance uses none start or instantiate EBG only; process-level error start rejected; end tries scope/process complete; **terminate end** cancels remaining tokens in the enclosing scope then completes it; **message/signal end** publish then complete |
-| UserTask / ManualTask / Task | Wait → Complete; MI supported (Task = abstract `bpmn:task`) |
-| ServiceTask / BusinessRuleTask / ScriptTask | Wait as Job → Complete; MI supported (Script: job type from scriptFormat → name → id; no in-engine script runtime) |
+| UserTask / ManualTask / Task | Wait → Complete; MI and **standardLoopCharacteristics** supported (Task = abstract `bpmn:task`) |
+| ServiceTask / BusinessRuleTask / ScriptTask | Wait as Job → Complete; MI and standard loop supported (Script: job type from scriptFormat → name → id; no in-engine script runtime) |
 | SendTask | Publish message then continue |
 | ReceiveTask | Wait for PublishMessage; instantiate receive rejected |
 | Catch / throw / boundary | Timer, message, signal, error, escalation, compensate, **conditional** (EvaluateConditions); multiple same-kind per activity (unique message/signal names / condition text); link throw/catch |

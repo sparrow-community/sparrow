@@ -60,6 +60,8 @@ type Effect struct {
 	MultiInstanceInnerComplete bool
 	// MultiInstanceCancel terminates all inner instances and loop state for the element.
 	MultiInstanceCancel string
+	// ReEnter re-enters the same element after COMPLETED (standard loop continue).
+	ReEnter bool
 }
 
 // ThrowErrorEffect requests error propagation from the throwing element.

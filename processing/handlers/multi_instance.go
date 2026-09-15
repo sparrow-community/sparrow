@@ -21,6 +21,11 @@ type MultiInstanceStart struct {
 }
 
 func isMultiInstanceInner(in EnterInput) bool {
+	if in.Deployment != nil {
+		if _, ok := in.Deployment.MultiInstanceSpec(in.ElementID); !ok {
+			return false
+		}
+	}
 	if in.LoopInstanceIndex >= 0 {
 		return true
 	}
