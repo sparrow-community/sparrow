@@ -50,10 +50,11 @@ func (e *Engine) EvaluateConditions(ctx context.Context, req EvaluateConditionsR
 	}
 
 	type hit struct {
-		instanceID string
-		elementID  string
-		tokenID    string
-		scope      bool
+		instanceID      string
+		elementID       string
+		tokenID         string
+		scope           bool
+		eventSubProcess bool
 	}
 	var hits []hit
 
@@ -117,6 +118,26 @@ func (e *Engine) EvaluateConditions(ctx context.Context, req EvaluateConditionsR
 				hits = append(hits, hit{instanceID: iid, elementID: sb.BoundaryID, tokenID: sb.TokenID, scope: true})
 			}
 		}
+		for eventSubProcessID, arm := range inst.EventSubProcesses {
+			if arm == nil {
+				continue
+			}
+			spec, ok := dep.EventSubProcessSpec(eventSubProcessID)
+			if !ok || spec.Kind != deploy.CatchKindConditional {
+				continue
+			}
+			text := spec.Condition
+			if text == "" {
+				text, _ = dep.ConditionalCatchExpression(spec.StartEventID)
+			}
+			if text == "" {
+				text = arm.TimerText
+			}
+			if text == "" || !evalTrue(text, env) {
+				continue
+			}
+			hits = append(hits, hit{instanceID: iid, elementID: eventSubProcessID, tokenID: "", eventSubProcess: true})
+		}
 		lock.Unlock()
 	}
 
@@ -140,9 +161,12 @@ func (e *Engine) EvaluateConditions(ctx context.Context, req EvaluateConditionsR
 		}
 		seenTok[key] = true
 		var err error
-		if h.scope {
+		switch {
+		case h.eventSubProcess:
+			err = e.triggerEventSubProcess(ctx, h.instanceID, h.elementID, req.Variables)
+		case h.scope:
 			err = e.completeScopeBoundary(ctx, h.instanceID, h.elementID)
-		} else {
+		default:
 			err = e.Complete(ctx, h.instanceID, h.elementID, h.tokenID, req.Variables)
 		}
 		if err != nil {

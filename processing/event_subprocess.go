@@ -71,6 +71,9 @@ func eventSubProcessStartActivated(dep *deploy.Deployment, spec deploy.EventSubP
 			payload.DueUnixMs = due
 			payload.Duration = text
 		}
+	case deploy.CatchKindConditional:
+		payload.Duration = spec.Condition
+		payload.TokenWait = true
 	}
 	return &eventv1.Element{
 		Intent:  eventv1.Element_INTENT_ACTIVATED,

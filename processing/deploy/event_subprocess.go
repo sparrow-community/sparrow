@@ -18,6 +18,7 @@ type EventSubProcess struct {
 	SignalName     string
 	ErrorCode      string // empty = catch-all when Kind == CatchKindError
 	EscalationCode string // empty = catch-all when Kind == CatchKindEscalation
+	Condition      string // set when Kind == CatchKindConditional
 	// Timer facts live in timerCatch[StartEventID] when Kind == CatchKindTimer.
 }
 
@@ -98,7 +99,16 @@ func eventSubProcessStartSpec(subProcessID string, start element.StartEvent, mes
 		spec.Interrupting = false
 		return spec, nil
 	}
-	return EventSubProcess{}, fmt.Errorf("UNSUPPORTED_ELEMENT: event subProcess %q startEvent must be message, signal, timer, error, escalation, or compensate", subProcessID)
+	if len(start.ConditionalEventDefinitions) > 0 {
+		text, err := conditionalCatchFromDefs(start.ID, start.EventDefinitions)
+		if err != nil {
+			return EventSubProcess{}, fmt.Errorf("UNSUPPORTED_ELEMENT: event subProcess %q startEvent: %v", subProcessID, err)
+		}
+		spec.Kind = CatchKindConditional
+		spec.Condition = text
+		return spec, nil
+	}
+	return EventSubProcess{}, fmt.Errorf("UNSUPPORTED_ELEMENT: event subProcess %q startEvent must be message, signal, timer, error, escalation, compensate, or conditional", subProcessID)
 }
 
 func compensateEventSubProcessStartFromDefs(startEventID string, defs element.EventDefinitions) error {

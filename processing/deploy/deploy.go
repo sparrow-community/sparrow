@@ -347,6 +347,8 @@ func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messag
 					if err := d.registerCompensationEventSubProcess(scopeID, spec, d.Process.ID); err != nil {
 						return err
 					}
+				case CatchKindConditional:
+					d.conditionalCatch[spec.StartEventID] = spec.Condition
 				}
 			}
 		}

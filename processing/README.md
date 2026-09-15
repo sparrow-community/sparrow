@@ -36,7 +36,7 @@ New element: handler + registry + deploy validation. Semantics stay out of `engi
 | ReceiveTask | Wait for PublishMessage; **instantiate** receive may be process entry |
 | Catch / throw / boundary | Timer, message, signal, error, escalation (including standalone intermediate catch), compensate, **conditional** (EvaluateConditions); multiple same-kind per activity (unique message/signal names / condition text); link throw/catch |
 | Gateways | XOR, AND, inclusive, event-based (catch; exclusive/parallel; instantiate; targets may be catch or receive) |
-| SubProcess | Embedded scope; Event Sub-Process (including compensation event sub-process); multi-instance |
+| SubProcess | Embedded scope; Event Sub-Process (including compensation and conditional start via EvaluateConditions); multi-instance |
 | CallActivity | Child instance; IO mapping; cross-deployment; boundary & compensation (including into unfinished child); multi-instance |
 | SequenceFlow | `SEQUENCE_FLOW_TAKEN`; conditions on gateway and activity outgoings (+ `default`) |
 
