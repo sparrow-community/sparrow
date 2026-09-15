@@ -81,6 +81,24 @@ func attachBoundary(dep *deploy.Deployment, activityID string, now time.Time, p 
 			p.SignalBoundaryId = bid
 		}
 	}
+	for _, bid := range dep.ConditionalBoundaries(activityID) {
+		text, ok := dep.ConditionalCatchExpression(bid)
+		if !ok {
+			return nil, fmt.Errorf("NOT_FOUND: conditional boundary %q", bid)
+		}
+		waits = append(waits, &eventv1.WaitingBoundary{
+			BoundaryId: bid,
+			Kind:       "conditional",
+			Duration:   text,
+		})
+		if p == nil {
+			p = &eventv1.ActivityPayload{}
+		}
+		if p.BoundaryId == "" {
+			p.BoundaryId = bid
+			p.Duration = text
+		}
+	}
 	if len(waits) > 0 {
 		if p == nil {
 			p = &eventv1.ActivityPayload{}
@@ -122,6 +140,9 @@ func cancelAttachedBoundary(dep *deploy.Deployment, activityID, tokenID string) 
 		appendCancel(bid)
 	}
 	for _, bid := range dep.SignalBoundaries(activityID) {
+		appendCancel(bid)
+	}
+	for _, bid := range dep.ConditionalBoundaries(activityID) {
 		appendCancel(bid)
 	}
 	return records
@@ -251,6 +272,9 @@ func (BoundaryEventHandler) OnComplete(in CompleteInput) (*Effect, error) {
 		appendSibling(bid)
 	}
 	for _, bid := range in.Deployment.SignalBoundaries(attached) {
+		appendSibling(bid)
+	}
+	for _, bid := range in.Deployment.ConditionalBoundaries(attached) {
 		appendSibling(bid)
 	}
 	records = append(records,

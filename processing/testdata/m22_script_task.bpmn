@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             id="Definitions_script"
+             targetNamespace="http://sparrow.example/script">
+  <process id="Process_script" name="Script Task" isExecutable="true">
+    <startEvent id="StartEvent_1">
+      <outgoing>Flow_start_to_script</outgoing>
+    </startEvent>
+    <scriptTask id="ScriptTask_1" name="Run script" scriptFormat="javascript">
+      <incoming>Flow_start_to_script</incoming>
+      <outgoing>Flow_script_to_end</outgoing>
+      <script>return true;</script>
+    </scriptTask>
+    <endEvent id="EndEvent_1">
+      <incoming>Flow_script_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_script" sourceRef="StartEvent_1" targetRef="ScriptTask_1"/>
+    <sequenceFlow id="Flow_script_to_end" sourceRef="ScriptTask_1" targetRef="EndEvent_1"/>
+  </process>
+</definitions>

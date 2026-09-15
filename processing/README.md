@@ -30,11 +30,11 @@ New element: handler + registry + deploy validation. Semantics stay out of `engi
 | Type | Behavior |
 |------|----------|
 | Process / Start / End | Lifecycle; **process-level typed starts** (message/timer/signal/conditional) mint via PublishMessage / PublishSignal / FireDue / EvaluateConditionalStarts; CreateInstance uses none start or instantiate EBG only; process-level error start rejected; end tries scope/process complete; **terminate end** cancels remaining tokens in the enclosing scope then completes it; **message/signal end** publish then complete |
-| UserTask / ManualTask | Wait → Complete; MI supported |
-| ServiceTask / BusinessRuleTask | Wait as Job → Complete; MI supported |
+| UserTask / ManualTask / Task | Wait → Complete; MI supported (Task = abstract `bpmn:task`) |
+| ServiceTask / BusinessRuleTask / ScriptTask | Wait as Job → Complete; MI supported (Script: job type from scriptFormat → name → id; no in-engine script runtime) |
 | SendTask | Publish message then continue |
 | ReceiveTask | Wait for PublishMessage; instantiate receive rejected |
-| Catch / throw / boundary | Timer, message, signal, error, escalation, compensate; multiple same-kind per activity (unique message/signal names); link throw/catch |
+| Catch / throw / boundary | Timer, message, signal, error, escalation, compensate, **conditional** (EvaluateConditions); multiple same-kind per activity (unique message/signal names / condition text); link throw/catch |
 | Gateways | XOR, AND, inclusive, event-based (catch) |
 | SubProcess | Embedded scope; Event Sub-Process; MI |
 | CallActivity | Child instance; IO mapping; cross-deployment; boundary & compensation; MI |
@@ -44,7 +44,7 @@ Full snapshot + roadmap: [`../AGENTS.md`](../AGENTS.md).
 
 ## Multi-instance
 
-User Task, Service Task, Manual/Receive/Send/Business Rule Task, embedded SubProcess, Call Activity. Host `loop_instance_index = -1`; inners `0..N-1`. Parallel / sequential / collection / early completion / boundary cancel / recover. Fixtures: `testdata/m6_mi_*.bpmn`.
+User Task, Service Task, Manual/Receive/Send/Business Rule/Script Task, embedded SubProcess, Call Activity. Host `loop_instance_index = -1`; inners `0..N-1`. Parallel / sequential / collection / early completion / boundary cancel / recover. Fixtures: `testdata/m6_mi_*.bpmn`.
 
 ```shell
 go test ./processing/

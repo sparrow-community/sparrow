@@ -48,6 +48,7 @@ type Deployment struct {
 	signalStarts      map[string][]string // signal name -> start event ids
 	timerStarts       map[string]timerCatch
 	conditionalStarts map[string]string // start event id -> condition text
+	conditionalCatch  map[string]string // intermediate/boundary conditional id -> condition text
 }
 
 type elemEntry struct {
@@ -136,6 +137,7 @@ func (d *Deployment) compile(messages []element.Message, signals []element.Signa
 	d.signalStarts = make(map[string][]string)
 	d.timerStarts = make(map[string]timerCatch)
 	d.conditionalStarts = make(map[string]string)
+	d.conditionalCatch = make(map[string]string)
 
 	if err := d.indexScope(&p.FlowElements, p.ID, messages, signals, errors, escalations, collectAssociations(p)); err != nil {
 		return err
@@ -204,6 +206,12 @@ func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messag
 			return err
 		}
 	}
+	for _, e := range fe.Tasks {
+		reg(e.ID, eventv1.Element_TYPE_TASK, e.Outgoing, e.Incoming)
+		if err := indexMultiInstance(d, e.ID, e.LoopCharacteristicsElements); err != nil {
+			return err
+		}
+	}
 	for _, e := range fe.ManualTasks {
 		reg(e.ID, eventv1.Element_TYPE_MANUAL_TASK, e.Outgoing, e.Incoming)
 		if err := indexMultiInstance(d, e.ID, e.LoopCharacteristicsElements); err != nil {
@@ -236,6 +244,15 @@ func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messag
 			return err
 		}
 	}
+	for _, e := range fe.ScriptTasks {
+		reg(e.ID, eventv1.Element_TYPE_SCRIPT_TASK, e.Outgoing, e.Incoming)
+		if err := indexMultiInstance(d, e.ID, e.LoopCharacteristicsElements); err != nil {
+			return err
+		}
+		if err := indexIncidentThreshold(d, e.ID, e.ExtensionElements); err != nil {
+			return err
+		}
+	}
 	for _, e := range fe.ExclusiveGatewaies {
 		reg(e.ID, eventv1.Element_TYPE_EXCLUSIVE_GATEWAY, e.Outgoing, e.Incoming)
 	}
@@ -258,6 +275,8 @@ func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messag
 			d.signalCatch[e.ID] = name
 		} else if name, err := linkCatchSpec(e); err == nil {
 			d.linkCatch[e.ID] = name
+		} else if text, err := conditionalCatchSpec(e); err == nil {
+			d.conditionalCatch[e.ID] = text
 		}
 	}
 	for _, e := range fe.IntermediateThrowEvents {
@@ -288,6 +307,8 @@ func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messag
 		} else if spec, err := escalationBoundarySpec(e, escalations); err == nil {
 			d.escalationCatch[e.ID] = spec.EscalationCode
 			d.escalationBoundaries[spec.AttachedTo] = append(d.escalationBoundaries[spec.AttachedTo], e.ID)
+		} else if spec, err := conditionalBoundarySpec(e); err == nil {
+			d.conditionalCatch[e.ID] = spec.Condition
 		}
 	}
 	for _, e := range fe.SequenceFlows {
@@ -372,9 +393,6 @@ func (d *Deployment) indexCallActivities(fe *element.FlowElements, catalog map[s
 }
 
 func validateM1(proc *element.Process, messages []element.Message, signals []element.Signal, errors []element.Error, escalations []element.Escalation) error {
-	if n := countAbstractTasks(&proc.FlowElements); n > 0 {
-		return fmt.Errorf("UNSUPPORTED_ELEMENT: process contains elements outside M1 subset")
-	}
 	if err := validateSubProcesses(&proc.FlowElements, errors, escalations); err != nil {
 		return err
 	}
@@ -444,8 +462,16 @@ func validateM1(proc *element.Process, messages []element.Message, signals []ele
 			}
 			attached = spec.AttachedTo
 			kind = "escalation:" + spec.EscalationCode
+		case len(e.ConditionalEventDefinitions) > 0:
+			spec, err := conditionalBoundarySpec(e)
+			if err != nil {
+				return err
+			}
+			attached = spec.AttachedTo
+			kind = "conditional"
+			disc = spec.Condition
 		default:
-			return fmt.Errorf("UNSUPPORTED_ELEMENT: boundaryEvent %q must be a timer, message, signal, error, escalation, or compensation boundary", e.ID)
+			return fmt.Errorf("UNSUPPORTED_ELEMENT: boundaryEvent %q must be a timer, message, signal, error, escalation, compensation, or conditional boundary", e.ID)
 		}
 		key := seenKey{attached, kind, disc}
 		if prev, ok := seenAttach[key]; ok {
@@ -487,7 +513,10 @@ func validateCatchAndThrow(fe *element.FlowElements) error {
 		if _, err := linkCatchSpec(e); err == nil {
 			continue
 		}
-		return fmt.Errorf("UNSUPPORTED_ELEMENT: intermediateCatchEvent %q must be timer, message, signal, or link catch", e.ID)
+		if _, err := conditionalCatchSpec(e); err == nil {
+			continue
+		}
+		return fmt.Errorf("UNSUPPORTED_ELEMENT: intermediateCatchEvent %q must be timer, message, signal, link, or conditional catch", e.ID)
 	}
 	for _, e := range fe.IntermediateThrowEvents {
 		if _, err := throwEventSpec(e, nil, nil, nil); err != nil {
@@ -811,6 +840,24 @@ func (d *Deployment) BusinessRuleTask(id string) (element.BusinessRuleTask, erro
 	return findBusinessRuleTaskIn(&d.Process.FlowElements, id)
 }
 
+func (d *Deployment) ScriptTask(id string) (element.ScriptTask, error) {
+	return findScriptTaskIn(&d.Process.FlowElements, id)
+}
+
+func findScriptTaskIn(fe *element.FlowElements, id string) (element.ScriptTask, error) {
+	for _, st := range fe.ScriptTasks {
+		if st.ID == id {
+			return st, nil
+		}
+	}
+	for i := range fe.SubProcesses {
+		if st, err := findScriptTaskIn(&fe.SubProcesses[i].FlowElements, id); err == nil {
+			return st, nil
+		}
+	}
+	return element.ScriptTask{}, fmt.Errorf("NOT_FOUND: script task %q", id)
+}
+
 func findBusinessRuleTaskIn(fe *element.FlowElements, id string) (element.BusinessRuleTask, error) {
 	for _, st := range fe.BusinessRuleTasks {
 		if st.ID == id {
@@ -855,6 +902,11 @@ func findActivityDefaultIn(fe *element.FlowElements, id string) string {
 			return fe.ServiceTasks[i].Default
 		}
 	}
+	for i := range fe.Tasks {
+		if fe.Tasks[i].ID == id {
+			return fe.Tasks[i].Default
+		}
+	}
 	for i := range fe.ManualTasks {
 		if fe.ManualTasks[i].ID == id {
 			return fe.ManualTasks[i].Default
@@ -873,6 +925,11 @@ func findActivityDefaultIn(fe *element.FlowElements, id string) string {
 	for i := range fe.BusinessRuleTasks {
 		if fe.BusinessRuleTasks[i].ID == id {
 			return fe.BusinessRuleTasks[i].Default
+		}
+	}
+	for i := range fe.ScriptTasks {
+		if fe.ScriptTasks[i].ID == id {
+			return fe.ScriptTasks[i].Default
 		}
 	}
 	for i := range fe.CallActivities {
@@ -1018,14 +1075,6 @@ func findExclusiveGatewayIn(fe *element.FlowElements, id string) *element.Exclus
 	return nil
 }
 
-func countAbstractTasks(fe *element.FlowElements) int {
-	n := len(fe.Tasks)
-	for i := range fe.SubProcesses {
-		n += countAbstractTasks(&fe.SubProcesses[i].FlowElements)
-	}
-	return n
-}
-
 func resolveTaskMessageName(messageRef, name, id string, messages []element.Message) string {
 	if n := resolveMessageName(messageRef, messages); n != "" {
 		return n
@@ -1040,7 +1089,7 @@ func validateBoundaryHost(proc *element.Process, activityID string) error {
 	if boundaryHostExists(&proc.FlowElements, activityID) {
 		return nil
 	}
-	return fmt.Errorf("UNSUPPORTED_ELEMENT: boundary must attach to a userTask, serviceTask, manualTask, receiveTask, sendTask, businessRuleTask, subProcess, or callActivity (%q)", activityID)
+	return fmt.Errorf("UNSUPPORTED_ELEMENT: boundary must attach to a task, userTask, serviceTask, manualTask, receiveTask, sendTask, businessRuleTask, scriptTask, subProcess, or callActivity (%q)", activityID)
 }
 
 func boundaryHostExists(fe *element.FlowElements, activityID string) bool {
@@ -1050,6 +1099,11 @@ func boundaryHostExists(fe *element.FlowElements, activityID string) bool {
 		}
 	}
 	for _, e := range fe.ServiceTasks {
+		if e.ID == activityID {
+			return true
+		}
+	}
+	for _, e := range fe.Tasks {
 		if e.ID == activityID {
 			return true
 		}
@@ -1070,6 +1124,11 @@ func boundaryHostExists(fe *element.FlowElements, activityID string) bool {
 		}
 	}
 	for _, e := range fe.BusinessRuleTasks {
+		if e.ID == activityID {
+			return true
+		}
+	}
+	for _, e := range fe.ScriptTasks {
 		if e.ID == activityID {
 			return true
 		}

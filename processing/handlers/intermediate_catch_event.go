@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/sparrow-community/sparrow/processing/deploy"
+	"github.com/sparrow-community/sparrow/processing/expr"
 	eventv1 "github.com/sparrow-community/sparrow/protocol/gen/go/event/v1"
 )
 
@@ -52,6 +53,26 @@ func (IntermediateCatchEventHandler) OnEnter(in EnterInput) (*Effect, error) {
 			Records:      InstantLifecycle(in.Type, in.ElementID, in.TokenID, nil),
 			TakeOutgoing: true,
 		}, nil
+	case deploy.CatchKindConditional:
+		text, ok := in.Deployment.ConditionalCatchExpression(in.ElementID)
+		if !ok {
+			return nil, fmt.Errorf("NOT_FOUND: conditional catch %q", in.ElementID)
+		}
+		vars := map[string]string{}
+		if in.Instance != nil {
+			vars = in.Instance.Variables
+		}
+		match, err := expr.Eval(text, vars)
+		if err != nil {
+			return nil, fmt.Errorf("INVALID_CONDITION: catch %s: %w", in.ElementID, err)
+		}
+		if match {
+			return &Effect{
+				Records:      InstantLifecycle(in.Type, in.ElementID, in.TokenID, nil),
+				TakeOutgoing: true,
+			}, nil
+		}
+		payload = &eventv1.EventPayload{TokenWait: true, Duration: text}
 	default:
 		return nil, fmt.Errorf("UNSUPPORTED_ELEMENT: intermediateCatchEvent %q has unsupported kind %q", in.ElementID, string(kind))
 	}

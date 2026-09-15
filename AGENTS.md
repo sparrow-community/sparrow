@@ -24,9 +24,9 @@ Work proceeds `/speckit-specify` → plan → tasks → implement (`.cursor/skil
 
 ## Supported
 
-Process lifecycle; process-level none start and typed starts (message, timer, signal, conditional — CreateInstance only for none / instantiate exclusive EBG; typed mint via PublishMessage / PublishSignal / FireDue / EvaluateConditionalStarts); User Task; Service Task + Job; Manual / Receive / Send / Business Rule Task; exclusive / parallel / inclusive / event-based gateways (catch, including exclusive instantiate entry); SubProcess; Call Activity (child instance, IO mapping, cross-deployment, boundary and compensation parity, multi-instance; called process requires none start or instantiate EBG); Event Sub-Process (including nested); intermediate and boundary catches/throws for timer, message, signal, error, escalation, compensate (multiple same-kind boundaries); link throw/catch; conditional sequence flows on activities and gateways; terminate end; message end; signal end; compensation into an unfinished embedded SubProcess; multi-instance on User Task, Service Task, Manual / Receive / Send / Business Rule, SubProcess, Call Activity; incident open / resolve / retry; coexisting process revisions.
+Process lifecycle; process-level none start and typed starts (message, timer, signal, conditional — CreateInstance only for none / instantiate exclusive EBG; typed mint via PublishMessage / PublishSignal / FireDue / EvaluateConditionalStarts); User Task; Service Task + Job; Manual / abstract Task (wait → Complete); Receive / Send; Business Rule / Script Task (job-backed); exclusive / parallel / inclusive / event-based gateways (catch, including exclusive instantiate entry); SubProcess; Call Activity (child instance, IO mapping, cross-deployment, boundary and compensation parity, multi-instance; called process requires none start or instantiate EBG); Event Sub-Process (including nested); intermediate and boundary catches/throws for timer, message, signal, error, escalation, compensate, conditional (multiple same-kind boundaries); link throw/catch; conditional sequence flows on activities and gateways; terminate end; message end; signal end; compensation into an unfinished embedded SubProcess; multi-instance on User Task, Service Task, Manual / abstract Task / Receive / Send / Business Rule / Script, SubProcess, Call Activity; incident open / resolve / retry; coexisting process revisions.
 
-Shipped: M1–M4c, specs [`001`](./specs/001-engine-completeness/)–[`016`](./specs/016-message-signal-end/).
+Shipped: M1–M4c, specs [`001`](./specs/001-engine-completeness/)–[`019`](./specs/019-abstract-task/).
 
 ## Planned
 
@@ -34,9 +34,6 @@ Open executable-process gaps. Priority guides sequencing; a feature plan may reo
 
 | P | Topic |
 |---|--------|
-| 1 | Conditional catch: intermediate and boundary |
-| 1 | Script Task |
-| 1 | Abstract `bpmn:task` as Manual-equivalent wait/complete |
 | 2 | `standardLoopCharacteristics` |
 | 2 | Multi-instance `complexBehaviorDefinition` and none/one behavior event refs |
 | 2 | Instantiate Receive Task; parallel instantiate event-based gateway; event-based gateway targeting Receive Task; multiple instantiate event-based gateway entries |
@@ -76,7 +73,7 @@ Non-goals. Moving an item out of Excluded requires an AGENTS and constitution am
 
 ## API and persistence
 
-`Deploy` · `CreateInstance` · `Complete` · `ThrowError` · `ResolveIncident` · `FireDue` · `PublishMessage` · `PublishSignal` · `EvaluateConditionalStarts` · Job Activate / Fail / Heartbeat · `GetInstance` · `ListEvents`
+`Deploy` · `CreateInstance` · `Complete` · `ThrowError` · `ResolveIncident` · `FireDue` · `PublishMessage` · `PublishSignal` · `EvaluateConditionalStarts` · `EvaluateConditions` · Job Activate / Fail / Heartbeat · `GetInstance` · `ListEvents`
 
 `EventLog` + `deploy.Store` + optional `runtime.Store` · `Recover` / `Open` · gRPC in `gateway` only
 

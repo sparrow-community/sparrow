@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             id="Definitions_dup_cond"
+             targetNamespace="http://sparrow.example/dup_cond">
+  <process id="Process_dup_cond" name="Duplicate Conditional Boundary" isExecutable="true">
+    <startEvent id="StartEvent_1">
+      <outgoing>Flow_start_to_ut</outgoing>
+    </startEvent>
+    <userTask id="UserTask_1">
+      <incoming>Flow_start_to_ut</incoming>
+      <outgoing>Flow_ut_to_end</outgoing>
+    </userTask>
+    <boundaryEvent id="CondBoundary_a" attachedToRef="UserTask_1">
+      <outgoing>Flow_a</outgoing>
+      <conditionalEventDefinition id="CondDef_a">
+        <condition xsi:type="tFormalExpression">${approved == true}</condition>
+      </conditionalEventDefinition>
+    </boundaryEvent>
+    <boundaryEvent id="CondBoundary_b" attachedToRef="UserTask_1">
+      <outgoing>Flow_b</outgoing>
+      <conditionalEventDefinition id="CondDef_b">
+        <condition xsi:type="tFormalExpression">${approved == true}</condition>
+      </conditionalEventDefinition>
+    </boundaryEvent>
+    <endEvent id="EndEvent_1"><incoming>Flow_ut_to_end</incoming></endEvent>
+    <endEvent id="EndEvent_a"><incoming>Flow_a</incoming></endEvent>
+    <endEvent id="EndEvent_b"><incoming>Flow_b</incoming></endEvent>
+    <sequenceFlow id="Flow_start_to_ut" sourceRef="StartEvent_1" targetRef="UserTask_1"/>
+    <sequenceFlow id="Flow_ut_to_end" sourceRef="UserTask_1" targetRef="EndEvent_1"/>
+    <sequenceFlow id="Flow_a" sourceRef="CondBoundary_a" targetRef="EndEvent_a"/>
+    <sequenceFlow id="Flow_b" sourceRef="CondBoundary_b" targetRef="EndEvent_b"/>
+  </process>
+</definitions>

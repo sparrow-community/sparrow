@@ -16,7 +16,7 @@ const (
 	defaultLockDuration = 5 * time.Minute
 )
 
-// Job is a worker-facing snapshot of a waiting ServiceTask.
+// Job is a worker-facing snapshot of a waiting job-backed task.
 // It is a runtime projection, not an EventLog record.
 type Job struct {
 	JobType           string
@@ -27,6 +27,9 @@ type Job struct {
 	Variables         map[string]string
 	WorkerID          string
 	LockDeadline      time.Time
+	// ScriptFormat / Script are set for Script Task jobs when present on the definition.
+	ScriptFormat string
+	Script       string
 }
 
 // ActivateRequest is the pull-worker claim for jobs of one type.
@@ -148,7 +151,7 @@ func (e *Engine) claimJobs(req ActivateRequest) ([]Job, time.Time) {
 			}
 			e.leases[key] = jobLease{workerID: req.WorkerID, deadline: deadline}
 			e.persistLease(iid, tid, req.WorkerID, deadline)
-			out = append(out, Job{
+			job := Job{
 				JobType:           tok.JobType,
 				ProcessInstanceID: inst.ID,
 				DeploymentID:      inst.DeploymentID,
@@ -157,7 +160,17 @@ func (e *Engine) claimJobs(req ActivateRequest) ([]Job, time.Time) {
 				Variables:         cloneStringMap(inst.Variables),
 				WorkerID:          req.WorkerID,
 				LockDeadline:      deadline,
-			})
+			}
+			e.mu.Lock()
+			dep := e.deployments[inst.DeploymentID]
+			e.mu.Unlock()
+			if dep != nil {
+				if st, err := dep.ScriptTask(tok.ElementID); err == nil {
+					job.ScriptFormat = st.ScriptFormat
+					job.Script = st.Script
+				}
+			}
+			out = append(out, job)
 		}
 		e.jobMu.Unlock()
 		lock.Unlock()

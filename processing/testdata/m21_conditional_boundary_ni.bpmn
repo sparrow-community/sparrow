@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             id="Definitions_cond_boundary_ni"
+             targetNamespace="http://sparrow.example/cond_boundary_ni">
+  <process id="Process_cond_boundary_ni" name="Non-interrupting Conditional Boundary" isExecutable="true">
+    <startEvent id="StartEvent_1">
+      <outgoing>Flow_start_to_ut</outgoing>
+    </startEvent>
+    <userTask id="UserTask_1" name="Work">
+      <incoming>Flow_start_to_ut</incoming>
+      <outgoing>Flow_ut_to_end</outgoing>
+    </userTask>
+    <boundaryEvent id="CondBoundary_1" attachedToRef="UserTask_1" cancelActivity="false">
+      <outgoing>Flow_boundary_to_end</outgoing>
+      <conditionalEventDefinition id="CondDef_1">
+        <condition xsi:type="tFormalExpression">${approved == true}</condition>
+      </conditionalEventDefinition>
+    </boundaryEvent>
+    <endEvent id="EndEvent_main">
+      <incoming>Flow_ut_to_end</incoming>
+    </endEvent>
+    <endEvent id="EndEvent_boundary">
+      <incoming>Flow_boundary_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_ut" sourceRef="StartEvent_1" targetRef="UserTask_1"/>
+    <sequenceFlow id="Flow_ut_to_end" sourceRef="UserTask_1" targetRef="EndEvent_main"/>
+    <sequenceFlow id="Flow_boundary_to_end" sourceRef="CondBoundary_1" targetRef="EndEvent_boundary"/>
+  </process>
+</definitions>

@@ -167,10 +167,12 @@ func DefaultRegistry() *Registry {
 		EventBasedGatewayHandler{},
 		IntermediateThrowEventHandler{},
 		CallActivityHandler{},
+		TaskHandler{},
 		ManualTaskHandler{},
 		ReceiveTaskHandler{},
 		SendTaskHandler{},
 		BusinessRuleTaskHandler{},
+		ScriptTaskHandler{},
 	)
 }
 

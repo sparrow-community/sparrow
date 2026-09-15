@@ -470,7 +470,7 @@ func (e *Engine) emitter(ctx context.Context, inst *projection.Instance, sourceC
 				}
 			}
 		}
-		if (el.GetType() == eventv1.Element_TYPE_SERVICE_TASK || el.GetType() == eventv1.Element_TYPE_BUSINESS_RULE_TASK) &&
+		if (el.GetType() == eventv1.Element_TYPE_SERVICE_TASK || el.GetType() == eventv1.Element_TYPE_BUSINESS_RULE_TASK || el.GetType() == eventv1.Element_TYPE_SCRIPT_TASK) &&
 			el.GetIntent() == eventv1.Element_INTENT_ACTIVATED {
 			e.notifyJobs()
 		}

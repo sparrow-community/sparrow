@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             id="Definitions_abstract"
+             targetNamespace="http://sparrow.example/abstract">
+  <process id="Process_abstract" name="Abstract Task" isExecutable="true">
+    <startEvent id="StartEvent_1">
+      <outgoing>Flow_start_to_task</outgoing>
+    </startEvent>
+    <task id="Task_1" name="Do something">
+      <incoming>Flow_start_to_task</incoming>
+      <outgoing>Flow_task_to_end</outgoing>
+    </task>
+    <endEvent id="EndEvent_1">
+      <incoming>Flow_task_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_task" sourceRef="StartEvent_1" targetRef="Task_1"/>
+    <sequenceFlow id="Flow_task_to_end" sourceRef="Task_1" targetRef="EndEvent_1"/>
+  </process>
+</definitions>

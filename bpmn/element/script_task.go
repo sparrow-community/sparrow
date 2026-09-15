@@ -14,8 +14,10 @@
 
 package element
 
-// Task is a BPMN abstract task. Sparrow runs it as Manual-equivalent
-// wait → Complete (not job-backed).
-type Task struct {
-	Activity
+// ScriptTask is a BPMN scriptTask. Sparrow treats it as job-backed; the engine
+// does not execute the script body.
+type ScriptTask struct {
+	Task
+	ScriptFormat string `xml:"scriptFormat,attr"`
+	Script       string `xml:"script"`
 }

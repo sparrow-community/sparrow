@@ -279,7 +279,7 @@ func TestRecoverManualReceiveBusinessRule(t *testing.T) {
 	}
 }
 
-func TestAbstractTaskStillRejected(t *testing.T) {
+func TestAbstractTaskAccepted(t *testing.T) {
 	body := []byte(`<?xml version="1.0" encoding="UTF-8"?>
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" id="d" targetNamespace="http://sparrow.example/abstract">
   <process id="Process_abs" isExecutable="true">
@@ -291,8 +291,7 @@ func TestAbstractTaskStillRejected(t *testing.T) {
   </process>
 </definitions>`)
 	eng := processing.NewEngine(eventlog.NewMemory())
-	_, err := eng.Deploy(context.Background(), body)
-	if err == nil || !strings.Contains(err.Error(), "UNSUPPORTED_ELEMENT") {
-		t.Fatalf("err=%v", err)
+	if _, err := eng.Deploy(context.Background(), body); err != nil {
+		t.Fatalf("deploy abstract task: %v", err)
 	}
 }

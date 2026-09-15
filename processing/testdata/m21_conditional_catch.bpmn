@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             id="Definitions_cond_catch"
+             targetNamespace="http://sparrow.example/cond_catch">
+  <process id="Process_cond_catch" name="Conditional Catch" isExecutable="true">
+    <startEvent id="StartEvent_1">
+      <outgoing>Flow_start_to_catch</outgoing>
+    </startEvent>
+    <intermediateCatchEvent id="CondCatch_1" name="Wait approved">
+      <incoming>Flow_start_to_catch</incoming>
+      <outgoing>Flow_catch_to_end</outgoing>
+      <conditionalEventDefinition id="CondDef_1">
+        <condition xsi:type="tFormalExpression">${approved == true}</condition>
+      </conditionalEventDefinition>
+    </intermediateCatchEvent>
+    <endEvent id="EndEvent_1">
+      <incoming>Flow_catch_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_catch" sourceRef="StartEvent_1" targetRef="CondCatch_1"/>
+    <sequenceFlow id="Flow_catch_to_end" sourceRef="CondCatch_1" targetRef="EndEvent_1"/>
+  </process>
+</definitions>

@@ -562,7 +562,7 @@ func boundaryRearmOnWaitingHost(hostElementID string, el *eventv1.Element, tok *
 
 func waitingActivation(t eventv1.Element_Type) bool {
 	switch t {
-	case eventv1.Element_TYPE_USER_TASK, eventv1.Element_TYPE_SERVICE_TASK, eventv1.Element_TYPE_MANUAL_TASK, eventv1.Element_TYPE_RECEIVE_TASK, eventv1.Element_TYPE_SEND_TASK, eventv1.Element_TYPE_BUSINESS_RULE_TASK, eventv1.Element_TYPE_INTERMEDIATE_CATCH_EVENT, eventv1.Element_TYPE_INTERMEDIATE_THROW_EVENT, eventv1.Element_TYPE_PARALLEL_GATEWAY, eventv1.Element_TYPE_INCLUSIVE_GATEWAY, eventv1.Element_TYPE_SUB_PROCESS, eventv1.Element_TYPE_CALL_ACTIVITY:
+	case eventv1.Element_TYPE_USER_TASK, eventv1.Element_TYPE_SERVICE_TASK, eventv1.Element_TYPE_TASK, eventv1.Element_TYPE_MANUAL_TASK, eventv1.Element_TYPE_RECEIVE_TASK, eventv1.Element_TYPE_SEND_TASK, eventv1.Element_TYPE_BUSINESS_RULE_TASK, eventv1.Element_TYPE_SCRIPT_TASK, eventv1.Element_TYPE_INTERMEDIATE_CATCH_EVENT, eventv1.Element_TYPE_INTERMEDIATE_THROW_EVENT, eventv1.Element_TYPE_PARALLEL_GATEWAY, eventv1.Element_TYPE_INCLUSIVE_GATEWAY, eventv1.Element_TYPE_SUB_PROCESS, eventv1.Element_TYPE_CALL_ACTIVITY:
 		return true
 	default:
 		return false

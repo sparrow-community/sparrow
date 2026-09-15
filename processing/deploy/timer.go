@@ -13,12 +13,13 @@ import (
 type CatchKind string
 
 const (
-	CatchKindTimer      CatchKind = "timer"
-	CatchKindMessage    CatchKind = "message"
-	CatchKindSignal     CatchKind = "signal"
-	CatchKindError      CatchKind = "error"
-	CatchKindEscalation CatchKind = "escalation"
-	CatchKindLink       CatchKind = "link"
+	CatchKindTimer       CatchKind = "timer"
+	CatchKindMessage     CatchKind = "message"
+	CatchKindSignal      CatchKind = "signal"
+	CatchKindError       CatchKind = "error"
+	CatchKindEscalation  CatchKind = "escalation"
+	CatchKindLink        CatchKind = "link"
+	CatchKindConditional CatchKind = "conditional"
 )
 
 type timerCatch struct {
@@ -283,6 +284,9 @@ func (d *Deployment) CatchKind(id string) (CatchKind, error) {
 	}
 	if _, ok := d.linkCatch[id]; ok {
 		return CatchKindLink, nil
+	}
+	if _, ok := d.conditionalCatch[id]; ok {
+		return CatchKindConditional, nil
 	}
 	return "", fmt.Errorf("NOT_FOUND: intermediate catch %q", id)
 }
