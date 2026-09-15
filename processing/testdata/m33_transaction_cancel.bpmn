@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             id="Definitions_transaction"
+             targetNamespace="http://sparrow.example/transaction">
+  <process id="Process_transaction" isExecutable="true">
+    <startEvent id="Start_1">
+      <outgoing>Flow_start_to_tx</outgoing>
+    </startEvent>
+    <transaction id="Transaction_1" method="##Compensate">
+      <incoming>Flow_start_to_tx</incoming>
+      <outgoing>Flow_tx_to_end</outgoing>
+      <startEvent id="Start_tx">
+        <outgoing>Flow_tx_to_a</outgoing>
+      </startEvent>
+      <userTask id="Task_A">
+        <incoming>Flow_tx_to_a</incoming>
+        <outgoing>Flow_a_to_gw</outgoing>
+      </userTask>
+      <exclusiveGateway id="Gateway_1" default="Flow_gw_to_ok">
+        <incoming>Flow_a_to_gw</incoming>
+        <outgoing>Flow_gw_to_ok</outgoing>
+        <outgoing>Flow_gw_to_cancel</outgoing>
+      </exclusiveGateway>
+      <endEvent id="End_ok">
+        <incoming>Flow_gw_to_ok</incoming>
+      </endEvent>
+      <endEvent id="Cancel_End">
+        <incoming>Flow_gw_to_cancel</incoming>
+        <cancelEventDefinition id="CancelDef_End"/>
+      </endEvent>
+      <sequenceFlow id="Flow_tx_to_a" sourceRef="Start_tx" targetRef="Task_A"/>
+      <sequenceFlow id="Flow_a_to_gw" sourceRef="Task_A" targetRef="Gateway_1"/>
+      <sequenceFlow id="Flow_gw_to_ok" sourceRef="Gateway_1" targetRef="End_ok"/>
+      <sequenceFlow id="Flow_gw_to_cancel" sourceRef="Gateway_1" targetRef="Cancel_End">
+        <conditionExpression xsi:type="tFormalExpression">${cancel == true}</conditionExpression>
+      </sequenceFlow>
+    </transaction>
+    <boundaryEvent id="Cancel_Boundary" attachedToRef="Transaction_1" cancelActivity="true">
+      <cancelEventDefinition id="CancelDef_Boundary"/>
+      <outgoing>Flow_cancel_to_end</outgoing>
+    </boundaryEvent>
+    <boundaryEvent id="CompensateBoundary_A" attachedToRef="Task_A" cancelActivity="false">
+      <compensateEventDefinition id="CompensateDef_A"/>
+    </boundaryEvent>
+    <userTask id="Undo_A" isForCompensation="true"/>
+    <association id="Assoc_A" sourceRef="CompensateBoundary_A" targetRef="Undo_A" associationDirection="One"/>
+    <endEvent id="End_success">
+      <incoming>Flow_tx_to_end</incoming>
+    </endEvent>
+    <endEvent id="End_cancelled">
+      <incoming>Flow_cancel_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_tx" sourceRef="Start_1" targetRef="Transaction_1"/>
+    <sequenceFlow id="Flow_tx_to_end" sourceRef="Transaction_1" targetRef="End_success"/>
+    <sequenceFlow id="Flow_cancel_to_end" sourceRef="Cancel_Boundary" targetRef="End_cancelled"/>
+  </process>
+</definitions>

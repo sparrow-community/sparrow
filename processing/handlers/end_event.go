@@ -54,6 +54,24 @@ func (EndEventHandler) OnEnter(in EnterInput) (*Effect, error) {
 			TriggerCompensation: true,
 		}, nil
 	}
+	if in.Deployment != nil && in.Deployment.IsCancelEnd(in.ElementID) {
+		return &Effect{
+			Records: []*eventv1.Element{
+				{Intent: eventv1.Element_INTENT_ACTIVATING, Type: in.Type, Id: in.ElementID, TokenId: in.TokenID},
+				{
+					Intent:  eventv1.Element_INTENT_ACTIVATED,
+					Type:    in.Type,
+					Id:      in.ElementID,
+					TokenId: in.TokenID,
+					Payload: &eventv1.Element_EventPayload{
+						EventPayload: &eventv1.EventPayload{TokenWait: true},
+					},
+				},
+			},
+			Wait:                     true,
+			TriggerTransactionCancel: true,
+		}, nil
+	}
 	if in.Deployment != nil && in.Deployment.IsTerminateEnd(in.ElementID) {
 		return &Effect{
 			Records:            InstantLifecycle(in.Type, in.ElementID, in.TokenID, nil),
@@ -90,6 +108,15 @@ func (EndEventHandler) OnEnter(in EnterInput) (*Effect, error) {
 }
 
 func (EndEventHandler) OnComplete(in CompleteInput) (*Effect, error) {
+	if in.Deployment != nil && in.Deployment.IsCancelEnd(in.ElementID) {
+		return &Effect{
+			Records: []*eventv1.Element{
+				{Intent: eventv1.Element_INTENT_COMPLETING, Type: in.Type, Id: in.ElementID, TokenId: in.TokenID},
+				{Intent: eventv1.Element_INTENT_COMPLETED, Type: in.Type, Id: in.ElementID, TokenId: in.TokenID},
+			},
+			DiscardToken: true,
+		}, nil
+	}
 	if in.Deployment == nil || !in.Deployment.IsCompensateEnd(in.ElementID) {
 		return nil, errUnsupportedComplete(eventv1.Element_TYPE_END_EVENT)
 	}

@@ -28,6 +28,8 @@ type Deployment struct {
 	errorBoundaries      map[string][]string     // activity id -> error boundary ids
 	errorEnds            map[string]string       // error end event id -> error code
 	compensateEnds       map[string]string       // compensate end event id -> optional activityRef
+	cancelEnds           map[string]bool         // cancel end event ids
+	cancelBoundaries     map[string]string       // transaction id -> cancel boundary id
 	terminateEnds        map[string]bool         // terminate end event ids
 	messageEnds          map[string]string       // message end id -> message name
 	signalEnds           map[string]string       // signal end id -> signal name
@@ -124,6 +126,8 @@ func (d *Deployment) compile(messages []element.Message, signals []element.Signa
 	d.errorBoundaries = make(map[string][]string)
 	d.errorEnds = make(map[string]string)
 	d.compensateEnds = make(map[string]string)
+	d.cancelEnds = make(map[string]bool)
+	d.cancelBoundaries = make(map[string]string)
 	d.terminateEnds = make(map[string]bool)
 	d.messageEnds = make(map[string]string)
 	d.signalEnds = make(map[string]string)
@@ -155,6 +159,9 @@ func (d *Deployment) compile(messages []element.Message, signals []element.Signa
 	if err := d.validateLinkPairs(); err != nil {
 		return err
 	}
+	if err := d.validateCancelSemantics(); err != nil {
+		return err
+	}
 	return d.indexCallActivities(&p.FlowElements, catalog, messages, signals, errors, escalations)
 }
 
@@ -166,6 +173,11 @@ func collectAssociations(p *element.Process) []element.Association {
 			sp := &fe.SubProcesses[i]
 			out = append(out, sp.Associations...)
 			walk(&sp.FlowElements)
+		}
+		for i := range fe.Transactions {
+			tx := &fe.Transactions[i]
+			out = append(out, tx.Associations...)
+			walk(&tx.FlowElements)
 		}
 	}
 	walk(&p.FlowElements)
@@ -187,6 +199,8 @@ func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messag
 			d.escalationEnds[e.ID] = code
 		} else if spec, err := compensateEndSpec(e); err == nil {
 			d.compensateEnds[e.ID] = spec.ActivityRef
+		} else if err := cancelEndSpec(e); err == nil {
+			d.cancelEnds[e.ID] = true
 		} else if err := terminateEndSpec(e); err == nil {
 			d.terminateEnds[e.ID] = true
 		} else if name, err := messageEndSpec(e, messages); err == nil {
@@ -309,6 +323,11 @@ func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messag
 			d.signalCatch[e.ID] = spec.Name
 		} else if spec, err := compensationBoundarySpec(e, associations); err == nil {
 			d.compensations[spec.ActivityID] = spec
+		} else if attached, err := cancelBoundarySpec(e); err == nil {
+			if prev, ok := d.cancelBoundaries[attached]; ok {
+				return fmt.Errorf("UNSUPPORTED_ELEMENT: transaction %q already has cancel boundary %q", attached, prev)
+			}
+			d.cancelBoundaries[attached] = e.ID
 		} else if spec, err := errorBoundarySpec(e, errors); err == nil {
 			d.errorCatch[e.ID] = spec.ErrorCode
 			d.errorBoundaries[spec.AttachedTo] = append(d.errorBoundaries[spec.AttachedTo], e.ID)
@@ -356,6 +375,20 @@ func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messag
 			return err
 		}
 	}
+	for i := range fe.Transactions {
+		tx := &fe.Transactions[i]
+		if err := validateTransaction(*tx, d.IsTransaction(scopeID)); err != nil {
+			return err
+		}
+		// Nested transaction: parent scope is itself a transaction.
+		if d.IsTransaction(scopeID) {
+			return fmt.Errorf("UNSUPPORTED_ELEMENT: nested transaction %q is not supported", tx.ID)
+		}
+		reg(tx.ID, eventv1.Element_TYPE_TRANSACTION, tx.Outgoing, tx.Incoming)
+		if err := d.indexScope(&tx.FlowElements, tx.ID, messages, signals, errors, escalations, associations); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -398,6 +431,11 @@ func (d *Deployment) indexCallActivities(fe *element.FlowElements, catalog map[s
 		}
 		for i := range fe.SubProcesses {
 			if err := walk(&fe.SubProcesses[i].FlowElements); err != nil {
+				return err
+			}
+		}
+		for i := range fe.Transactions {
+			if err := walk(&fe.Transactions[i].FlowElements); err != nil {
 				return err
 			}
 		}
@@ -484,8 +522,15 @@ func validateM1(proc *element.Process, messages []element.Message, signals []ele
 			attached = spec.AttachedTo
 			kind = "conditional"
 			disc = spec.Condition
+		case len(e.CancelEventDefinitions) > 0:
+			attachedTo, err := cancelBoundarySpec(e)
+			if err != nil {
+				return err
+			}
+			attached = attachedTo
+			kind = "cancel"
 		default:
-			return fmt.Errorf("UNSUPPORTED_ELEMENT: boundaryEvent %q must be a timer, message, signal, error, escalation, compensation, or conditional boundary", e.ID)
+			return fmt.Errorf("UNSUPPORTED_ELEMENT: boundaryEvent %q must be a timer, message, signal, error, escalation, compensation, conditional, or cancel boundary", e.ID)
 		}
 		key := seenKey{attached, kind, disc}
 		if prev, ok := seenAttach[key]; ok {
@@ -545,8 +590,8 @@ func validateCatchAndThrow(fe *element.FlowElements) error {
 			return err
 		}
 	}
-	for i := range fe.SubProcesses {
-		if err := validateCatchAndThrow(&fe.SubProcesses[i].FlowElements); err != nil {
+	for _, child := range childScopes(fe) {
+		if err := validateCatchAndThrow(child); err != nil {
 			return err
 		}
 	}
@@ -919,8 +964,8 @@ func findSequenceFlowIn(fe *element.FlowElements, id string) (element.SequenceFl
 			return f, nil
 		}
 	}
-	for i := range fe.SubProcesses {
-		if f, err := findSequenceFlowIn(&fe.SubProcesses[i].FlowElements, id); err == nil {
+	for _, child := range childScopes(fe) {
+		if f, err := findSequenceFlowIn(child, id); err == nil {
 			return f, nil
 		}
 	}
@@ -937,8 +982,8 @@ func findServiceTaskIn(fe *element.FlowElements, id string) (element.ServiceTask
 			return st, nil
 		}
 	}
-	for i := range fe.SubProcesses {
-		if st, err := findServiceTaskIn(&fe.SubProcesses[i].FlowElements, id); err == nil {
+	for _, child := range childScopes(fe) {
+		if st, err := findServiceTaskIn(child, id); err == nil {
 			return st, nil
 		}
 	}
@@ -959,8 +1004,8 @@ func findScriptTaskIn(fe *element.FlowElements, id string) (element.ScriptTask, 
 			return st, nil
 		}
 	}
-	for i := range fe.SubProcesses {
-		if st, err := findScriptTaskIn(&fe.SubProcesses[i].FlowElements, id); err == nil {
+	for _, child := range childScopes(fe) {
+		if st, err := findScriptTaskIn(child, id); err == nil {
 			return st, nil
 		}
 	}
@@ -973,8 +1018,8 @@ func findBusinessRuleTaskIn(fe *element.FlowElements, id string) (element.Busine
 			return st, nil
 		}
 	}
-	for i := range fe.SubProcesses {
-		if st, err := findBusinessRuleTaskIn(&fe.SubProcesses[i].FlowElements, id); err == nil {
+	for _, child := range childScopes(fe) {
+		if st, err := findBusinessRuleTaskIn(child, id); err == nil {
 			return st, nil
 		}
 	}
@@ -1051,6 +1096,14 @@ func findActivityDefaultIn(fe *element.FlowElements, id string) string {
 			return fe.SubProcesses[i].Default
 		}
 		if def := findActivityDefaultIn(&fe.SubProcesses[i].FlowElements, id); def != "" {
+			return def
+		}
+	}
+	for i := range fe.Transactions {
+		if fe.Transactions[i].ID == id {
+			return fe.Transactions[i].Default
+		}
+		if def := findActivityDefaultIn(&fe.Transactions[i].FlowElements, id); def != "" {
 			return def
 		}
 	}
@@ -1192,8 +1245,8 @@ func findInclusiveGatewayIn(fe *element.FlowElements, id string) *element.Inclus
 			return &fe.InclusiveGatewaies[i]
 		}
 	}
-	for i := range fe.SubProcesses {
-		if g := findInclusiveGatewayIn(&fe.SubProcesses[i].FlowElements, id); g != nil {
+	for _, child := range childScopes(fe) {
+		if g := findInclusiveGatewayIn(child, id); g != nil {
 			return g
 		}
 	}
@@ -1206,8 +1259,8 @@ func findExclusiveGatewayIn(fe *element.FlowElements, id string) *element.Exclus
 			return &fe.ExclusiveGatewaies[i]
 		}
 	}
-	for i := range fe.SubProcesses {
-		if g := findExclusiveGatewayIn(&fe.SubProcesses[i].FlowElements, id); g != nil {
+	for _, child := range childScopes(fe) {
+		if g := findExclusiveGatewayIn(child, id); g != nil {
 			return g
 		}
 	}
@@ -1228,7 +1281,7 @@ func validateBoundaryHost(proc *element.Process, activityID string) error {
 	if boundaryHostExists(&proc.FlowElements, activityID) {
 		return nil
 	}
-	return fmt.Errorf("UNSUPPORTED_ELEMENT: boundary must attach to a task, userTask, serviceTask, manualTask, receiveTask, sendTask, businessRuleTask, scriptTask, subProcess, or callActivity (%q)", activityID)
+	return fmt.Errorf("UNSUPPORTED_ELEMENT: boundary must attach to a task, userTask, serviceTask, manualTask, receiveTask, sendTask, businessRuleTask, scriptTask, subProcess, transaction, or callActivity (%q)", activityID)
 }
 
 func boundaryHostExists(fe *element.FlowElements, activityID string) bool {
@@ -1280,6 +1333,14 @@ func boundaryHostExists(fe *element.FlowElements, activityID string) bool {
 			return true
 		}
 	}
+	for _, e := range fe.Transactions {
+		if e.ID == activityID {
+			return true
+		}
+		if boundaryHostExists(&e.FlowElements, activityID) {
+			return true
+		}
+	}
 	for _, e := range fe.CallActivities {
 		if e.ID == activityID {
 			return true
@@ -1293,6 +1354,10 @@ func validateSubProcesses(fe *element.FlowElements, errors []element.Error, esca
 }
 
 func validateSubProcessesAt(fe *element.FlowElements, insideEmbedded, insideEventSubProcess bool, errors []element.Error, escalations []element.Escalation) error {
+	return validateScopesAt(fe, insideEmbedded, insideEventSubProcess, false, errors, escalations)
+}
+
+func validateScopesAt(fe *element.FlowElements, insideEmbedded, insideEventSubProcess, insideTransaction bool, errors []element.Error, escalations []element.Escalation) error {
 	for i := range fe.SubProcesses {
 		sp := &fe.SubProcesses[i]
 		if sp.TriggeredByEvent {
@@ -1304,7 +1369,7 @@ func validateSubProcessesAt(fe *element.FlowElements, insideEmbedded, insideEven
 					return fmt.Errorf("UNSUPPORTED_ELEMENT: event subProcess %q must not have sequence flow connections", sp.ID)
 				}
 			}
-			if err := validateSubProcessesAt(&sp.FlowElements, false, true, errors, escalations); err != nil {
+			if err := validateScopesAt(&sp.FlowElements, false, true, insideTransaction, errors, escalations); err != nil {
 				return err
 			}
 			continue
@@ -1312,7 +1377,16 @@ func validateSubProcessesAt(fe *element.FlowElements, insideEmbedded, insideEven
 		if len(sp.StartEvents) == 0 {
 			return fmt.Errorf("UNSUPPORTED_ELEMENT: subProcess %q must have a startEvent", sp.ID)
 		}
-		if err := validateSubProcessesAt(&sp.FlowElements, true, insideEventSubProcess, errors, escalations); err != nil {
+		if err := validateScopesAt(&sp.FlowElements, true, insideEventSubProcess, insideTransaction, errors, escalations); err != nil {
+			return err
+		}
+	}
+	for i := range fe.Transactions {
+		tx := &fe.Transactions[i]
+		if err := validateTransaction(*tx, insideTransaction); err != nil {
+			return err
+		}
+		if err := validateScopesAt(&tx.FlowElements, true, insideEventSubProcess, true, errors, escalations); err != nil {
 			return err
 		}
 	}
@@ -1374,8 +1448,8 @@ func validateEventBasedGatewaysAt(fe *element.FlowElements, insideSubProcess boo
 			}
 		}
 	}
-	for i := range fe.SubProcesses {
-		if err := validateEventBasedGatewaysAt(&fe.SubProcesses[i].FlowElements, true); err != nil {
+	for _, child := range childScopes(fe) {
+		if err := validateEventBasedGatewaysAt(child, true); err != nil {
 			return err
 		}
 	}
@@ -1430,8 +1504,8 @@ func isParallelEventBasedGatewayIn(fe *element.FlowElements, id string) bool {
 		}
 		return g.EventGatewayType == element.EventGatewayTypeParallel
 	}
-	for i := range fe.SubProcesses {
-		if isParallelEventBasedGatewayIn(&fe.SubProcesses[i].FlowElements, id) {
+	for _, child := range childScopes(fe) {
+		if isParallelEventBasedGatewayIn(child, id) {
 			return true
 		}
 	}

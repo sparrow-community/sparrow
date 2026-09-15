@@ -16,13 +16,16 @@ type scopeTerminateOpts struct {
 	// DropTokens removes tokens from the projection after TERMINATED so
 	// ApplyEvent cannot revive them as active (non-catch TERMINATED keeps tokens).
 	DropTokens bool
+	// KeepTokenIDs are never terminated (e.g. cancel end + transaction host).
+	KeepTokenIDs map[string]bool
 }
 
 // scopeHostElement returns the element that hosts an open scope.
-// Embedded SubProcess hosts itself. Called processes run as separate instances
+// Embedded SubProcess / Transaction hosts itself. Called processes run as separate instances
 // and are no longer hosted by a CallActivity token on the same instance.
 func scopeHostElement(dep *deploy.Deployment, scopeID string) (elementID string, typ eventv1.Element_Type, ok bool) {
-	if t, err := dep.TypeOf(scopeID); err == nil && t == eventv1.Element_TYPE_SUB_PROCESS {
+	if t, err := dep.TypeOf(scopeID); err == nil &&
+		(t == eventv1.Element_TYPE_SUB_PROCESS || t == eventv1.Element_TYPE_TRANSACTION) {
 		return scopeID, t, true
 	}
 	return "", eventv1.Element_TYPE_UNSPECIFIED, false
@@ -49,6 +52,9 @@ func terminateScopeTokens(
 	ids := make([]string, 0, len(inst.Tokens))
 	for tid, tok := range inst.Tokens {
 		if tok == nil {
+			continue
+		}
+		if opts.KeepTokenIDs[tid] {
 			continue
 		}
 		if scopeID != processID {

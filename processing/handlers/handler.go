@@ -42,6 +42,9 @@ type Effect struct {
 	// TriggerCompensation runs compensation handlers for this compensate throw
 	// (throw token waits until handlers finish, then OnComplete takes outgoing).
 	TriggerCompensation bool
+	// TriggerTransactionCancel cancels the enclosing Transaction (terminate unfinished,
+	// compensate completed, then fire cancel boundary).
+	TriggerTransactionCancel bool
 	// AdvanceCompensation continues the pending compensate throw after a handler finishes.
 	AdvanceCompensation bool
 	// ThrowError propagates a BPMN error after ACTIVATED (error end) or ERROR_THROWN.
@@ -166,6 +169,7 @@ func DefaultRegistry() *Registry {
 		BoundaryEventHandler{},
 		SequenceFlowHandler{},
 		SubProcessHandler{},
+		TransactionHandler{},
 		InclusiveGatewayHandler{},
 		EventBasedGatewayHandler{},
 		IntermediateThrowEventHandler{},

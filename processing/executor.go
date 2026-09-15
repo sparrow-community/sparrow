@@ -119,7 +119,7 @@ func (x *Executor) Enter(
 					return pubs, err
 				}
 			}
-			if typ == eventv1.Element_TYPE_SUB_PROCESS {
+			if typ == eventv1.Element_TYPE_SUB_PROCESS || typ == eventv1.Element_TYPE_TRANSACTION {
 				if err := emitEventSubProcessStartArms(dep, inst, elementID, x.now(), emit); err != nil {
 					return pubs, err
 				}
@@ -154,6 +154,11 @@ func (x *Executor) Enter(
 		if effect.Wait {
 			if effect.TriggerCompensation {
 				more, err := x.startCompensation(ctx, dep, inst, tokenID, elementID, emit)
+				pubs = append(pubs, more...)
+				return pubs, err
+			}
+			if effect.TriggerTransactionCancel {
+				more, err := x.startTransactionCancel(ctx, dep, inst, tokenID, elementID, emit)
 				pubs = append(pubs, more...)
 				return pubs, err
 			}
@@ -600,6 +605,9 @@ func (x *Executor) tryCompleteScope(ctx context.Context, dep *deploy.Deployment,
 
 	completeID := scopeID
 	completeType := eventv1.Element_TYPE_SUB_PROCESS
+	if t, err := dep.TypeOf(scopeID); err == nil {
+		completeType = t
+	}
 	outgoingFrom := scopeID
 
 	h, err := x.Handlers.Get(completeType)
@@ -878,8 +886,7 @@ func unfinishedSubProcessHost(dep *deploy.Deployment, inst *projection.Instance,
 	if dep == nil || inst == nil || spID == "" {
 		return false
 	}
-	typ, err := dep.TypeOf(spID)
-	if err != nil || typ != eventv1.Element_TYPE_SUB_PROCESS || dep.IsEventSubProcess(spID) {
+	if !dep.IsEmbeddedScope(spID) {
 		return false
 	}
 	for _, tok := range inst.Tokens {
@@ -904,8 +911,7 @@ func unfinishedChildSubProcesses(dep *deploy.Deployment, inst *projection.Instan
 		if seen[spID] {
 			continue
 		}
-		typ, err := dep.TypeOf(spID)
-		if err != nil || typ != eventv1.Element_TYPE_SUB_PROCESS || dep.IsEventSubProcess(spID) {
+		if !dep.IsEmbeddedScope(spID) {
 			continue
 		}
 		parent, ok := dep.ScopeOf(spID)
@@ -941,6 +947,19 @@ func (x *Executor) advanceCompensation(
 			inst.PendingCompensation = pc.Parent
 			return x.terminateInstancePubs(ctx, dep, inst, emit)
 		}
+		if pc.CancelBoundaryID != "" {
+			throwTok, throwEl := pc.ThrowTokenID, pc.ThrowElementID
+			boundaryID := pc.CancelBoundaryID
+			hostTok := pc.CancelHostTokenID
+			txID := pc.CancelTransactionID
+			inst.PendingCompensation = pc.Parent
+			more, err := x.Complete(ctx, dep, inst, throwTok, throwEl, nil, emit)
+			if err != nil {
+				return more, err
+			}
+			more2, err := x.fireCancelBoundary(ctx, dep, inst, txID, hostTok, boundaryID, emit)
+			return append(more, more2...), err
+		}
 		throwTok, throwEl := pc.ThrowTokenID, pc.ThrowElementID
 		inst.PendingCompensation = pc.Parent
 		return x.Complete(ctx, dep, inst, throwTok, throwEl, nil, emit)
@@ -967,11 +986,20 @@ func rebuildPendingCompensation(inst *projection.Instance, dep *deploy.Deploymen
 			continue
 		}
 		typ, err := dep.TypeOf(tok.ElementID)
-		if err != nil || typ != eventv1.Element_TYPE_INTERMEDIATE_THROW_EVENT {
+		if err != nil {
 			continue
 		}
-		kind, err := dep.ThrowKind(tok.ElementID)
-		if err != nil || kind != deploy.ThrowKindCompensate {
+		switch typ {
+		case eventv1.Element_TYPE_INTERMEDIATE_THROW_EVENT:
+			kind, err := dep.ThrowKind(tok.ElementID)
+			if err != nil || kind != deploy.ThrowKindCompensate {
+				continue
+			}
+		case eventv1.Element_TYPE_END_EVENT:
+			if !dep.IsCompensateEnd(tok.ElementID) && !dep.IsCancelEnd(tok.ElementID) {
+				continue
+			}
+		default:
 			continue
 		}
 		throwTokenID = tid
@@ -1019,6 +1047,39 @@ func rebuildPendingCompensation(inst *projection.Instance, dep *deploy.Deploymen
 		ActiveTokenID:   activeTokenID,
 		ActiveHandler:   activeHandler,
 		WaitingChildren: waitingChildren,
+		CancelBoundaryID: func() string {
+			if dep.IsCancelEnd(throwElementID) {
+				if txID, ok := dep.ScopeOf(throwElementID); ok {
+					if bid, ok := dep.CancelBoundaryOf(txID); ok {
+						return bid
+					}
+				}
+			}
+			return ""
+		}(),
+		CancelTransactionID: func() string {
+			if dep.IsCancelEnd(throwElementID) {
+				if txID, ok := dep.ScopeOf(throwElementID); ok {
+					return txID
+				}
+			}
+			return ""
+		}(),
+		CancelHostTokenID: func() string {
+			if !dep.IsCancelEnd(throwElementID) {
+				return ""
+			}
+			txID, ok := dep.ScopeOf(throwElementID)
+			if !ok {
+				return ""
+			}
+			for tid, tok := range inst.Tokens {
+				if tok != nil && tok.ElementID == txID {
+					return tid
+				}
+			}
+			return ""
+		}(),
 	}
 }
 

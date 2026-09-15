@@ -28,4 +28,5 @@ type EventDefinitions struct {
 	ErrorEventDefinitions       []ErrorEventDefinition       `xml:"errorEventDefinition"`
 	LinkEventDefinitions        []LinkEventDefinition        `xml:"linkEventDefinition"`
 	CompensateEventDefinitions  []CompensateEventDefinition  `xml:"compensateEventDefinition"`
+	CancelEventDefinitions      []CancelEventDefinition      `xml:"cancelEventDefinition"`
 }

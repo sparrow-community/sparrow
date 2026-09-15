@@ -85,8 +85,8 @@ func validateCompensationHandler(fe *element.FlowElements, handlerID string) err
 			return nil
 		}
 	}
-	for i := range fe.SubProcesses {
-		if err := validateCompensationHandler(&fe.SubProcesses[i].FlowElements, handlerID); err == nil {
+	for _, child := range childScopes(fe) {
+		if err := validateCompensationHandler(child, handlerID); err == nil {
 			return nil
 		}
 	}
@@ -149,6 +149,9 @@ func (d *Deployment) CompensateActivityRef(throwID string) (string, error) {
 	}
 	if ref, ok := d.compensateEnds[throwID]; ok {
 		return ref, nil
+	}
+	if d.cancelEnds[throwID] {
+		return "", nil
 	}
 	return "", fmt.Errorf("NOT_FOUND: compensate throw %q", throwID)
 }

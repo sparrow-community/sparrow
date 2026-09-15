@@ -21,6 +21,7 @@ const (
 	CatchKindCompensate  CatchKind = "compensate"
 	CatchKindLink        CatchKind = "link"
 	CatchKindConditional CatchKind = "conditional"
+	CatchKindCancel      CatchKind = "cancel"
 )
 
 type timerCatch struct {
@@ -208,6 +209,7 @@ func extraCatchDefinitions(d element.EventDefinitions) int {
 	n += len(d.ErrorEventDefinitions)
 	n += len(d.LinkEventDefinitions)
 	n += len(d.CompensateEventDefinitions)
+	n += len(d.CancelEventDefinitions)
 	return n
 }
 
