@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             id="Definitions_activity_fanout"
+             targetNamespace="http://sparrow.example/activity-fanout">
+  <process id="Process_activity_fanout" isExecutable="true">
+    <startEvent id="Start_1">
+      <outgoing>Flow_start_to_task</outgoing>
+    </startEvent>
+    <userTask id="UserTask_split">
+      <incoming>Flow_start_to_task</incoming>
+      <outgoing>Flow_split_to_a</outgoing>
+      <outgoing>Flow_split_to_b</outgoing>
+    </userTask>
+    <userTask id="UserTask_a">
+      <incoming>Flow_split_to_a</incoming>
+      <outgoing>Flow_a_to_join</outgoing>
+    </userTask>
+    <userTask id="UserTask_b">
+      <incoming>Flow_split_to_b</incoming>
+      <outgoing>Flow_b_to_join</outgoing>
+    </userTask>
+    <parallelGateway id="Gateway_join">
+      <incoming>Flow_a_to_join</incoming>
+      <incoming>Flow_b_to_join</incoming>
+      <outgoing>Flow_join_to_end</outgoing>
+    </parallelGateway>
+    <endEvent id="End_1">
+      <incoming>Flow_join_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_task" sourceRef="Start_1" targetRef="UserTask_split"/>
+    <sequenceFlow id="Flow_split_to_a" sourceRef="UserTask_split" targetRef="UserTask_a"/>
+    <sequenceFlow id="Flow_split_to_b" sourceRef="UserTask_split" targetRef="UserTask_b"/>
+    <sequenceFlow id="Flow_a_to_join" sourceRef="UserTask_a" targetRef="Gateway_join"/>
+    <sequenceFlow id="Flow_b_to_join" sourceRef="UserTask_b" targetRef="Gateway_join"/>
+    <sequenceFlow id="Flow_join_to_end" sourceRef="Gateway_join" targetRef="End_1"/>
+  </process>
+</definitions>

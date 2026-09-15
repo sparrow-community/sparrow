@@ -207,11 +207,7 @@ func (x *Executor) completeMultiInstanceHost(
 		}
 	}
 	delete(inst.MultiInstanceLoops, elementID)
-	next, err := x.takeOutgoing(dep, inst, hostID, elementID, "", emit)
-	if err != nil {
-		return pubs, err
-	}
-	more, err := x.Enter(ctx, dep, inst, hostID, next, emit)
+	more, err := x.leaveViaOutgoings(ctx, dep, inst, hostID, elementID, "", emit)
 	pubs = append(pubs, more...)
 	return pubs, err
 }

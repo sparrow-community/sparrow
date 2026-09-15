@@ -1059,7 +1059,7 @@ func findActivityDefaultIn(fe *element.FlowElements, id string) string {
 
 // ChooseConditionalOutgoing picks an outgoing flow: first matching non-default
 // condition, else default. If there are no conditions and no default, returns the
-// first outgoing (legacy take-first).
+// first outgoing (callers that need take-all should use ChooseOutgoingFlows).
 func (d *Deployment) ChooseConditionalOutgoing(elementID string, vars map[string]string) (string, error) {
 	outs := d.Outgoing(elementID)
 	if len(outs) == 0 {
@@ -1106,6 +1106,36 @@ func (d *Deployment) ChooseConditionalOutgoing(elementID string, vars map[string
 		}
 	}
 	return "", fmt.Errorf("NO_OUTGOING_FLOW: element %q", elementID)
+}
+
+// ChooseOutgoingFlows selects outgoing sequence flows when leaving an element.
+// Multiple unconditional outgoings with no default are an implicit parallel split
+// (all flows). Otherwise selection is exclusive (one flow via ChooseConditionalOutgoing).
+func (d *Deployment) ChooseOutgoingFlows(elementID string, vars map[string]string) ([]string, error) {
+	outs := d.Outgoing(elementID)
+	if len(outs) == 0 {
+		return nil, fmt.Errorf("NO_OUTGOING_FLOW: element %q", elementID)
+	}
+	def := d.DefaultOutgoing(elementID)
+	hasCondition := false
+	for _, flowID := range outs {
+		flow, err := d.SequenceFlow(flowID)
+		if err != nil {
+			return nil, err
+		}
+		if ConditionText(flow) != "" {
+			hasCondition = true
+			break
+		}
+	}
+	if !hasCondition && def == "" {
+		return append([]string{}, outs...), nil
+	}
+	one, err := d.ChooseConditionalOutgoing(elementID, vars)
+	if err != nil {
+		return nil, err
+	}
+	return []string{one}, nil
 }
 
 // ChooseExclusiveOutgoing picks the first matching non-default condition, else default.

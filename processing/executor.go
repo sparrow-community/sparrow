@@ -129,39 +129,9 @@ func (x *Executor) Enter(
 			continue
 		}
 		if len(effect.Fork) > 0 {
-			type forkBranch struct {
-				tid  string
-				next string
-			}
-			var rest, terms []forkBranch
-			for i, flowID := range effect.Fork {
-				tid := tokenID
-				if i > 0 {
-					var err error
-					tid, err = NextID()
-					if err != nil {
-						return pubs, err
-					}
-				}
-				next, err := x.takeOutgoing(dep, inst, tid, elementID, flowID, emit)
-				if err != nil {
-					return pubs, err
-				}
-				b := forkBranch{tid: tid, next: next}
-				if dep.IsTerminateEnd(next) {
-					terms = append(terms, b)
-				} else {
-					rest = append(rest, b)
-				}
-			}
-			for _, b := range append(rest, terms...) {
-				more, err := x.Enter(ctx, dep, inst, b.tid, b.next, emit)
-				pubs = append(pubs, more...)
-				if err != nil {
-					return pubs, err
-				}
-			}
-			return pubs, nil
+			more, err := x.forkOutgoings(ctx, dep, inst, tokenID, elementID, effect.Fork, emit)
+			pubs = append(pubs, more...)
+			return pubs, err
 		}
 		if len(effect.LinkContinue) > 0 {
 			for i, catchID := range effect.LinkContinue {
@@ -256,11 +226,9 @@ func (x *Executor) Enter(
 			}
 		}
 
-		next, err := x.takeOutgoing(dep, inst, tokenID, elementID, effect.OutgoingFlowID, emit)
-		if err != nil {
-			return pubs, err
-		}
-		elementID = next
+		more, err := x.leaveViaOutgoings(ctx, dep, inst, tokenID, elementID, effect.OutgoingFlowID, emit)
+		pubs = append(pubs, more...)
+		return pubs, err
 	}
 }
 
@@ -373,11 +341,7 @@ func (x *Executor) Complete(
 		return pubs, nil
 	}
 
-	next, err := x.takeOutgoing(dep, inst, tokenID, elementID, effect.OutgoingFlowID, emit)
-	if err != nil {
-		return pubs, err
-	}
-	more, err := x.Enter(ctx, dep, inst, tokenID, next, emit)
+	more, err := x.leaveViaOutgoings(ctx, dep, inst, tokenID, elementID, effect.OutgoingFlowID, emit)
 	pubs = append(pubs, more...)
 	return pubs, err
 }
@@ -464,6 +428,84 @@ func (x *Executor) takeOutgoing(
 		return "", err
 	}
 	return flow.TargetRef, nil
+}
+
+// leaveViaOutgoings takes preferred or chosen outgoings and Enter each target.
+// Multiple unconditional flows fork tokens like a parallel split.
+func (x *Executor) leaveViaOutgoings(
+	ctx context.Context,
+	dep *deploy.Deployment,
+	inst *projection.Instance,
+	tokenID, fromElementID, preferredFlowID string,
+	emit Emitter,
+) ([]handlers.Publication, error) {
+	if preferredFlowID != "" {
+		next, err := x.takeOutgoing(dep, inst, tokenID, fromElementID, preferredFlowID, emit)
+		if err != nil {
+			return nil, err
+		}
+		return x.Enter(ctx, dep, inst, tokenID, next, emit)
+	}
+	var vars map[string]string
+	if inst != nil {
+		vars = inst.Variables
+	}
+	flows, err := dep.ChooseOutgoingFlows(fromElementID, vars)
+	if err != nil {
+		return nil, err
+	}
+	if len(flows) > 1 {
+		return x.forkOutgoings(ctx, dep, inst, tokenID, fromElementID, flows, emit)
+	}
+	next, err := x.takeOutgoing(dep, inst, tokenID, fromElementID, flows[0], emit)
+	if err != nil {
+		return nil, err
+	}
+	return x.Enter(ctx, dep, inst, tokenID, next, emit)
+}
+
+func (x *Executor) forkOutgoings(
+	ctx context.Context,
+	dep *deploy.Deployment,
+	inst *projection.Instance,
+	tokenID, elementID string,
+	flows []string,
+	emit Emitter,
+) ([]handlers.Publication, error) {
+	type forkBranch struct {
+		tid  string
+		next string
+	}
+	var rest, terms []forkBranch
+	var pubs []handlers.Publication
+	for i, flowID := range flows {
+		tid := tokenID
+		if i > 0 {
+			var err error
+			tid, err = NextID()
+			if err != nil {
+				return pubs, err
+			}
+		}
+		next, err := x.takeOutgoing(dep, inst, tid, elementID, flowID, emit)
+		if err != nil {
+			return pubs, err
+		}
+		b := forkBranch{tid: tid, next: next}
+		if dep.IsTerminateEnd(next) {
+			terms = append(terms, b)
+		} else {
+			rest = append(rest, b)
+		}
+	}
+	for _, b := range append(rest, terms...) {
+		more, err := x.Enter(ctx, dep, inst, b.tid, b.next, emit)
+		pubs = append(pubs, more...)
+		if err != nil {
+			return pubs, err
+		}
+	}
+	return pubs, nil
 }
 
 // tryCompleteScope checks if the scope containing elementID can be completed.
@@ -614,11 +656,7 @@ func (x *Executor) tryCompleteScope(ctx context.Context, dep *deploy.Deployment,
 		return pubs, err
 	}
 	if effect.TakeOutgoing {
-		next, err := x.takeOutgoing(dep, inst, completeTokenID, outgoingFrom, effect.OutgoingFlowID, emit)
-		if err != nil {
-			return pubs, err
-		}
-		more, err := x.Enter(ctx, dep, inst, completeTokenID, next, emit)
+		more, err := x.leaveViaOutgoings(ctx, dep, inst, completeTokenID, outgoingFrom, effect.OutgoingFlowID, emit)
 		pubs = append(pubs, more...)
 		return pubs, err
 	}
