@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             id="Definitions_escalation_catch"
+             targetNamespace="http://sparrow.example/escalation-catch">
+  <escalation id="Esc_1" name="Escalation 1" escalationCode="ESC_1"/>
+  <process id="Process_escalation_catch" isExecutable="true">
+    <startEvent id="Start_1">
+      <outgoing>Flow_start_to_fork</outgoing>
+    </startEvent>
+    <parallelGateway id="Fork_1">
+      <incoming>Flow_start_to_fork</incoming>
+      <outgoing>Flow_fork_to_catch</outgoing>
+      <outgoing>Flow_fork_to_task</outgoing>
+    </parallelGateway>
+    <intermediateCatchEvent id="Catch_esc">
+      <incoming>Flow_fork_to_catch</incoming>
+      <outgoing>Flow_catch_to_join</outgoing>
+      <escalationEventDefinition escalationRef="Esc_1"/>
+    </intermediateCatchEvent>
+    <userTask id="Task_1" name="Work">
+      <incoming>Flow_fork_to_task</incoming>
+      <outgoing>Flow_task_to_throw</outgoing>
+    </userTask>
+    <intermediateThrowEvent id="Throw_esc">
+      <incoming>Flow_task_to_throw</incoming>
+      <outgoing>Flow_throw_to_join</outgoing>
+      <escalationEventDefinition escalationRef="Esc_1"/>
+    </intermediateThrowEvent>
+    <parallelGateway id="Join_1">
+      <incoming>Flow_catch_to_join</incoming>
+      <incoming>Flow_throw_to_join</incoming>
+      <outgoing>Flow_join_to_end</outgoing>
+    </parallelGateway>
+    <endEvent id="End_1">
+      <incoming>Flow_join_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_fork" sourceRef="Start_1" targetRef="Fork_1"/>
+    <sequenceFlow id="Flow_fork_to_catch" sourceRef="Fork_1" targetRef="Catch_esc"/>
+    <sequenceFlow id="Flow_fork_to_task" sourceRef="Fork_1" targetRef="Task_1"/>
+    <sequenceFlow id="Flow_task_to_throw" sourceRef="Task_1" targetRef="Throw_esc"/>
+    <sequenceFlow id="Flow_catch_to_join" sourceRef="Catch_esc" targetRef="Join_1"/>
+    <sequenceFlow id="Flow_throw_to_join" sourceRef="Throw_esc" targetRef="Join_1"/>
+    <sequenceFlow id="Flow_join_to_end" sourceRef="Join_1" targetRef="End_1"/>
+  </process>
+</definitions>

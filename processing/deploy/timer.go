@@ -289,6 +289,9 @@ func (d *Deployment) CatchKind(id string) (CatchKind, error) {
 	if _, ok := d.conditionalCatch[id]; ok {
 		return CatchKindConditional, nil
 	}
+	if d.IsEscalationIntermediateCatch(id) {
+		return CatchKindEscalation, nil
+	}
 	return "", fmt.Errorf("NOT_FOUND: intermediate catch %q", id)
 }
 

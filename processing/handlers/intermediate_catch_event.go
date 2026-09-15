@@ -73,6 +73,12 @@ func (IntermediateCatchEventHandler) OnEnter(in EnterInput) (*Effect, error) {
 			}, nil
 		}
 		payload = &eventv1.EventPayload{TokenWait: true, Duration: text}
+	case deploy.CatchKindEscalation:
+		code, ok := in.Deployment.EscalationIntermediateCatchCode(in.ElementID)
+		if !ok {
+			return nil, fmt.Errorf("NOT_FOUND: escalation catch %q", in.ElementID)
+		}
+		payload = &eventv1.EventPayload{EscalationCode: code, TokenWait: true}
 	default:
 		return nil, fmt.Errorf("UNSUPPORTED_ELEMENT: intermediateCatchEvent %q has unsupported kind %q", in.ElementID, string(kind))
 	}

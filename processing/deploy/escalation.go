@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"github.com/sparrow-community/sparrow/bpmn/element"
+	eventv1 "github.com/sparrow-community/sparrow/protocol/gen/go/event/v1"
 )
 
 type escalationBoundary struct {
@@ -115,6 +116,17 @@ func escalationStartCatchFromDefs(startEventID string, defs element.EventDefinit
 	return resolveEscalationCode(defs.EscalationEventDefinitions[0].EscalationRef, escalations), nil
 }
 
+func escalationCatchSpec(ev element.IntermediateCatchEvent, escalations []element.Escalation) (string, error) {
+	if len(ev.EscalationEventDefinitions) != 1 {
+		return "", fmt.Errorf("UNSUPPORTED_ELEMENT: intermediateCatchEvent %q must be an escalation catch", ev.ID)
+	}
+	other := extraCatchDefinitions(ev.EventDefinitions) - len(ev.EscalationEventDefinitions)
+	if other > 0 || len(ev.TimerEventDefinitions) > 0 {
+		return "", fmt.Errorf("UNSUPPORTED_ELEMENT: intermediateCatchEvent %q must be an escalation catch", ev.ID)
+	}
+	return resolveEscalationCode(ev.EscalationEventDefinitions[0].EscalationRef, escalations), nil
+}
+
 // MatchEscalationBoundary returns a boundary on activityID that catches escalationCode.
 func (d *Deployment) MatchEscalationBoundary(activityID, escalationCode string) (string, bool) {
 	for _, bid := range d.escalationBoundaries[activityID] {
@@ -133,14 +145,35 @@ func (d *Deployment) EscalationEndCode(endEventID string) (string, bool) {
 
 // IsEscalationBoundary reports whether id is an escalation boundary event.
 func (d *Deployment) IsEscalationBoundary(boundaryID string) bool {
-	_, ok := d.escalationCatch[boundaryID]
-	return ok
+	if _, ok := d.escalationCatch[boundaryID]; !ok {
+		return false
+	}
+	typ, err := d.TypeOf(boundaryID)
+	return err == nil && typ == eventv1.Element_TYPE_BOUNDARY_EVENT
 }
 
-// EscalationBoundaryCode returns the escalation code a boundary catches (empty = catch-all).
+// EscalationBoundaryCode returns the escalation code a boundary or intermediate
+// escalation catch catches (empty = catch-all).
 func (d *Deployment) EscalationBoundaryCode(boundaryID string) (string, bool) {
 	code, ok := d.escalationCatch[boundaryID]
 	return code, ok
+}
+
+// IsEscalationIntermediateCatch reports whether id is an intermediate escalation catch.
+func (d *Deployment) IsEscalationIntermediateCatch(id string) bool {
+	if _, ok := d.escalationCatch[id]; !ok {
+		return false
+	}
+	typ, err := d.TypeOf(id)
+	return err == nil && typ == eventv1.Element_TYPE_INTERMEDIATE_CATCH_EVENT
+}
+
+// EscalationIntermediateCatchCode returns the code for an intermediate escalation catch.
+func (d *Deployment) EscalationIntermediateCatchCode(id string) (string, bool) {
+	if !d.IsEscalationIntermediateCatch(id) {
+		return "", false
+	}
+	return d.escalationCatch[id], true
 }
 
 // MatchEscalationEventSubProcess returns an armed escalation ESP in scopeID that catches code.

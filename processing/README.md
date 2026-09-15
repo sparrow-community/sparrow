@@ -34,7 +34,7 @@ New element: handler + registry + deploy validation. Semantics stay out of `engi
 | ServiceTask / BusinessRuleTask / ScriptTask | Wait as Job → Complete; multi-instance and standard loop supported (Script: job type from scriptFormat → name → id; no in-engine script runtime) |
 | SendTask | Publish message then continue |
 | ReceiveTask | Wait for PublishMessage; **instantiate** receive may be process entry |
-| Catch / throw / boundary | Timer, message, signal, error, escalation, compensate, **conditional** (EvaluateConditions); multiple same-kind per activity (unique message/signal names / condition text); link throw/catch |
+| Catch / throw / boundary | Timer, message, signal, error, escalation (including standalone intermediate catch), compensate, **conditional** (EvaluateConditions); multiple same-kind per activity (unique message/signal names / condition text); link throw/catch |
 | Gateways | XOR, AND, inclusive, event-based (catch; exclusive/parallel; instantiate; targets may be catch or receive) |
 | SubProcess | Embedded scope; Event Sub-Process (including compensation event sub-process); multi-instance |
 | CallActivity | Child instance; IO mapping; cross-deployment; boundary & compensation (including into unfinished child); multi-instance |

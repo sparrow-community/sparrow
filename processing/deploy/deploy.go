@@ -283,6 +283,8 @@ func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messag
 			d.linkCatch[e.ID] = name
 		} else if text, err := conditionalCatchSpec(e); err == nil {
 			d.conditionalCatch[e.ID] = text
+		} else if code, err := escalationCatchSpec(e, escalations); err == nil {
+			d.escalationCatch[e.ID] = code
 		}
 	}
 	for _, e := range fe.IntermediateThrowEvents {
@@ -531,7 +533,10 @@ func validateCatchAndThrow(fe *element.FlowElements) error {
 		if _, err := conditionalCatchSpec(e); err == nil {
 			continue
 		}
-		return fmt.Errorf("UNSUPPORTED_ELEMENT: intermediateCatchEvent %q must be timer, message, signal, link, or conditional catch", e.ID)
+		if _, err := escalationCatchSpec(e, nil); err == nil {
+			continue
+		}
+		return fmt.Errorf("UNSUPPORTED_ELEMENT: intermediateCatchEvent %q must be timer, message, signal, link, conditional, or escalation catch", e.ID)
 	}
 	for _, e := range fe.IntermediateThrowEvents {
 		if _, err := throwEventSpec(e, nil, nil, nil); err != nil {

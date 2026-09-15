@@ -3,6 +3,7 @@ package processing
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	"github.com/sparrow-community/sparrow/processing/deploy"
 	"github.com/sparrow-community/sparrow/processing/handlers"
@@ -44,19 +45,80 @@ func (x *Executor) propagateEscalation(
 				}
 				return x.fireNonInterruptingScopeEscalationBoundary(ctx, dep, inst, bid, emit)
 			}
-			// Uncaught in this scope: bubble without terminating (unlike error).
-			parent, ok := dep.ScopeOf(scope)
-			if !ok {
-				break
-			}
-			scope = parent
-			continue
 		}
-		// Process scope: optional process-level activity boundary is not applicable for
-		// throw/end; uncaught → no-op.
-		return nil, nil
+		if pubs, handled, err := x.fireWaitingEscalationCatches(ctx, dep, inst, scope, escalationCode, emit); handled || err != nil {
+			return pubs, err
+		}
+		if scope == processID {
+			// Uncaught at process scope → no-op (escalation does not terminate).
+			return nil, nil
+		}
+		parent, ok := dep.ScopeOf(scope)
+		if !ok {
+			break
+		}
+		scope = parent
 	}
 	return nil, nil
+}
+
+func (x *Executor) fireWaitingEscalationCatches(
+	ctx context.Context,
+	dep *deploy.Deployment,
+	inst *projection.Instance,
+	scopeID, escalationCode string,
+	emit Emitter,
+) ([]handlers.Publication, bool, error) {
+	type waiter struct {
+		tokenID   string
+		elementID string
+	}
+	var waiters []waiter
+	for tid, tok := range inst.Tokens {
+		if tok == nil || tok.Status != projection.TokenWaiting {
+			continue
+		}
+		code, ok := dep.EscalationIntermediateCatchCode(tok.ElementID)
+		if !ok {
+			continue
+		}
+		tokScope, _ := dep.ScopeOf(tok.ElementID)
+		if tokScope != scopeID {
+			continue
+		}
+		if !escalationCatchMatches(code, escalationCode) {
+			continue
+		}
+		waiters = append(waiters, waiter{tokenID: tid, elementID: tok.ElementID})
+	}
+	if len(waiters) == 0 {
+		return nil, false, nil
+	}
+	sort.Slice(waiters, func(i, j int) bool {
+		if waiters[i].elementID == waiters[j].elementID {
+			return waiters[i].tokenID < waiters[j].tokenID
+		}
+		return waiters[i].elementID < waiters[j].elementID
+	})
+	var pubs []handlers.Publication
+	for _, w := range waiters {
+		if tok := inst.Tokens[w.tokenID]; tok == nil || tok.Status != projection.TokenWaiting {
+			continue
+		}
+		more, err := x.Complete(ctx, dep, inst, w.tokenID, w.elementID, nil, emit)
+		pubs = append(pubs, more...)
+		if err != nil {
+			return pubs, true, err
+		}
+	}
+	return pubs, true, nil
+}
+
+func escalationCatchMatches(catchCode, thrownCode string) bool {
+	if catchCode == "" {
+		return true
+	}
+	return catchCode == thrownCode
 }
 
 func (x *Executor) fireNonInterruptingScopeEscalationBoundary(
