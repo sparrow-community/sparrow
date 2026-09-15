@@ -51,3 +51,24 @@ func TestEvalRejects(t *testing.T) {
 		t.Fatal("expected error")
 	}
 }
+
+func TestEvalJSON(t *testing.T) {
+	vars := map[string]string{
+		"orderId": `"o1"`,
+		"total":   "9",
+	}
+	got, err := EvalJSON(`${orderId + "-x"}`, vars)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != `"o1-x"` {
+		t.Fatalf("got %q", got)
+	}
+	got, err = EvalJSON("${total * 2}", vars)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "18" {
+		t.Fatalf("got %q", got)
+	}
+}

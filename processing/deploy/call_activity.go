@@ -7,10 +7,19 @@ import (
 	"github.com/sparrow-community/sparrow/bpmn/element"
 )
 
-// VariableMapping is a name-to-name copy between caller and called instance variables.
+// MappingAssignment evaluates From against source variables and writes to To.
+type MappingAssignment struct {
+	From string
+	To   string
+}
+
+// VariableMapping maps variables between caller and called instance.
+// Priority: Assignments, then Transformation into Target, else Source→Target copy.
 type VariableMapping struct {
-	Source string
-	Target string
+	Source         string
+	Target         string
+	Transformation string
+	Assignments    []MappingAssignment
 }
 
 // CallActivity links a callActivity element to a called process.
@@ -62,15 +71,11 @@ func compileInputMappings(assocs []element.DataInputAssociation, callID string) 
 	}
 	out := make([]VariableMapping, 0, len(assocs))
 	for _, a := range assocs {
-		src := strings.TrimSpace(a.SourceRef)
-		tgt := strings.TrimSpace(a.TargetRef)
-		if src == "" || tgt == "" {
-			return nil, fmt.Errorf("UNSUPPORTED_ELEMENT: callActivity %q input association needs sourceRef and targetRef", callID)
+		m, err := compileAssociationMapping(callID, "input", a.SourceRef, a.TargetRef, a.Transformation.Value, a.Assignments)
+		if err != nil {
+			return nil, err
 		}
-		if strings.TrimSpace(a.Transformation.Value) != "" || len(a.Assignments) > 0 {
-			return nil, fmt.Errorf("UNSUPPORTED_ELEMENT: callActivity %q input association transformation/assignment not supported", callID)
-		}
-		out = append(out, VariableMapping{Source: src, Target: tgt})
+		out = append(out, m)
 	}
 	return out, nil
 }
@@ -81,17 +86,60 @@ func compileOutputMappings(assocs []element.DataOutputAssociation, callID string
 	}
 	out := make([]VariableMapping, 0, len(assocs))
 	for _, a := range assocs {
-		src := strings.TrimSpace(a.SourceRef)
-		tgt := strings.TrimSpace(a.TargetRef)
-		if src == "" || tgt == "" {
-			return nil, fmt.Errorf("UNSUPPORTED_ELEMENT: callActivity %q output association needs sourceRef and targetRef", callID)
+		m, err := compileAssociationMapping(callID, "output", a.SourceRef, a.TargetRef, a.Transformation.Value, a.Assignments)
+		if err != nil {
+			return nil, err
 		}
-		if strings.TrimSpace(a.Transformation.Value) != "" || len(a.Assignments) > 0 {
-			return nil, fmt.Errorf("UNSUPPORTED_ELEMENT: callActivity %q output association transformation/assignment not supported", callID)
-		}
-		out = append(out, VariableMapping{Source: src, Target: tgt})
+		out = append(out, m)
 	}
 	return out, nil
+}
+
+func compileAssociationMapping(callID, kind, sourceRef, targetRef, transform string, assignments []element.Assignment) (VariableMapping, error) {
+	src := strings.TrimSpace(sourceRef)
+	tgt := strings.TrimSpace(targetRef)
+	transform = strings.TrimSpace(transform)
+
+	assigns := make([]MappingAssignment, 0, len(assignments))
+	for _, a := range assignments {
+		from := expressionText(a.From)
+		to := mappingVarName(expressionText(a.To))
+		if from == "" {
+			return VariableMapping{}, fmt.Errorf("UNSUPPORTED_ELEMENT: callActivity %q %s association assignment needs from", callID, kind)
+		}
+		if to == "" {
+			to = tgt
+		}
+		if to == "" {
+			return VariableMapping{}, fmt.Errorf("UNSUPPORTED_ELEMENT: callActivity %q %s association assignment needs to or targetRef", callID, kind)
+		}
+		assigns = append(assigns, MappingAssignment{From: from, To: to})
+	}
+
+	if len(assigns) > 0 {
+		if tgt == "" {
+			return VariableMapping{}, fmt.Errorf("UNSUPPORTED_ELEMENT: callActivity %q %s association needs targetRef", callID, kind)
+		}
+		return VariableMapping{Source: src, Target: tgt, Assignments: assigns}, nil
+	}
+	if transform != "" {
+		if tgt == "" {
+			return VariableMapping{}, fmt.Errorf("UNSUPPORTED_ELEMENT: callActivity %q %s association transformation needs targetRef", callID, kind)
+		}
+		return VariableMapping{Source: src, Target: tgt, Transformation: transform}, nil
+	}
+	if src == "" || tgt == "" {
+		return VariableMapping{}, fmt.Errorf("UNSUPPORTED_ELEMENT: callActivity %q %s association needs sourceRef and targetRef", callID, kind)
+	}
+	return VariableMapping{Source: src, Target: tgt}, nil
+}
+
+func mappingVarName(text string) string {
+	s := strings.TrimSpace(text)
+	if strings.HasPrefix(s, "${") && strings.HasSuffix(s, "}") {
+		s = strings.TrimSpace(s[2 : len(s)-1])
+	}
+	return s
 }
 
 // CallActivitySpec returns the compiled call activity, if any.

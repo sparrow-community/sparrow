@@ -16,6 +16,6 @@ package element
 
 type Assignment struct {
 	BaseElement
-	From Expression `xml:"from,attr"`
-	To   Expression `xml:"to,attr"`
+	From ExpressionUnMarshal `xml:"from"`
+	To   ExpressionUnMarshal `xml:"to"`
 }

@@ -39,6 +39,35 @@ func Eval(text string, vars map[string]string) (bool, error) {
 	return asBool(out)
 }
 
+// EvalJSON evaluates an expression against instance variables and returns the
+// result as a JSON value string suitable for process variables.
+func EvalJSON(text string, vars map[string]string) (string, error) {
+	s := unwrap(text)
+	if s == "" {
+		return "", fmt.Errorf("empty expression")
+	}
+	s = normalizeSingleQuotes(s)
+
+	env := envFrom(vars)
+	program, err := expr.Compile(s,
+		expr.Env(env),
+		expr.AllowUndefinedVariables(),
+		expr.Patch(notPatcher{}),
+	)
+	if err != nil {
+		return "", fmt.Errorf("compile %q: %w", text, err)
+	}
+	out, err := expr.Run(program, env)
+	if err != nil {
+		return "", fmt.Errorf("eval %q: %w", text, err)
+	}
+	b, err := json.Marshal(out)
+	if err != nil {
+		return "", fmt.Errorf("marshal %q: %w", text, err)
+	}
+	return string(b), nil
+}
+
 type notPatcher struct{}
 
 func (notPatcher) Visit(node *ast.Node) {

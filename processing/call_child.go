@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/sparrow-community/sparrow/processing/deploy"
+	"github.com/sparrow-community/sparrow/processing/expr"
 	"github.com/sparrow-community/sparrow/processing/handlers"
 	"github.com/sparrow-community/sparrow/processing/projection"
 	eventv1 "github.com/sparrow-community/sparrow/protocol/gen/go/event/v1"
@@ -79,13 +80,16 @@ func (e *Engine) startCalledInstance(ctx context.Context, p handlers.Publication
 		calledProcessID = call.CalledProcessID
 	}
 
-	pv := variablesFromJSONStrings(applyMappings(parent.Variables, call.Inputs))
+	mapped, err := applyMappings(parent.Variables, call.Inputs)
+	if err != nil {
+		return err
+	}
+	pv := variablesFromJSONStrings(mapped)
 	if len(p.ChildVariables) > 0 {
 		pv = p.ChildVariables
 	}
 
 	instanceID := p.ChildInstanceID
-	var err error
 	if instanceID == "" {
 		instanceID, err = NextID()
 		if err != nil {
@@ -251,7 +255,11 @@ func (e *Engine) resumeParentCall(ctx context.Context, p handlers.Publication) e
 	var outVars map[string]any
 	if child != nil {
 		if call, ok := callerDep.CallActivitySpec(p.CallActivityID); ok && len(call.Outputs) > 0 {
-			outVars = anyMapFromJSONStrings(applyMappings(child.Variables, call.Outputs))
+			mapped, err := applyMappings(child.Variables, call.Outputs)
+			if err != nil {
+				return err
+			}
+			outVars = anyMapFromJSONStrings(mapped)
 		}
 	}
 	return e.Complete(ctx, p.ParentInstanceID, p.CallActivityID, p.HostTokenID, outVars)
@@ -309,14 +317,32 @@ func (e *Engine) terminateCalledInstance(ctx context.Context, childInstanceID st
 	return err
 }
 
-func applyMappings(src map[string]string, maps []deploy.VariableMapping) map[string]string {
+func applyMappings(src map[string]string, maps []deploy.VariableMapping) (map[string]string, error) {
 	out := make(map[string]string, len(maps))
 	for _, m := range maps {
+		if len(m.Assignments) > 0 {
+			for _, a := range m.Assignments {
+				val, err := expr.EvalJSON(a.From, src)
+				if err != nil {
+					return nil, fmt.Errorf("INVALID_MAPPING: assignment from %q: %w", a.From, err)
+				}
+				out[a.To] = val
+			}
+			continue
+		}
+		if m.Transformation != "" {
+			val, err := expr.EvalJSON(m.Transformation, src)
+			if err != nil {
+				return nil, fmt.Errorf("INVALID_MAPPING: transformation %q: %w", m.Transformation, err)
+			}
+			out[m.Target] = val
+			continue
+		}
 		if v, ok := src[m.Source]; ok {
 			out[m.Target] = v
 		}
 	}
-	return out
+	return out, nil
 }
 
 func variablesFromJSONStrings(m map[string]string) []*eventv1.Variable {

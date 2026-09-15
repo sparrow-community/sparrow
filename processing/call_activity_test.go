@@ -268,6 +268,40 @@ func TestCallActivityIOMapping(t *testing.T) {
 	}
 }
 
+func TestCallActivityIOTransformationAndAssignment(t *testing.T) {
+	xml := readTestdataCall(t, "m31_call_io_transform.bpmn")
+	eng := processing.NewEngine(eventlog.NewMemory())
+	ctx := context.Background()
+	dep, err := eng.Deploy(ctx, xml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	callerID, err := eng.CreateInstance(ctx, dep, map[string]any{"orderId": "o1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	caller := mustInstance(t, eng, callerID)
+	_, hostTok := waitingAt(caller)
+	childID := caller.Tokens[hostTok].CalledProcessInstanceID
+	child := mustInstance(t, eng, childID)
+	gotID := child.Variables["id"]
+	if gotID != `"o1-x"` {
+		t.Fatalf("expected transformed id %q, got %q vars=%v", `"o1-x"`, gotID, child.Variables)
+	}
+	e1, t1 := waitingAt(child)
+	if err := eng.Complete(ctx, childID, e1, t1, map[string]any{"total": 9}); err != nil {
+		t.Fatal(err)
+	}
+	caller = mustInstance(t, eng, callerID)
+	if caller.Status != projection.StatusCompleted {
+		t.Fatalf("caller status=%s", caller.Status)
+	}
+	gotAmount := caller.Variables["amount"]
+	if gotAmount != "18" {
+		t.Fatalf("expected assigned amount 18, got %q vars=%v", gotAmount, caller.Variables)
+	}
+}
+
 func TestCrossDeployCallActivitySpawnsCalleeDeployment(t *testing.T) {
 	ctx := context.Background()
 	eng := processing.NewEngine(eventlog.NewMemory())
