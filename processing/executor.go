@@ -128,6 +128,11 @@ func (x *Executor) Enter(
 			tokenID = childTokenID
 			continue
 		}
+		if effect.TerminateJoinPeers != "" {
+			if err := x.terminateJoinPeers(dep, inst, tokenID, effect.TerminateJoinPeers, emit); err != nil {
+				return pubs, err
+			}
+		}
 		if len(effect.Fork) > 0 {
 			more, err := x.forkOutgoings(ctx, dep, inst, tokenID, elementID, effect.Fork, emit)
 			pubs = append(pubs, more...)
@@ -224,11 +229,6 @@ func (x *Executor) Enter(
 		}
 		if !effect.TakeOutgoing {
 			return pubs, nil
-		}
-		if effect.TerminateJoinPeers != "" {
-			if err := x.terminateJoinPeers(inst, tokenID, effect.TerminateJoinPeers, emit); err != nil {
-				return pubs, err
-			}
 		}
 
 		more, err := x.leaveViaOutgoings(ctx, dep, inst, tokenID, elementID, effect.OutgoingFlowID, emit)
@@ -351,8 +351,13 @@ func (x *Executor) Complete(
 	return pubs, err
 }
 
-func (x *Executor) terminateJoinPeers(inst *projection.Instance, survivorTokenID, joinElementID string, emit Emitter) error {
+func (x *Executor) terminateJoinPeers(dep *deploy.Deployment, inst *projection.Instance, survivorTokenID, joinElementID string, emit Emitter) error {
 	typ := eventv1.Element_TYPE_PARALLEL_GATEWAY
+	if dep != nil {
+		if t, err := dep.TypeOf(joinElementID); err == nil {
+			typ = t
+		}
+	}
 	for tid, tok := range inst.Tokens {
 		if tid == survivorTokenID || tok == nil {
 			continue

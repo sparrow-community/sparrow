@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             id="Definitions_complex_join"
+             targetNamespace="http://sparrow.example/complex-join">
+  <process id="Process_complex_join" isExecutable="true">
+    <startEvent id="Start_1">
+      <outgoing>Flow_start_to_fork</outgoing>
+    </startEvent>
+    <parallelGateway id="Gateway_fork">
+      <incoming>Flow_start_to_fork</incoming>
+      <outgoing>Flow_fork_a</outgoing>
+      <outgoing>Flow_fork_b</outgoing>
+      <outgoing>Flow_fork_c</outgoing>
+    </parallelGateway>
+    <userTask id="Task_A">
+      <incoming>Flow_fork_a</incoming>
+      <outgoing>Flow_a_to_join</outgoing>
+    </userTask>
+    <userTask id="Task_B">
+      <incoming>Flow_fork_b</incoming>
+      <outgoing>Flow_b_to_join</outgoing>
+    </userTask>
+    <userTask id="Task_C">
+      <incoming>Flow_fork_c</incoming>
+      <outgoing>Flow_c_to_join</outgoing>
+    </userTask>
+    <complexGateway id="Gateway_join">
+      <incoming>Flow_a_to_join</incoming>
+      <incoming>Flow_b_to_join</incoming>
+      <incoming>Flow_c_to_join</incoming>
+      <outgoing>Flow_join_to_end</outgoing>
+      <activationCondition xsi:type="tFormalExpression">${arrived >= 2}</activationCondition>
+    </complexGateway>
+    <endEvent id="End_1">
+      <incoming>Flow_join_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_fork" sourceRef="Start_1" targetRef="Gateway_fork"/>
+    <sequenceFlow id="Flow_fork_a" sourceRef="Gateway_fork" targetRef="Task_A"/>
+    <sequenceFlow id="Flow_fork_b" sourceRef="Gateway_fork" targetRef="Task_B"/>
+    <sequenceFlow id="Flow_fork_c" sourceRef="Gateway_fork" targetRef="Task_C"/>
+    <sequenceFlow id="Flow_a_to_join" sourceRef="Task_A" targetRef="Gateway_join"/>
+    <sequenceFlow id="Flow_b_to_join" sourceRef="Task_B" targetRef="Gateway_join"/>
+    <sequenceFlow id="Flow_c_to_join" sourceRef="Task_C" targetRef="Gateway_join"/>
+    <sequenceFlow id="Flow_join_to_end" sourceRef="Gateway_join" targetRef="End_1"/>
+  </process>
+</definitions>

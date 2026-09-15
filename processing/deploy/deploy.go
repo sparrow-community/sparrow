@@ -43,6 +43,7 @@ type Deployment struct {
 	multiInstances       map[string]MultiInstanceSpec
 	standardLoops        map[string]StandardLoopSpec
 	incidentThresholds   map[string]int
+	complexGateways      map[string]ComplexGatewaySpec
 	elements             map[string]*elemEntry // flat index of all elements (recursive into subprocesses)
 	seqFlows             map[string]*seqFlowEntry
 
@@ -139,6 +140,7 @@ func (d *Deployment) compile(messages []element.Message, signals []element.Signa
 	d.calledProcessOwner = make(map[string]string)
 	d.calledProcesses = make(map[string]element.Process)
 	d.multiInstances = make(map[string]MultiInstanceSpec)
+	d.complexGateways = make(map[string]ComplexGatewaySpec)
 	d.elements = make(map[string]*elemEntry)
 	d.seqFlows = make(map[string]*seqFlowEntry)
 	d.messageStarts = make(map[string][]string)
@@ -281,6 +283,10 @@ func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messag
 	}
 	for _, e := range fe.InclusiveGatewaies {
 		reg(e.ID, eventv1.Element_TYPE_INCLUSIVE_GATEWAY, e.Outgoing, e.Incoming)
+	}
+	for _, e := range fe.ComplexGatewaies {
+		reg(e.ID, eventv1.Element_TYPE_COMPLEX_GATEWAY, e.Outgoing, e.Incoming)
+		d.complexGateways[e.ID] = complexGatewaySpec(e)
 	}
 	for _, e := range fe.EventBasedGatewaies {
 		reg(e.ID, eventv1.Element_TYPE_EVENT_BASED_GATEWAY, e.Outgoing, e.Incoming)

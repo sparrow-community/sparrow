@@ -108,7 +108,7 @@ message Element {
     TYPE_PARALLEL_GATEWAY = 19;
     TYPE_INCLUSIVE_GATEWAY = 20;
     TYPE_EVENT_BASED_GATEWAY = 21;
-    TYPE_COMPLEX_GATEWAY = 22; // BPMN FlowElement; not yet modeled in FlowElements
+    TYPE_COMPLEX_GATEWAY = 22; // BPMN complexGateway
 
     // Connecting / data
     TYPE_SEQUENCE_FLOW = 23;

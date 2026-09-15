@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             id="Definitions_complex_split"
+             targetNamespace="http://sparrow.example/complex-split">
+  <process id="Process_complex_split" isExecutable="true">
+    <startEvent id="Start_1">
+      <outgoing>Flow_start_to_gw</outgoing>
+    </startEvent>
+    <complexGateway id="Gateway_split" default="Flow_to_default">
+      <incoming>Flow_start_to_gw</incoming>
+      <outgoing>Flow_to_a</outgoing>
+      <outgoing>Flow_to_b</outgoing>
+      <outgoing>Flow_to_default</outgoing>
+    </complexGateway>
+    <userTask id="Task_A">
+      <incoming>Flow_to_a</incoming>
+      <outgoing>Flow_a_to_end</outgoing>
+    </userTask>
+    <userTask id="Task_B">
+      <incoming>Flow_to_b</incoming>
+      <outgoing>Flow_b_to_end</outgoing>
+    </userTask>
+    <userTask id="Task_Default">
+      <incoming>Flow_to_default</incoming>
+      <outgoing>Flow_default_to_end</outgoing>
+    </userTask>
+    <endEvent id="End_A"><incoming>Flow_a_to_end</incoming></endEvent>
+    <endEvent id="End_B"><incoming>Flow_b_to_end</incoming></endEvent>
+    <endEvent id="End_Default"><incoming>Flow_default_to_end</incoming></endEvent>
+    <sequenceFlow id="Flow_start_to_gw" sourceRef="Start_1" targetRef="Gateway_split"/>
+    <sequenceFlow id="Flow_to_a" sourceRef="Gateway_split" targetRef="Task_A">
+      <conditionExpression xsi:type="tFormalExpression">${takeA == true}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="Flow_to_b" sourceRef="Gateway_split" targetRef="Task_B">
+      <conditionExpression xsi:type="tFormalExpression">${takeB == true}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="Flow_to_default" sourceRef="Gateway_split" targetRef="Task_Default"/>
+    <sequenceFlow id="Flow_a_to_end" sourceRef="Task_A" targetRef="End_A"/>
+    <sequenceFlow id="Flow_b_to_end" sourceRef="Task_B" targetRef="End_B"/>
+    <sequenceFlow id="Flow_default_to_end" sourceRef="Task_Default" targetRef="End_Default"/>
+  </process>
+</definitions>

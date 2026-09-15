@@ -171,6 +171,7 @@ func DefaultRegistry() *Registry {
 		SubProcessHandler{},
 		TransactionHandler{},
 		InclusiveGatewayHandler{},
+		ComplexGatewayHandler{},
 		EventBasedGatewayHandler{},
 		IntermediateThrowEventHandler{},
 		CallActivityHandler{},

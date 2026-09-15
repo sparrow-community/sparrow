@@ -38,6 +38,7 @@ type FlowElements struct {
 	ParallelGatewaies       []ParallelGateway        `xml:"parallelGateway"`
 	ExclusiveGatewaies      []ExclusiveGateway       `xml:"exclusiveGateway"`
 	InclusiveGatewaies      []InclusiveGateway       `xml:"inclusiveGateway"`
+	ComplexGatewaies        []ComplexGateway         `xml:"complexGateway"`
 	EventBasedGatewaies     []EventBasedGateway      `xml:"eventBasedGateway"`
 	SubProcesses            []SubProcess             `xml:"subProcess"`
 	Transactions            []Transaction            `xml:"transaction"`
