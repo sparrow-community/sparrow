@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             id="Definitions_mi_catch_each"
+             targetNamespace="http://sparrow.example/m25">
+  <signal id="Signal_each" name="mi.each"/>
+  <process id="Process_catch_each" isExecutable="true">
+    <startEvent id="StartEvent_1"><outgoing>F1</outgoing></startEvent>
+    <intermediateCatchEvent id="SignalCatch_1">
+      <incoming>F1</incoming><outgoing>F2</outgoing>
+      <signalEventDefinition signalRef="Signal_each"/>
+    </intermediateCatchEvent>
+    <endEvent id="EndEvent_1"><incoming>F2</incoming></endEvent>
+    <sequenceFlow id="F1" sourceRef="StartEvent_1" targetRef="SignalCatch_1"/>
+    <sequenceFlow id="F2" sourceRef="SignalCatch_1" targetRef="EndEvent_1"/>
+  </process>
+</definitions>

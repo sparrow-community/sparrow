@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             id="Definitions_mi_one_event"
+             targetNamespace="http://sparrow.example/m25">
+  <signal id="Signal_first" name="mi.first"/>
+  <process id="Process_mi_one_event" name="MI One Event" isExecutable="true">
+    <startEvent id="StartEvent_1">
+      <outgoing>Flow_start</outgoing>
+    </startEvent>
+    <userTask id="UserTask_mi" name="MI">
+      <incoming>Flow_start</incoming>
+      <outgoing>Flow_end</outgoing>
+      <multiInstanceLoopCharacteristics behavior="One" oneBehaviorEventRef="Signal_first">
+        <loopCardinality xsi:type="tFormalExpression">3</loopCardinality>
+      </multiInstanceLoopCharacteristics>
+    </userTask>
+    <endEvent id="EndEvent_1">
+      <incoming>Flow_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start" sourceRef="StartEvent_1" targetRef="UserTask_mi"/>
+    <sequenceFlow id="Flow_end" sourceRef="UserTask_mi" targetRef="EndEvent_1"/>
+  </process>
+</definitions>

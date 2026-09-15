@@ -108,6 +108,12 @@ type MultiInstanceLoop struct {
 	NextIndex          int32
 	OutputItems        []string
 	Cancelled          bool
+	// OneEventFired is true after oneBehaviorEventRef has been published (or seeded on Recover).
+	OneEventFired bool
+	// ComplexFired tracks one-fire complexBehaviorDefinition indices.
+	ComplexFired []bool
+	// BehaviorInitialized is set when MI start arms behavior tracking (false after Recover until seeded).
+	BehaviorInitialized bool
 }
 
 // EventSubProcessArm is an armed event sub-process start subscription (START_EVENT ACTIVATED).

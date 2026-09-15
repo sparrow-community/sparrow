@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             id="Definitions_mi_signal_catch"
+             targetNamespace="http://sparrow.example/m25">
+  <signal id="Signal_first" name="mi.first"/>
+  <signal id="Signal_each" name="mi.each"/>
+  <signal id="Signal_half" name="mi.halfway"/>
+  <process id="Process_catch_first" name="Catch First" isExecutable="true">
+    <startEvent id="StartEvent_1">
+      <outgoing>Flow_to_catch</outgoing>
+    </startEvent>
+    <intermediateCatchEvent id="SignalCatch_1">
+      <incoming>Flow_to_catch</incoming>
+      <outgoing>Flow_to_end</outgoing>
+      <signalEventDefinition signalRef="Signal_first"/>
+    </intermediateCatchEvent>
+    <endEvent id="EndEvent_1">
+      <incoming>Flow_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_to_catch" sourceRef="StartEvent_1" targetRef="SignalCatch_1"/>
+    <sequenceFlow id="Flow_to_end" sourceRef="SignalCatch_1" targetRef="EndEvent_1"/>
+  </process>
+</definitions>

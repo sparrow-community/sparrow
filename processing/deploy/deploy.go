@@ -50,6 +50,9 @@ type Deployment struct {
 	timerStarts       map[string]timerCatch
 	conditionalStarts map[string]string // start event id -> condition text
 	conditionalCatch  map[string]string // intermediate/boundary conditional id -> condition text
+
+	messages []element.Message
+	signals  []element.Signal
 }
 
 type elemEntry struct {
@@ -139,6 +142,8 @@ func (d *Deployment) compile(messages []element.Message, signals []element.Signa
 	d.timerStarts = make(map[string]timerCatch)
 	d.conditionalStarts = make(map[string]string)
 	d.conditionalCatch = make(map[string]string)
+	d.messages = messages
+	d.signals = signals
 
 	if err := d.indexScope(&p.FlowElements, p.ID, messages, signals, errors, escalations, collectAssociations(p)); err != nil {
 		return err

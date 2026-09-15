@@ -44,7 +44,7 @@ Full snapshot + roadmap: [`../AGENTS.md`](../AGENTS.md).
 
 ## Multi-instance
 
-User Task, Service Task, Manual/Receive/Send/Business Rule/Script Task, embedded SubProcess, Call Activity. Host `loop_instance_index = -1`; inners `0..N-1`. Parallel / sequential / collection / early completion / boundary cancel / recover. Fixtures: `testdata/m6_mi_*.bpmn`.
+User Task, Service Task, Manual/Receive/Send/Business Rule/Script Task, embedded SubProcess, Call Activity. Host `loop_instance_index = -1`; inners `0..N-1`. Parallel / sequential / collection / early completion / boundary cancel / recover. Behavior None/One/All/Complex; `noneBehaviorEventRef` / `oneBehaviorEventRef` / `complexBehaviorDefinition` publish signal or message. Fixtures: `testdata/m6_mi_*.bpmn`, `m25_mi_*.bpmn`.
 
 ```shell
 go test ./processing/

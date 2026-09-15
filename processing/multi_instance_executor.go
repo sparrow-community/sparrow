@@ -24,6 +24,9 @@ func (x *Executor) runMultiInstanceStart(
 	if !ok {
 		return nil, nil
 	}
+	if loop := inst.MultiInstanceLoops[start.ElementID]; loop != nil {
+		initMIBehaviorState(loop, spec)
+	}
 	var pubs []handlers.Publication
 	for _, idx := range start.InnerIndices {
 		tid, err := NextID()
@@ -126,26 +129,32 @@ func (x *Executor) runMultiInstanceInnerComplete(
 			loop.OutputItems = append(loop.OutputItems, raw)
 		}
 	}
-	met, err := spec.CompletionMet(loop, inst.Variables, innerIndex)
+	behaviorPubs, err := x.fireMIBehaviorEvents(spec, loop, inst.Variables, innerIndex)
 	if err != nil {
 		return nil, err
+	}
+	met, err := spec.CompletionMet(loop, inst.Variables, innerIndex)
+	if err != nil {
+		return behaviorPubs, err
 	}
 	if !met {
 		if spec.Sequential && loop.NextIndex < loop.TotalInstances {
 			tid, err := NextID()
 			if err != nil {
-				return nil, err
+				return behaviorPubs, err
 			}
 			if extra := spec.CollectionElementVariables(inst.Variables, int(loop.NextIndex)); extra != nil {
 				for k, v := range extra {
 					inst.Variables[k] = v
 				}
 			}
-			return x.enterWithLoopIndex(ctx, dep, inst, tid, elementID, loop.NextIndex, emit)
+			more, err := x.enterWithLoopIndex(ctx, dep, inst, tid, elementID, loop.NextIndex, emit)
+			return append(behaviorPubs, more...), err
 		}
-		return nil, nil
+		return behaviorPubs, nil
 	}
-	return x.completeMultiInstanceHost(ctx, dep, inst, spec, elementID, loop, emit)
+	more, err := x.completeMultiInstanceHost(ctx, dep, inst, spec, elementID, loop, emit)
+	return append(behaviorPubs, more...), err
 }
 
 func (x *Executor) completeMultiInstanceHost(
@@ -331,4 +340,106 @@ func (x *Executor) cancelMultiInstanceActivity(
 	delete(inst.MultiInstanceLoops, elementID)
 	inst.RemoveScopeBoundariesForScope(elementID)
 	return pubs, nil
+}
+
+func initMIBehaviorState(loop *projection.MultiInstanceLoop, spec deploy.MultiInstanceSpec) {
+	if loop == nil {
+		return
+	}
+	loop.BehaviorInitialized = true
+	loop.OneEventFired = false
+	if len(spec.ComplexBehaviors) > 0 {
+		loop.ComplexFired = make([]bool, len(spec.ComplexBehaviors))
+	} else {
+		loop.ComplexFired = nil
+	}
+}
+
+func (x *Executor) fireMIBehaviorEvents(
+	spec deploy.MultiInstanceSpec,
+	loop *projection.MultiInstanceLoop,
+	vars map[string]string,
+	innerIndex int32,
+) ([]handlers.Publication, error) {
+	if loop == nil {
+		return nil, nil
+	}
+	if err := seedMIBehaviorStateAfterRecover(spec, loop, vars, innerIndex); err != nil {
+		return nil, err
+	}
+	var pubs []handlers.Publication
+	appendThrow := func(th *deploy.MIBehaviorThrow) {
+		if th == nil || th.Name == "" {
+			return
+		}
+		switch th.Kind {
+		case deploy.ThrowKindSignal:
+			pubs = append(pubs, handlers.Publication{Kind: handlers.PublicationSignal, Name: th.Name})
+		case deploy.ThrowKindMessage:
+			pubs = append(pubs, handlers.Publication{Kind: handlers.PublicationMessage, Name: th.Name})
+		}
+	}
+
+	if spec.NoneEvent != nil {
+		appendThrow(spec.NoneEvent)
+	}
+	if spec.OneEvent != nil && !loop.OneEventFired && loop.CompletedInstances >= 1 {
+		appendThrow(spec.OneEvent)
+		loop.OneEventFired = true
+	}
+
+	for i, cb := range spec.ComplexBehaviors {
+		if i < len(loop.ComplexFired) && loop.ComplexFired[i] {
+			continue
+		}
+		met, err := spec.ComplexConditionMet(loop, vars, innerIndex, cb.Condition)
+		if err != nil {
+			return pubs, err
+		}
+		if !met {
+			continue
+		}
+		th := cb.Throw
+		appendThrow(&th)
+		if len(loop.ComplexFired) < len(spec.ComplexBehaviors) {
+			n := make([]bool, len(spec.ComplexBehaviors))
+			copy(n, loop.ComplexFired)
+			loop.ComplexFired = n
+		}
+		loop.ComplexFired[i] = true
+	}
+	return pubs, nil
+}
+
+func seedMIBehaviorStateAfterRecover(
+	spec deploy.MultiInstanceSpec,
+	loop *projection.MultiInstanceLoop,
+	vars map[string]string,
+	innerIndex int32,
+) error {
+	if loop.BehaviorInitialized {
+		return nil
+	}
+	loop.BehaviorInitialized = true
+	if len(spec.ComplexBehaviors) > 0 && loop.ComplexFired == nil {
+		loop.ComplexFired = make([]bool, len(spec.ComplexBehaviors))
+	}
+	// After Recover with prior completions, avoid re-publishing one/complex milestones.
+	if loop.CompletedInstances > 1 {
+		loop.OneEventFired = true
+		saved := loop.CompletedInstances
+		loop.CompletedInstances = saved - 1
+		for i, cb := range spec.ComplexBehaviors {
+			met, err := spec.ComplexConditionMet(loop, vars, innerIndex, cb.Condition)
+			if err != nil {
+				loop.CompletedInstances = saved
+				return err
+			}
+			if met {
+				loop.ComplexFired[i] = true
+			}
+		}
+		loop.CompletedInstances = saved
+	}
+	return nil
 }

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             id="Definitions_mi_complex"
+             targetNamespace="http://sparrow.example/m25">
+  <signal id="Signal_half" name="mi.halfway"/>
+  <process id="Process_mi_complex" name="MI Complex" isExecutable="true">
+    <startEvent id="StartEvent_1">
+      <outgoing>Flow_start</outgoing>
+    </startEvent>
+    <userTask id="UserTask_mi" name="MI">
+      <incoming>Flow_start</incoming>
+      <outgoing>Flow_end</outgoing>
+      <multiInstanceLoopCharacteristics behavior="Complex">
+        <loopCardinality xsi:type="tFormalExpression">3</loopCardinality>
+        <complexBehaviorDefinition>
+          <condition xsi:type="tFormalExpression">nrOfCompletedInstances &gt;= 1</condition>
+          <event id="ComplexThrow_1">
+            <signalEventDefinition signalRef="Signal_half"/>
+          </event>
+        </complexBehaviorDefinition>
+      </multiInstanceLoopCharacteristics>
+    </userTask>
+    <endEvent id="EndEvent_1">
+      <incoming>Flow_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start" sourceRef="StartEvent_1" targetRef="UserTask_mi"/>
+    <sequenceFlow id="Flow_end" sourceRef="UserTask_mi" targetRef="EndEvent_1"/>
+  </process>
+</definitions>
