@@ -166,7 +166,10 @@ func (d *Deployment) compile(messages []element.Message, signals []element.Signa
 	if err := d.validateCancelSemantics(); err != nil {
 		return err
 	}
-	return d.indexCallActivities(&p.FlowElements, catalog, messages, signals, errors, escalations)
+	if err := d.indexCallActivities(&p.FlowElements, catalog, messages, signals, errors, escalations); err != nil {
+		return err
+	}
+	return d.validateFlowReferences()
 }
 
 func collectAssociations(p *element.Process) []element.Association {

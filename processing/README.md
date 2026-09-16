@@ -40,7 +40,7 @@ New element: handler + registry + deploy validation. Semantics stay out of `engi
 | Transaction | Transaction SubProcess (`##Compensate`); Cancel End → in-scope compensate → interrupting Cancel Boundary; nested/MI rejected at Deploy |
 | AdHocSubProcess | Flat inner activities enabled without sequence flow; `ordering` Parallel (all) / Sequential (one at a time in document order); `completionCondition` finishes the scope, `cancelRemainingInstances` (default true) cancels inner activities still enabled; exhausting all inner activities also completes the scope; non-flat bodies and a missing `completionCondition` rejected at Deploy |
 | CallActivity | Child instance; IO mapping (name copy, transformation, assignment); cross-deployment; boundary & compensation (including into unfinished child); multi-instance |
-| SequenceFlow | `SEQUENCE_FLOW_TAKEN`; conditions on gateway and activity outgoings (+ `default`); multiple unconditional outs fan out in parallel |
+| SequenceFlow | `SEQUENCE_FLOW_TAKEN`; conditions on gateway and activity outgoings (+ `default`); multiple unconditional outs fan out in parallel; endpoints and declared `incoming`/`outgoing` must resolve at Deploy (a flow into an unmodeled element such as `choreographyTask` is rejected, not discovered at runtime) |
 
 Full snapshot + roadmap: [`../AGENTS.md`](../AGENTS.md).
 

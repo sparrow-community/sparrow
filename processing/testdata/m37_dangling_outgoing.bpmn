@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             id="Definitions_dangling_outgoing"
+             targetNamespace="http://sparrow.example/flow-ref">
+  <process id="Process_dangling_outgoing" isExecutable="true">
+    <startEvent id="Start_1">
+      <outgoing>Flow_start_to_task</outgoing>
+    </startEvent>
+    <userTask id="Task_A">
+      <incoming>Flow_start_to_task</incoming>
+      <outgoing>Flow_missing</outgoing>
+    </userTask>
+    <endEvent id="End_1"/>
+    <sequenceFlow id="Flow_start_to_task" sourceRef="Start_1" targetRef="Task_A"/>
+  </process>
+</definitions>

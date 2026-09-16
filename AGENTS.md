@@ -26,7 +26,7 @@ Work proceeds `/speckit-specify` → plan → tasks → implement (`.cursor/skil
 
 Process lifecycle; process-level none start and typed starts (message, timer, signal, conditional — CreateInstance for none start, instantiate exclusive/parallel event-based gateway entries, and instantiate receive task; typed mint via PublishMessage / PublishSignal / FireDue / EvaluateConditionalStarts); User Task; Service Task + Job; Manual / abstract Task (wait → Complete); Receive / Send (including instantiate receive as process entry); Business Rule / Script Task (job-backed); exclusive / parallel / inclusive / complex / event-based gateways (catch, including instantiate entries and receive-task targets); SubProcess; Transaction SubProcess and cancel (##Compensate; Cancel End → compensate → Cancel Boundary); Ad-Hoc SubProcess (flat inner activities, `ordering` Parallel / Sequential, `completionCondition`, `cancelRemainingInstances`); Call Activity (child instance, IO mapping with name copy / transformation / assignment, cross-deployment, boundary and compensation parity, multi-instance; called process requires none start, instantiate event-based gateway, or instantiate receive); Event Sub-Process (including nested, compensation event sub-process, and conditional start via EvaluateConditions); intermediate and boundary catches/throws for timer, message, signal, error, escalation (including standalone intermediate escalation catch), compensate, conditional (multiple same-kind boundaries); link throw/catch; conditional sequence flows on activities and gateways; parallel fan-out from activities and start events with multiple unconditional outgoings; terminate end; message end; signal end; compensation into an unfinished embedded SubProcess or unfinished Call Activity child instance; multi-instance on User Task, Service Task, Manual / abstract Task / Receive / Send / Business Rule / Script, SubProcess, Call Activity (including `complexBehaviorDefinition` and none/one behavior event refs for signal/message); `standardLoopCharacteristics` on waiting tasks (testBefore / loopCondition / loopMaximum); incident open / resolve / retry; coexisting process revisions.
 
-Shipped: M1–M4c, specs [`001`](./specs/001-engine-completeness/)–[`032`](./specs/032-implicit-throw-event-reject/).
+Shipped: M1–M4c, specs [`001`](./specs/001-engine-completeness/)–[`033`](./specs/033-dangling-flow-reference-reject/).
 
 ## Planned
 
@@ -40,7 +40,7 @@ Non-goals. Moving an item out of Excluded requires an AGENTS and constitution am
 
 | Topic | Rationale |
 |-------|-----------|
-| Collaboration, message flow, and choreography execution | Outside single-process execution |
+| Collaboration, message flow, and choreography execution | Outside single-process execution; a sequence flow into a choreography or otherwise unmodeled flow element is rejected at Deploy |
 | Lane runtime semantics | Documentation and grouping only |
 | Data Object / Data Store as ledger or token subjects | Process variables and IO mappings carry executable data |
 | Modeler, operations console, product-suite UI | Separate consumers of the engine |

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             id="Definitions_flow_unmodeled_sub"
+             targetNamespace="http://sparrow.example/flow-ref">
+  <process id="Process_flow_unmodeled_sub" isExecutable="true">
+    <startEvent id="Start_1">
+      <outgoing>Flow_start_to_sub</outgoing>
+    </startEvent>
+    <subProcess id="SubProcess_1">
+      <incoming>Flow_start_to_sub</incoming>
+      <outgoing>Flow_sub_to_end</outgoing>
+      <startEvent id="Start_sub">
+        <outgoing>Flow_sub_start_to_choreo</outgoing>
+      </startEvent>
+      <choreographyTask id="Choreo_1">
+        <incoming>Flow_sub_start_to_choreo</incoming>
+        <outgoing>Flow_choreo_to_sub_end</outgoing>
+      </choreographyTask>
+      <endEvent id="End_sub">
+        <incoming>Flow_choreo_to_sub_end</incoming>
+      </endEvent>
+      <sequenceFlow id="Flow_sub_start_to_choreo" sourceRef="Start_sub" targetRef="Choreo_1"/>
+      <sequenceFlow id="Flow_choreo_to_sub_end" sourceRef="Choreo_1" targetRef="End_sub"/>
+    </subProcess>
+    <endEvent id="End_1">
+      <incoming>Flow_sub_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_sub" sourceRef="Start_1" targetRef="SubProcess_1"/>
+    <sequenceFlow id="Flow_sub_to_end" sourceRef="SubProcess_1" targetRef="End_1"/>
+  </process>
+</definitions>
