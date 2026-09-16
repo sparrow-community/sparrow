@@ -315,6 +315,11 @@ func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messag
 			d.throwEvents[e.ID] = spec
 		}
 	}
+	if len(fe.ImplicitThrowEvents) > 0 {
+		// implicitThrowEvent has no token semantics as a flow element; BPMN uses it
+		// for multi-instance behavior events inside multiInstanceLoopCharacteristics.
+		return fmt.Errorf("UNSUPPORTED_ELEMENT: implicitThrowEvent %q is not supported as a flow element (only inside multi-instance behavior definitions)", fe.ImplicitThrowEvents[0].ID)
+	}
 	for _, e := range fe.CallActivities {
 		reg(e.ID, eventv1.Element_TYPE_CALL_ACTIVITY, e.Outgoing, e.Incoming)
 		if err := indexMultiInstance(d, e.ID, e.LoopCharacteristicsElements); err != nil {

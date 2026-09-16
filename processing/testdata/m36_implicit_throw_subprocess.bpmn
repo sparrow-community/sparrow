@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             id="Definitions_implicit_throw_sub"
+             targetNamespace="http://sparrow.example/implicit-throw">
+  <signal id="Signal_1" name="notice.v1"/>
+  <process id="Process_implicit_throw_sub" isExecutable="true">
+    <startEvent id="Start_1">
+      <outgoing>Flow_start_to_sub</outgoing>
+    </startEvent>
+    <subProcess id="SubProcess_1">
+      <incoming>Flow_start_to_sub</incoming>
+      <outgoing>Flow_sub_to_end</outgoing>
+      <startEvent id="Start_sub">
+        <outgoing>Flow_sub_start_to_throw</outgoing>
+      </startEvent>
+      <implicitThrowEvent id="ImplicitThrow_1">
+        <incoming>Flow_sub_start_to_throw</incoming>
+        <outgoing>Flow_throw_to_sub_end</outgoing>
+        <signalEventDefinition id="SignalDef_1" signalRef="Signal_1"/>
+      </implicitThrowEvent>
+      <endEvent id="End_sub">
+        <incoming>Flow_throw_to_sub_end</incoming>
+      </endEvent>
+      <sequenceFlow id="Flow_sub_start_to_throw" sourceRef="Start_sub" targetRef="ImplicitThrow_1"/>
+      <sequenceFlow id="Flow_throw_to_sub_end" sourceRef="ImplicitThrow_1" targetRef="End_sub"/>
+    </subProcess>
+    <endEvent id="End_1">
+      <incoming>Flow_sub_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_sub" sourceRef="Start_1" targetRef="SubProcess_1"/>
+    <sequenceFlow id="Flow_sub_to_end" sourceRef="SubProcess_1" targetRef="End_1"/>
+  </process>
+</definitions>
