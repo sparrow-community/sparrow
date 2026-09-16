@@ -44,6 +44,7 @@ type Deployment struct {
 	standardLoops        map[string]StandardLoopSpec
 	incidentThresholds   map[string]int
 	complexGateways      map[string]ComplexGatewaySpec
+	adHocSubProcesses    map[string]AdHocSubProcessSpec
 	elements             map[string]*elemEntry // flat index of all elements (recursive into subprocesses)
 	seqFlows             map[string]*seqFlowEntry
 
@@ -141,6 +142,7 @@ func (d *Deployment) compile(messages []element.Message, signals []element.Signa
 	d.calledProcesses = make(map[string]element.Process)
 	d.multiInstances = make(map[string]MultiInstanceSpec)
 	d.complexGateways = make(map[string]ComplexGatewaySpec)
+	d.adHocSubProcesses = make(map[string]AdHocSubProcessSpec)
 	d.elements = make(map[string]*elemEntry)
 	d.seqFlows = make(map[string]*seqFlowEntry)
 	d.messageStarts = make(map[string][]string)
@@ -392,6 +394,17 @@ func (d *Deployment) indexScope(fe *element.FlowElements, scopeID string, messag
 		}
 		reg(tx.ID, eventv1.Element_TYPE_TRANSACTION, tx.Outgoing, tx.Incoming)
 		if err := d.indexScope(&tx.FlowElements, tx.ID, messages, signals, errors, escalations, associations); err != nil {
+			return err
+		}
+	}
+	for i := range fe.AdHocSubProcesses {
+		ah := &fe.AdHocSubProcesses[i]
+		if err := validateAdHocSubProcess(*ah); err != nil {
+			return err
+		}
+		reg(ah.ID, eventv1.Element_TYPE_AD_HOC_SUB_PROCESS, ah.Outgoing, ah.Incoming)
+		d.adHocSubProcesses[ah.ID] = adHocSubProcessSpec(*ah)
+		if err := d.indexScope(&ah.FlowElements, ah.ID, messages, signals, errors, escalations, associations); err != nil {
 			return err
 		}
 	}

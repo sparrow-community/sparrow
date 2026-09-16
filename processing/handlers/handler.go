@@ -65,6 +65,18 @@ type Effect struct {
 	MultiInstanceCancel string
 	// ReEnter re-enters the same element after COMPLETED (standard loop continue).
 	ReEnter bool
+	// AdHocEnable enables inner activities of an Ad-Hoc SubProcess after ACTIVATED.
+	AdHocEnable *AdHocEnable
+	// AdHocInnerComplete names the Ad-Hoc SubProcess whose inner activity just
+	// completed; the executor re-evaluates the completion condition.
+	AdHocInnerComplete string
+}
+
+// AdHocEnable tells the executor which inner activities of an Ad-Hoc SubProcess
+// to enable while the host token parks on the scope.
+type AdHocEnable struct {
+	ElementID   string
+	ActivityIDs []string
 }
 
 // ThrowErrorEffect requests error propagation from the throwing element.
@@ -170,6 +182,7 @@ func DefaultRegistry() *Registry {
 		SequenceFlowHandler{},
 		SubProcessHandler{},
 		TransactionHandler{},
+		AdHocSubProcessHandler{},
 		InclusiveGatewayHandler{},
 		ComplexGatewayHandler{},
 		EventBasedGatewayHandler{},

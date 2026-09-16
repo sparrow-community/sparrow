@@ -10,17 +10,21 @@ import (
 
 const transactionMethodCompensate = "##Compensate"
 
-// childScopes returns FlowElements of direct embedded SubProcesses and Transactions.
+// childScopes returns FlowElements of direct embedded SubProcesses, Transactions
+// and Ad-Hoc SubProcesses.
 func childScopes(fe *element.FlowElements) []*element.FlowElements {
 	if fe == nil {
 		return nil
 	}
-	out := make([]*element.FlowElements, 0, len(fe.SubProcesses)+len(fe.Transactions))
+	out := make([]*element.FlowElements, 0, len(fe.SubProcesses)+len(fe.Transactions)+len(fe.AdHocSubProcesses))
 	for i := range fe.SubProcesses {
 		out = append(out, &fe.SubProcesses[i].FlowElements)
 	}
 	for i := range fe.Transactions {
 		out = append(out, &fe.Transactions[i].FlowElements)
+	}
+	for i := range fe.AdHocSubProcesses {
+		out = append(out, &fe.AdHocSubProcesses[i].FlowElements)
 	}
 	return out
 }

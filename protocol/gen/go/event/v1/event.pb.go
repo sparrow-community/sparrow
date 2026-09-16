@@ -198,13 +198,14 @@ const (
 	Element_TYPE_PARALLEL_GATEWAY    Element_Type = 19
 	Element_TYPE_INCLUSIVE_GATEWAY   Element_Type = 20
 	Element_TYPE_EVENT_BASED_GATEWAY Element_Type = 21
-	Element_TYPE_COMPLEX_GATEWAY     Element_Type = 22 // BPMN FlowElement; not yet modeled in FlowElements
+	Element_TYPE_COMPLEX_GATEWAY     Element_Type = 22 // BPMN complexGateway
 	// Connecting / data
 	Element_TYPE_SEQUENCE_FLOW         Element_Type = 23
 	Element_TYPE_DATA_OBJECT           Element_Type = 24
 	Element_TYPE_DATA_OBJECT_REFERENCE Element_Type = 25
 	Element_TYPE_DATA_STORE_REFERENCE  Element_Type = 26
 	Element_TYPE_TRANSACTION           Element_Type = 27 // BPMN transaction SubProcess
+	Element_TYPE_AD_HOC_SUB_PROCESS    Element_Type = 28 // BPMN adHocSubProcess
 )
 
 // Enum value maps for Element_Type.
@@ -238,6 +239,7 @@ var (
 		25: "TYPE_DATA_OBJECT_REFERENCE",
 		26: "TYPE_DATA_STORE_REFERENCE",
 		27: "TYPE_TRANSACTION",
+		28: "TYPE_AD_HOC_SUB_PROCESS",
 	}
 	Element_Type_value = map[string]int32{
 		"TYPE_UNSPECIFIED":              0,
@@ -268,6 +270,7 @@ var (
 		"TYPE_DATA_OBJECT_REFERENCE":    25,
 		"TYPE_DATA_STORE_REFERENCE":     26,
 		"TYPE_TRANSACTION":              27,
+		"TYPE_AD_HOC_SUB_PROCESS":       28,
 	}
 )
 
@@ -674,7 +677,7 @@ const file_event_v1_event_proto_rawDesc = "" +
 	"\x15RECORD_TYPE_REJECTION\x10\x03\"9\n" +
 	"\tRejection\x12\x12\n" +
 	"\x04code\x18\x01 \x01(\tR\x04code\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage\"\xa8\r\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\"\xc5\r\n" +
 	"\aElement\x120\n" +
 	"\x06intent\x18\x01 \x01(\x0e2\x18.event.v1.Element.IntentR\x06intent\x12*\n" +
 	"\x04type\x18\x02 \x01(\x0e2\x16.event.v1.Element.TypeR\x04type\x12\x0e\n" +
@@ -705,7 +708,7 @@ const file_event_v1_event_proto_rawDesc = "" +
 	"\x0eINTENT_RESUMED\x10\r\x12\x1a\n" +
 	"\x16INTENT_INCIDENT_OPENED\x10\x0e\x12\x1c\n" +
 	"\x18INTENT_INCIDENT_RESOLVED\x10\x0f\x12\x1c\n" +
-	"\x18INTENT_ESCALATION_THROWN\x10\x10\"\xc0\x05\n" +
+	"\x18INTENT_ESCALATION_THROWN\x10\x10\"\xdd\x05\n" +
 	"\x04Type\x12\x14\n" +
 	"\x10TYPE_UNSPECIFIED\x10\x00\x12\x10\n" +
 	"\fTYPE_PROCESS\x10\x01\x12\x14\n" +
@@ -735,7 +738,8 @@ const file_event_v1_event_proto_rawDesc = "" +
 	"\x10TYPE_DATA_OBJECT\x10\x18\x12\x1e\n" +
 	"\x1aTYPE_DATA_OBJECT_REFERENCE\x10\x19\x12\x1d\n" +
 	"\x19TYPE_DATA_STORE_REFERENCE\x10\x1a\x12\x14\n" +
-	"\x10TYPE_TRANSACTION\x10\x1bB\t\n" +
+	"\x10TYPE_TRANSACTION\x10\x1b\x12\x1b\n" +
+	"\x17TYPE_AD_HOC_SUB_PROCESS\x10\x1cB\t\n" +
 	"\apayloadB\xa2\x01\n" +
 	"\fcom.event.v1B\n" +
 	"EventProtoP\x01ZEgithub.com/sparrow-community/sparrow/protocol/gen/go/event/v1;eventv1\xa2\x02\x03EXX\xaa\x02\bEvent.V1\xca\x02\bEvent\\V1\xe2\x02\x14Event\\V1\\GPBMetadata\xea\x02\tEvent::V1b\x06proto3"

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             id="Definitions_ad_hoc_job"
+             targetNamespace="http://sparrow.example/adhoc">
+  <process id="Process_ad_hoc_job" isExecutable="true">
+    <startEvent id="Start_1">
+      <outgoing>Flow_start_to_adhoc</outgoing>
+    </startEvent>
+    <adHocSubProcess id="AdHoc_1">
+      <incoming>Flow_start_to_adhoc</incoming>
+      <outgoing>Flow_adhoc_to_end</outgoing>
+      <userTask id="Task_A"/>
+      <serviceTask id="Service_B" implementation="work.v1"/>
+      <completionCondition xsi:type="tFormalExpression">${done &gt;= 1}</completionCondition>
+    </adHocSubProcess>
+    <endEvent id="End_1">
+      <incoming>Flow_adhoc_to_end</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_start_to_adhoc" sourceRef="Start_1" targetRef="AdHoc_1"/>
+    <sequenceFlow id="Flow_adhoc_to_end" sourceRef="AdHoc_1" targetRef="End_1"/>
+  </process>
+</definitions>

@@ -38,6 +38,7 @@ New element: handler + registry + deploy validation. Semantics stay out of `engi
 | Gateways | XOR, AND, inclusive, complex (activationCondition join; inclusive-style split), event-based (catch; exclusive/parallel; instantiate; targets may be catch or receive) |
 | SubProcess | Embedded scope; Event Sub-Process (including compensation and conditional start via EvaluateConditions); multi-instance |
 | Transaction | Transaction SubProcess (`##Compensate`); Cancel End → in-scope compensate → interrupting Cancel Boundary; nested/MI rejected at Deploy |
+| AdHocSubProcess | Flat inner activities enabled without sequence flow; `ordering` Parallel (all) / Sequential (one at a time in document order); `completionCondition` finishes the scope, `cancelRemainingInstances` (default true) cancels inner activities still enabled; exhausting all inner activities also completes the scope; non-flat bodies and a missing `completionCondition` rejected at Deploy |
 | CallActivity | Child instance; IO mapping (name copy, transformation, assignment); cross-deployment; boundary & compensation (including into unfinished child); multi-instance |
 | SequenceFlow | `SEQUENCE_FLOW_TAKEN`; conditions on gateway and activity outgoings (+ `default`); multiple unconditional outs fan out in parallel |
 

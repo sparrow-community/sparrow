@@ -110,6 +110,11 @@ func (x *Executor) Enter(
 				return pubs, err
 			}
 		}
+		if effect.AdHocEnable != nil {
+			more, err := x.runAdHocEnable(ctx, dep, inst, tokenID, effect.AdHocEnable, emit)
+			pubs = append(pubs, more...)
+			return pubs, err
+		}
 		if effect.EnterChild != "" {
 			childTokenID := tokenID
 			if effect.SpawnChildToken {
@@ -280,6 +285,11 @@ func (x *Executor) Complete(
 	}
 	if effect.MultiInstanceInnerComplete {
 		more, err := x.runMultiInstanceInnerComplete(ctx, dep, inst, elementID, tokenID, innerIdx, emit)
+		pubs = append(pubs, more...)
+		return pubs, err
+	}
+	if effect.AdHocInnerComplete != "" {
+		more, err := x.advanceAdHoc(ctx, dep, inst, effect.AdHocInnerComplete, tokenID, elementID, emit)
 		pubs = append(pubs, more...)
 		return pubs, err
 	}

@@ -116,6 +116,7 @@ message Element {
     TYPE_DATA_OBJECT_REFERENCE = 25;
     TYPE_DATA_STORE_REFERENCE = 26;
     TYPE_TRANSACTION = 27; // BPMN transaction SubProcess
+    TYPE_AD_HOC_SUB_PROCESS = 28; // BPMN adHocSubProcess
   }
 
   Intent intent = 1;

@@ -98,6 +98,13 @@ func waitingTaskComplete(in CompleteInput) (*Effect, error) {
 			AdvanceCompensation: true,
 		}, nil
 	}
+	if adHocID, ok := in.Deployment.AdHocScopeOf(in.ElementID); ok {
+		// Ad-Hoc inner activity: no outgoing sequence flow, the scope decides next.
+		return &Effect{
+			Records:            records,
+			AdHocInnerComplete: adHocID,
+		}, nil
+	}
 	records = append(records, cancelAttachedBoundary(in.Deployment, in.ElementID, in.TokenID)...)
 	records = append(records, subscribeCompensation(in.Deployment, in.ElementID, in.TokenID)...)
 	return &Effect{
