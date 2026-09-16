@@ -177,6 +177,17 @@ func TestC_8_1_roundtrip(t *testing.T) {
 						StructureRef: "tEmployeeInformation",
 					},
 				},
+				Errors: []element.Error{
+					{
+						RootElement: element.RootElement{
+							BaseElement: element.BaseElement{
+								ID: "_bb1e92be-5879-4fbe-8efb-4f0c6ea64187",
+							},
+						},
+						Name:      "Not Found",
+						ErrorCode: "404",
+					},
+				},
 				Messages: []element.Message{
 					{
 						RootElement: element.RootElement{
