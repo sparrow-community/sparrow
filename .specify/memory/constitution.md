@@ -1,9 +1,9 @@
 <!--
 Sync Impact Report
-- Version change: (none) → 1.0.0
-- Modified principles: template placeholders → Sparrow engine principles
-- Added sections: Module Boundaries; Quality Gates
-- Removed sections: none (template slots filled)
+- Version change: 1.0.0 → 1.0.1
+- Modified principles: V rationale pointer (AI-Driven-BPMN.md → AGENTS.md); Quality Gates note on bilingual AGENTS; no principle MUST text change
+- Added sections: none
+- Removed sections: none
 - Follow-up TODOs: none
 -->
 
@@ -39,7 +39,7 @@ Rationale: extra wrappers and crossed module duties have already been rejected a
 
 AI-driven or custom behavior MUST map onto existing BPMN constructs (for example Service Task, User Task, and extensions). The engine MUST NOT invent non-standard core element types in the OMG sense. Definitions are the contract; the engine executes, validates, and rejects. It MUST NOT silently rewrite a definition because an agent proposed a change.
 
-Rationale: see `AI-Driven-BPMN.md` — generation is variable; the contract is not silently mutable.
+Rationale: generation (agent or otherwise) is variable; the contract is not silently mutable. See `AGENTS.md` Purpose and axioms.
 
 ### VI. Serial Commands, Explicit Rejection
 
@@ -65,7 +65,7 @@ License headers MUST remain Apache-2.0 (Sparrow community). Protocol changes MUS
 - Semantic changes in `processing` MUST ship with tests that exercise the BPMN fixture and assert Event intents (not only the final projection).
 - `go test ./processing/ ./gateway/ ./protocol/proto/event/v1/` MUST pass before a change is treated as done. The `bpmn` MIWG suite MAY run separately when XML model files change.
 - Regenerating protocol MUST go through `protocol/proto/build.sh` (`buf lint` then `buf generate`). Hand-edited `*.pb.go` is forbidden.
-- Planning for new work MUST proceed spec → plan → tasks against this constitution. `AGENTS.md` holds the implemented-element snapshot and roadmap index; it is not a second source of governing rules.
+- Planning for new work MUST proceed spec → plan → tasks against this constitution. `AGENTS.md` (English, canonical) and `AGENTS.zh.md` (Chinese) hold the implemented-element snapshot and roadmap index; they are not a second source of governing rules. Material snapshot changes MUST update both editions in the same change.
 
 ## Governance
 
@@ -80,4 +80,4 @@ Amendments:
 
 Complexity that violates a principle (extra modules, parallel graph, new ledger subjects) MUST be listed in the feature plan's Complexity Tracking table with a simpler alternative that was rejected. Unjustified violations MUST block the plan.
 
-**Version**: 1.0.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-08-26
+**Version**: 1.0.1 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-09-19

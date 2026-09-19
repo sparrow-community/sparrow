@@ -1,24 +1,36 @@
 # Sparrow
 
-Sparrow is a single-node BPMN **execution engine**. Completeness targets the OMG BPMN 2.0 **executable process** subset (process FlowElements and event definitions that carry runtime token behavior)—not Collaboration, Choreography, or the full meta-model. It records every accepted behavior on an append-only event log and rebuilds state by replay. Event = behavior; Element = subject.
+> English (canonical for specs and tooling). Chinese: [`AGENTS.zh.md`](./AGENTS.zh.md). Keep both in sync in the same change whenever Supported / Planned / Excluded, axioms, Purpose, or Completeness change.
+
+Sparrow is a BPMN **execution and fact kernel**: it accepts a versioned process definition, runs it, and records what happened. Agents, UIs, and overlay renderers are consumers of that contract and trail—they do not rewrite them.
+
+**Axioms** (what must stay true):
+
+- Effective definition and instance state change only through accepted **COMMAND**s; every accepted behavior is an append-only **EVENT**. Projections are disposable and rebuildable by replay (**Recover**).
+- **Event = behavior; Element = subject.** The ledger is a fact stream about process behavior, not a second copy of the diagram.
+- Combinations with runtime token or side-effect semantics are either **Supported** (real BPMN semantics) or **Excluded** (explicit non-goal). Unsupported work is rejected at Deploy. Silence is not exclusion.
+- The ledger records behavior only. Documentary or non-subject constructs stay on the definition; they do not receive empty Element intents.
+
+**Scope choice** (deliberate, not derived from the axioms alone): OMG BPMN 2.0 **executable process** subset—FlowElements and event definitions that carry runtime token behavior—not Collaboration, Choreography, or the full meta-model. **Engineering choice**: single-node; one fact stream and one lock per instance.
 
 ## Purpose
 
-Sparrow provides three properties together:
+Process work needs a durable, shared contract across people, time, and short-lived planners (humans or agents): a versioned definition, faithful execution, and an auditable trail. Sparrow exists so that contract cannot be silently mutated outside COMMAND → EVENT.
 
-1. **Element coverage** — Every executable-process FlowElement and event-definition combination is either Supported or Excluded. Unsupported combinations are rejected at deploy. Silence is not exclusion.
-2. **Semantic completeness** — Each Supported combination implements the BPMN runtime semantics required for that combination (token movement, waits, throws, joins, scopes, boundaries, multi-instance, compensation, and related rules). Deploy acceptance alone is insufficient.
-3. **Executable lightness** — The engine runs processes through COMMAND → EVENT with Recover, jobs, messages, timers, and incidents. It stays a ledger-backed execution kernel: no modeler, ops console, cluster, or choreography/collaboration runtime.
+## Completeness
 
-Completeness holds when (1) and (2) are true for the tables below, and every Supported combination has end-to-end and Recover tests. Completing a delivery batch does not by itself establish completeness.
+Faithful interpretation of the declared language is one axis (coverage + semantics). Kernel shape is another.
 
-The ledger records process behavior only. Documentary or non-subject constructs are Excluded; they do not receive empty Element intents.
+1. **Coverage** — Every executable-process FlowElement and event-definition combination is either Supported or Excluded. Unsupported combinations are rejected at deploy.
+2. **Semantics** — Each Supported combination implements the BPMN runtime semantics required for that combination (token movement, waits, throws, joins, scopes, boundaries, multi-instance, compensation, and related rules). Deploy acceptance alone is insufficient.
+3. **Kernel boundary** — The engine stays a ledger-backed execution kernel (COMMAND → EVENT, Recover, jobs, messages, timers, incidents). Modeler, operations console, cluster replication, and choreography/collaboration runtime are consumer or non-goals—not engine duties. Product features such as overlaying Events onto a deployment diagram belong in consumers; they must not invent ledger subjects or empty intents.
+
+Completeness holds when (1) and (2) are true for the tables below, and every Supported combination has end-to-end and Recover tests (how we know—not a separate engine property). Completing a delivery batch does not by itself establish completeness.
 
 | | |
 |--|--|
 | Governance | [`.specify/memory/constitution.md`](./.specify/memory/constitution.md) |
 | Runtime | [`processing/README.md`](./processing/README.md) |
-| AI Driven (consumer) | [`AI-Driven-BPMN.md`](./AI-Driven-BPMN.md) |
 
 Work proceeds `/speckit-specify` → plan → tasks → implement (`.cursor/skills/`).
 
@@ -36,7 +48,7 @@ No open executable-process element gaps. The next increment is chosen when a new
 
 ## Excluded
 
-Non-goals. Moving an item out of Excluded requires an AGENTS and constitution amendment.
+Non-goals. Moving an item out of Excluded requires an AGENTS (both language editions) and constitution amendment.
 
 | Topic | Rationale |
 |-------|-----------|
@@ -54,9 +66,9 @@ Non-goals. Moving an item out of Excluded requires an AGENTS and constitution am
 |-------|------|
 | Live instance migration | Revisions coexist; moving a running instance across revisions is operations, not element completeness |
 
-## AI Driven
+## Consumers
 
-[`AI-Driven-BPMN.md`](./AI-Driven-BPMN.md) states why Sparrow exists and how agents consume it. BPMN element coverage and semantic completeness in this file are the prerequisite. Agents use the same COMMAND surface and event log. Agent behavior maps onto BPMN constructs and extensions. Planned engine work remains the completeness mainline. AI Driven does not invent non-OMG core element types and does not skip COMMAND/EVENT.
+Agents, overlay UIs, ops tools, and MCP adapters are peers: each consumes the same COMMAND surface and event log. They may draft definitions, query instances and trails, assist waits, propose COMMANDs, or derive views from definition + Events. They must not invent non-OMG core element types, skip COMMAND/EVENT, invent ledger subjects or empty intents, or mutate projections outside the log. How deeply any one consumer integrates with models or tools is outside this kernel's scope.
 
 ## API and persistence
 

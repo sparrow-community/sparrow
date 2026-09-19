@@ -2,7 +2,7 @@
 
 BPMN execution kernel. Append-only `event.v1` ledger; projections rebuild from EVENTs.
 
-Roadmap: [`../AGENTS.md`](../AGENTS.md) · AI Driven: [`../AI-Driven-BPMN.md`](../AI-Driven-BPMN.md)
+Roadmap: [`../AGENTS.md`](../AGENTS.md) · 中文: [`../AGENTS.zh.md`](../AGENTS.zh.md)
 
 Event = behavior; Element (Type, id, token_id, Intent, payload) = subject.
 
