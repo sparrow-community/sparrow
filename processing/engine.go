@@ -79,6 +79,7 @@ func (e *Engine) Deploy(_ context.Context, bpmnXML []byte) (string, error) {
 		return "", err
 	}
 	dep.ID = id
+	dep.SourceXML = append([]byte(nil), bpmnXML...)
 	if err := e.persistDeployment(id, bpmnXML); err != nil {
 		return "", fmt.Errorf("persist deployment: %w", err)
 	}
@@ -260,12 +261,26 @@ func (e *Engine) resolveDeploymentLocked(deploymentID, processID string, version
 	return dep, nil
 }
 
-// GetDeployment returns a compiled deployment by id.
+// GetDeployment returns a compiled deployment by id (includes SourceXML when retained).
 func (e *Engine) GetDeployment(deploymentID string) (*deploy.Deployment, bool) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	dep, ok := e.deployments[deploymentID]
 	return dep, ok
+}
+
+// GetDeploymentXML returns a copy of the BPMN bytes retained for the deployment.
+func (e *Engine) GetDeploymentXML(deploymentID string) ([]byte, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	dep, ok := e.deployments[deploymentID]
+	if !ok || dep == nil {
+		return nil, fmt.Errorf("NOT_FOUND: deployment %q", deploymentID)
+	}
+	if len(dep.SourceXML) == 0 {
+		return nil, fmt.Errorf("NOT_FOUND: deployment %q has no source XML", deploymentID)
+	}
+	return append([]byte(nil), dep.SourceXML...), nil
 }
 
 func (e *Engine) Complete(ctx context.Context, instanceID, elementID, tokenID string, vars map[string]any) error {

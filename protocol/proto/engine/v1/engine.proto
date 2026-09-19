@@ -186,6 +186,24 @@ message ResolveIncidentRequest {
 // ResolveIncidentResponse is empty on success.
 message ResolveIncidentResponse {}
 
+// GetDeploymentRequest loads a deployed definition by id.
+message GetDeploymentRequest {
+  // Deployment id (UUIDv7).
+  string deployment_id = 1;
+}
+
+// GetDeploymentResponse carries metadata and the original BPMN XML.
+message GetDeploymentResponse {
+  // Deployment id (UUIDv7).
+  string deployment_id = 1;
+  // Primary process id for this deployment.
+  string process_id = 2;
+  // Assigned revision for that process id.
+  int32 process_version = 3;
+  // Original BPMN 2.0 XML bytes submitted at Deploy (or reloaded from the deploy store).
+  bytes bpmn_xml = 4;
+}
+
 // ListEventsRequest reads the audit timeline for one instance.
 message ListEventsRequest {
   // Process instance id (UUIDv7).
@@ -215,6 +233,8 @@ service EngineService {
   rpc ThrowError(ThrowErrorRequest) returns (ThrowErrorResponse);
   // ResolveIncident closes an open Service Task incident and restores job waiting.
   rpc ResolveIncident(ResolveIncidentRequest) returns (ResolveIncidentResponse);
+  // GetDeployment returns deployment metadata and the original BPMN XML.
+  rpc GetDeployment(GetDeploymentRequest) returns (GetDeploymentResponse);
   // GetInstance returns a projection snapshot.
   rpc GetInstance(GetInstanceRequest) returns (GetInstanceResponse);
   // ListEvents returns the instance audit timeline.

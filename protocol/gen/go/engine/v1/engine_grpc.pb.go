@@ -26,6 +26,7 @@ const (
 	EngineService_PublishSignal_FullMethodName   = "/engine.v1.EngineService/PublishSignal"
 	EngineService_ThrowError_FullMethodName      = "/engine.v1.EngineService/ThrowError"
 	EngineService_ResolveIncident_FullMethodName = "/engine.v1.EngineService/ResolveIncident"
+	EngineService_GetDeployment_FullMethodName   = "/engine.v1.EngineService/GetDeployment"
 	EngineService_GetInstance_FullMethodName     = "/engine.v1.EngineService/GetInstance"
 	EngineService_ListEvents_FullMethodName      = "/engine.v1.EngineService/ListEvents"
 )
@@ -51,6 +52,8 @@ type EngineServiceClient interface {
 	ThrowError(ctx context.Context, in *ThrowErrorRequest, opts ...grpc.CallOption) (*ThrowErrorResponse, error)
 	// ResolveIncident closes an open Service Task incident and restores job waiting.
 	ResolveIncident(ctx context.Context, in *ResolveIncidentRequest, opts ...grpc.CallOption) (*ResolveIncidentResponse, error)
+	// GetDeployment returns deployment metadata and the original BPMN XML.
+	GetDeployment(ctx context.Context, in *GetDeploymentRequest, opts ...grpc.CallOption) (*GetDeploymentResponse, error)
 	// GetInstance returns a projection snapshot.
 	GetInstance(ctx context.Context, in *GetInstanceRequest, opts ...grpc.CallOption) (*GetInstanceResponse, error)
 	// ListEvents returns the instance audit timeline.
@@ -135,6 +138,16 @@ func (c *engineServiceClient) ResolveIncident(ctx context.Context, in *ResolveIn
 	return out, nil
 }
 
+func (c *engineServiceClient) GetDeployment(ctx context.Context, in *GetDeploymentRequest, opts ...grpc.CallOption) (*GetDeploymentResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetDeploymentResponse)
+	err := c.cc.Invoke(ctx, EngineService_GetDeployment_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *engineServiceClient) GetInstance(ctx context.Context, in *GetInstanceRequest, opts ...grpc.CallOption) (*GetInstanceResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetInstanceResponse)
@@ -176,6 +189,8 @@ type EngineServiceServer interface {
 	ThrowError(context.Context, *ThrowErrorRequest) (*ThrowErrorResponse, error)
 	// ResolveIncident closes an open Service Task incident and restores job waiting.
 	ResolveIncident(context.Context, *ResolveIncidentRequest) (*ResolveIncidentResponse, error)
+	// GetDeployment returns deployment metadata and the original BPMN XML.
+	GetDeployment(context.Context, *GetDeploymentRequest) (*GetDeploymentResponse, error)
 	// GetInstance returns a projection snapshot.
 	GetInstance(context.Context, *GetInstanceRequest) (*GetInstanceResponse, error)
 	// ListEvents returns the instance audit timeline.
@@ -210,6 +225,9 @@ func (UnimplementedEngineServiceServer) ThrowError(context.Context, *ThrowErrorR
 }
 func (UnimplementedEngineServiceServer) ResolveIncident(context.Context, *ResolveIncidentRequest) (*ResolveIncidentResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ResolveIncident not implemented")
+}
+func (UnimplementedEngineServiceServer) GetDeployment(context.Context, *GetDeploymentRequest) (*GetDeploymentResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetDeployment not implemented")
 }
 func (UnimplementedEngineServiceServer) GetInstance(context.Context, *GetInstanceRequest) (*GetInstanceResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetInstance not implemented")
@@ -364,6 +382,24 @@ func _EngineService_ResolveIncident_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _EngineService_GetDeployment_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetDeploymentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EngineServiceServer).GetDeployment(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EngineService_GetDeployment_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EngineServiceServer).GetDeployment(ctx, req.(*GetDeploymentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _EngineService_GetInstance_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetInstanceRequest)
 	if err := dec(in); err != nil {
@@ -434,6 +470,10 @@ var EngineService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ResolveIncident",
 			Handler:    _EngineService_ResolveIncident_Handler,
+		},
+		{
+			MethodName: "GetDeployment",
+			Handler:    _EngineService_GetDeployment_Handler,
 		},
 		{
 			MethodName: "GetInstance",

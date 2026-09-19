@@ -38,17 +38,13 @@ Sparrow 是 BPMN **执行与事实内核**：接受版本化的流程定义、�
 
 过程生命周期；过程级 none 开始与类型化开始（message、timer、signal、conditional — none 开始用 CreateInstance；instantiate 的排他/并行基于事件的网关入口与 instantiate receive task；类型化铸造经 PublishMessage / PublishSignal / FireDue / EvaluateConditionalStarts）；User Task；Service Task + Job；Manual / 抽象 Task（等待 → Complete）；Receive / Send（含作为过程入口的 instantiate receive）；Business Rule / Script Task（job 支撑）；排他 / 并行 / 包容 / 复杂 / 基于事件的网关（catch，含 instantiate 入口与 receive-task 目标）；SubProcess；Transaction SubProcess 与 cancel（##Compensate；Cancel End → 补偿 → Cancel Boundary）；Ad-Hoc SubProcess（扁平内部活动，`ordering` Parallel / Sequential，`completionCondition`，`cancelRemainingInstances`）；Call Activity（子实例，IO 映射含按名拷贝 / 变换 / 赋值，跨部署，边界与补偿对等，多实例；被调过程需要 none 开始、instantiate 基于事件的网关或 instantiate receive）；Event Sub-Process（含嵌套、补偿事件子过程，以及经 EvaluateConditions 的条件开始）；timer、message、signal、error、escalation（含独立中间 escalation catch）、compensate、conditional 的中间与边界 catch/throw（同种多边界）；link throw/catch；活动与网关上的条件顺序流；活动与开始事件多条无条件出向的并行扇出；terminate end；message end；signal end；对未完成嵌入式 SubProcess 或未完成 Call Activity 子实例的补偿；User Task、Service Task、Manual / 抽象 Task / Receive / Send / Business Rule / Script、SubProcess、Call Activity 上的多实例（含 `complexBehaviorDefinition` 与 signal/message 的 none/one behavior event refs）；等待类任务上的 `standardLoopCharacteristics`（testBefore / loopCondition / loopMaximum）；incident 打开 / 解决 / 重试；共存的过程修订版。
 
-已交付：M1–M4c，规格 [`001`](./specs/001-engine-completeness/)–[`034`](./specs/034-recover-coverage/)。上列每一个 Supported 组合都有端到端与 Recover 测试（[`034`](./specs/034-recover-coverage/) 闭合了最后的覆盖缺口）。
+已交付：M1–M4c，规格 [`001`](./specs/001-engine-completeness/)–[`035`](./specs/035-get-deployment/)。上列每一个 Supported 组合都有端到端与 Recover 测试（[`034`](./specs/034-recover-coverage/) 闭合了最后的覆盖缺口）。
 
 ## Planned（计划中）
 
 尚未覆盖的可执行过程缺口。优先级指导排序；特性计划可因依赖重排。除非计划捆绑紧密相关的格子，否则每一行是一次 specify 增量。
 
 当前无未覆盖的可执行过程元素缺口。下一步在识别出新缺口时选定；候选在开工前记入此处。
-
-| P | 主题 |
-|---|------|
-| 3 | `engine.v1` 上的 `GetDeployment`（deployment id → BPMN XML + process_id / version），供消费者叠加 Event 时不必私自另存一份定义 |
 
 ## Excluded（排除）
 
@@ -76,7 +72,7 @@ Agent、叠加 UI、运维工具与 MCP 适配器是对等消费者：各自消�
 
 ## API and persistence（API 与持久化）
 
-`Deploy` · `CreateInstance` · `Complete` · `ThrowError` · `ResolveIncident` · `FireDue` · `PublishMessage` · `PublishSignal` · `EvaluateConditionalStarts` · `EvaluateConditions` · Job Activate / Fail / Heartbeat · `GetInstance` · `ListEvents`
+`Deploy` · `CreateInstance` · `Complete` · `ThrowError` · `ResolveIncident` · `FireDue` · `PublishMessage` · `PublishSignal` · `EvaluateConditionalStarts` · `EvaluateConditions` · Job Activate / Fail / Heartbeat · `GetDeployment` · `GetInstance` · `ListEvents`
 
 `EventLog` + `deploy.Store` + 可选 `runtime.Store` · `Recover` / `Open` · gRPC 仅在 `gateway`
 

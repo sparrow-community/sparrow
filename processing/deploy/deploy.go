@@ -16,7 +16,9 @@ import (
 type Deployment struct {
 	ID      string
 	Version int32
-	Process element.Process
+	// SourceXML is the BPMN bytes that compiled this deployment (for consumers).
+	SourceXML []byte
+	Process   element.Process
 
 	timerCatch           map[string]timerCatch // catch or interrupting timer boundary id
 	messageCatch         map[string]string     // intermediate catch or interrupting message boundary id -> name
@@ -102,7 +104,7 @@ func Compile(bpmnXML []byte) (*Deployment, error) {
 	if proc == nil {
 		return nil, fmt.Errorf("process not found")
 	}
-	if err := validateM1(proc, model.Definitions.Messages, model.Definitions.Signals, model.Definitions.Errors, model.Definitions.Escalations); err != nil {
+	if err := validateProcess(proc, model.Definitions.Messages, model.Definitions.Signals, model.Definitions.Errors, model.Definitions.Escalations); err != nil {
 		return nil, err
 	}
 	if _, err := StartEventID(proc); err != nil {
@@ -435,7 +437,7 @@ func (d *Deployment) indexCallActivities(fe *element.FlowElements, catalog map[s
 				continue
 			}
 			called := catalog[spec.CalledProcessID]
-			if err := validateM1(called, messages, signals, errors, escalations); err != nil {
+			if err := validateProcess(called, messages, signals, errors, escalations); err != nil {
 				return fmt.Errorf("UNSUPPORTED_ELEMENT: called process %q: %v", spec.CalledProcessID, err)
 			}
 			if _, exists := d.calledProcessOwner[spec.CalledProcessID]; !exists {
@@ -471,7 +473,9 @@ func (d *Deployment) indexCallActivities(fe *element.FlowElements, catalog map[s
 	return walk(fe)
 }
 
-func validateM1(proc *element.Process, messages []element.Message, signals []element.Signal, errors []element.Error, escalations []element.Escalation) error {
+// validateProcess checks process-level deploy rules: supported boundaries and
+// hosts, duplicate same-kind attachments, and start vs instantiate entry exclusivity.
+func validateProcess(proc *element.Process, messages []element.Message, signals []element.Signal, errors []element.Error, escalations []element.Escalation) error {
 	if err := validateSubProcesses(&proc.FlowElements, errors, escalations); err != nil {
 		return err
 	}

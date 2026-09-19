@@ -155,6 +155,27 @@ func (s *EngineServer) GetInstance(_ context.Context, req *enginev1.GetInstanceR
 	return &enginev1.GetInstanceResponse{Instance: instanceToProto(inst)}, nil
 }
 
+func (s *EngineServer) GetDeployment(_ context.Context, req *enginev1.GetDeploymentRequest) (*enginev1.GetDeploymentResponse, error) {
+	if s.engine == nil {
+		return nil, status.Error(codes.FailedPrecondition, "engine is required")
+	}
+	id := req.GetDeploymentId()
+	dep, ok := s.engine.GetDeployment(id)
+	if !ok || dep == nil {
+		return nil, status.Errorf(codes.NotFound, "NOT_FOUND: deployment %q", id)
+	}
+	xml, err := s.engine.GetDeploymentXML(id)
+	if err != nil {
+		return nil, statusFromEngine(err)
+	}
+	return &enginev1.GetDeploymentResponse{
+		DeploymentId:   dep.ID,
+		ProcessId:      dep.ProcessID(),
+		ProcessVersion: dep.Version,
+		BpmnXml:        xml,
+	}, nil
+}
+
 func (s *EngineServer) ListEvents(ctx context.Context, req *enginev1.ListEventsRequest) (*enginev1.ListEventsResponse, error) {
 	if s.engine == nil {
 		return nil, status.Error(codes.FailedPrecondition, "engine is required")

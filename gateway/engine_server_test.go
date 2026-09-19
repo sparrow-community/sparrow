@@ -40,6 +40,19 @@ func TestEngineServiceDeployCreateComplete(t *testing.T) {
 	if dep.GetDeploymentId() == "" {
 		t.Fatal("empty deployment id")
 	}
+	fetched, err := client.GetDeployment(ctx, &enginev1.GetDeploymentRequest{DeploymentId: dep.GetDeploymentId()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fetched.GetProcessId() == "" || fetched.GetProcessVersion() < 1 {
+		t.Fatalf("deployment meta=%v", fetched)
+	}
+	if string(fetched.GetBpmnXml()) != string(xml) {
+		t.Fatalf("bpmn_xml mismatch")
+	}
+	if _, err := client.GetDeployment(ctx, &enginev1.GetDeploymentRequest{DeploymentId: "missing"}); status.Code(err) != codes.NotFound {
+		t.Fatalf("want NotFound, got %v", err)
+	}
 
 	created, err := client.CreateInstance(ctx, &enginev1.CreateInstanceRequest{
 		DeploymentId: dep.GetDeploymentId(),

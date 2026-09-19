@@ -91,6 +91,7 @@ func (e *Engine) loadDeployments() error {
 			return fmt.Errorf("load deployment %q: %w", id, err)
 		}
 		dep.ID = id
+		dep.SourceXML = append([]byte(nil), xml...)
 		e.deployments[id] = dep
 	}
 	e.revisions = deploy.AssignProcessVersions(e.deployments)
