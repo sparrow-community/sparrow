@@ -190,7 +190,7 @@ const (
 	Element_TYPE_SEND_TASK          Element_Type = 12
 	Element_TYPE_RECEIVE_TASK       Element_Type = 13
 	Element_TYPE_BUSINESS_RULE_TASK Element_Type = 14
-	Element_TYPE_SCRIPT_TASK        Element_Type = 15 // BPMN FlowElement; not yet modeled in FlowElements
+	Element_TYPE_SCRIPT_TASK        Element_Type = 15
 	Element_TYPE_SUB_PROCESS        Element_Type = 16
 	Element_TYPE_CALL_ACTIVITY      Element_Type = 17
 	// Gateways
@@ -200,7 +200,10 @@ const (
 	Element_TYPE_EVENT_BASED_GATEWAY Element_Type = 21
 	Element_TYPE_COMPLEX_GATEWAY     Element_Type = 22 // BPMN complexGateway
 	// Connecting / data
-	Element_TYPE_SEQUENCE_FLOW         Element_Type = 23
+	Element_TYPE_SEQUENCE_FLOW Element_Type = 23
+	// Reserved wire values. Data Object / Data Store are Excluded as ledger
+	// subjects (variables and IO mappings carry executable data); Deploy does
+	// not emit Element intents for them.
 	Element_TYPE_DATA_OBJECT           Element_Type = 24
 	Element_TYPE_DATA_OBJECT_REFERENCE Element_Type = 25
 	Element_TYPE_DATA_STORE_REFERENCE  Element_Type = 26

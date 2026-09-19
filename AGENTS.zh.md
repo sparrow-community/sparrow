@@ -46,6 +46,10 @@ Sparrow 是 BPMN **执行与事实内核**：接受版本化的流程定义、�
 
 当前无未覆盖的可执行过程元素缺口。下一步在识别出新缺口时选定；候选在开工前记入此处。
 
+| P | 主题 |
+|---|------|
+| 3 | `engine.v1` 上的 `GetDeployment`（deployment id → BPMN XML + process_id / version），供消费者叠加 Event 时不必私自另存一份定义 |
+
 ## Excluded（排除）
 
 非目标。将某项移出 Excluded 需要修订 AGENTS 与 constitution。

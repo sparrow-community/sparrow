@@ -46,6 +46,10 @@ Open executable-process gaps. Priority guides sequencing; a feature plan may reo
 
 No open executable-process element gaps. The next increment is chosen when a new gap is identified; candidates are recorded here before work starts.
 
+| P | Topic |
+|---|--------|
+| 3 | `GetDeployment` on `engine.v1` (deployment id → BPMN XML + process_id / version) so consumers can overlay Events without a private definition copy |
+
 ## Excluded
 
 Non-goals. Moving an item out of Excluded requires an AGENTS (both language editions) and constitution amendment.

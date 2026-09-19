@@ -1,10 +1,8 @@
 # processing
 
-BPMN execution kernel. Append-only `event.v1` ledger; projections rebuild from EVENTs.
+BPMN execution and fact kernel. Append-only `event.v1` ledger; projections rebuild from EVENTs. Axioms and Completeness: [`../AGENTS.md`](../AGENTS.md) · 中文: [`../AGENTS.zh.md`](../AGENTS.zh.md).
 
-Roadmap: [`../AGENTS.md`](../AGENTS.md) · 中文: [`../AGENTS.zh.md`](../AGENTS.zh.md)
-
-Event = behavior; Element (Type, id, token_id, Intent, payload) = subject.
+Event = behavior; Element (Type, id, token_id, Intent, payload) = subject. The ledger records process behavior only—documentary constructs stay on the definition. Consumers (agents, overlay UIs) read COMMAND/EVENT; they must not invent ledger subjects or empty intents.
 
 ## Layout
 

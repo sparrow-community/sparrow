@@ -1,7 +1,7 @@
 <!--
 Sync Impact Report
-- Version change: 1.0.0 → 1.0.1
-- Modified principles: V rationale pointer (AI-Driven-BPMN.md → AGENTS.md); Quality Gates note on bilingual AGENTS; no principle MUST text change
+- Version change: 1.0.1 → 1.0.2
+- Modified principles: I wording (execution engine → execution and fact kernel) to match AGENTS; MUST intent unchanged
 - Added sections: none
 - Removed sections: none
 - Follow-up TODOs: none
@@ -13,7 +13,7 @@ Sync Impact Report
 
 ### I. Executable Completeness, Not a Product Suite
 
-Sparrow MUST remain a single-node BPMN **execution engine**. Coverage MUST grow toward full executable BPMN semantics; a permanent minimal subset is not the end state. The core MUST NOT grow a modeler, operations console, or other Camunda-style product-suite surfaces. Those MAY exist later as separate consumers of the engine, never as runtime dependencies.
+Sparrow MUST remain a single-node BPMN **execution and fact kernel**. Coverage MUST grow toward full executable BPMN semantics; a permanent minimal subset is not the end state. The core MUST NOT grow a modeler, operations console, or other Camunda-style product-suite surfaces. Those MAY exist later as separate consumers of the engine, never as runtime dependencies.
 
 Rationale: the project exists to execute and audit contracts, not to become a workflow product suite.
 
@@ -80,4 +80,4 @@ Amendments:
 
 Complexity that violates a principle (extra modules, parallel graph, new ledger subjects) MUST be listed in the feature plan's Complexity Tracking table with a simpler alternative that was rejected. Unjustified violations MUST block the plan.
 
-**Version**: 1.0.1 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-09-19
+**Version**: 1.0.2 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-09-19
