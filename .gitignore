@@ -138,6 +138,11 @@ Icon
 # Sparrow engine runtime data (events.log + deployments), created by the gateway server
 /data/
 
+# WASM host build artifacts
+/wasm/dist/
+*.wasm
+*.wasm.gz
+
 # Directories potentially created on remote AFP share
 .AppleDB
 .AppleDesktop

@@ -74,17 +74,18 @@ Agents, overlay UIs, ops tools, and MCP adapters are peers: each consumes the sa
 
 `Deploy` · `CreateInstance` · `Complete` · `ThrowError` · `ResolveIncident` · `FireDue` · `PublishMessage` · `PublishSignal` · `EvaluateConditionalStarts` · `EvaluateConditions` · Job Activate / Fail / Heartbeat · `GetDeployment` · `GetInstance` · `ListEvents`
 
-`EventLog` + `deploy.Store` + optional `runtime.Store` · `Recover` / `Open` · gRPC in `gateway` only
+`EventLog` + `deploy.Store` + optional `runtime.Store` · `Recover` / `Open` · gRPC in `gateway` only · browser host in `wasm` (in-memory; JS schedules `FireDue` / jobs)
 
 ## Workspace
 
-Go **1.26.5** · modules: `bpmn` · `protocol` · `processing` · `gateway`
+Go **1.26.5** · modules: `bpmn` · `protocol` · `processing` · `gateway` · `wasm`
 
 ```shell
 go test ./processing/ ./gateway/ ./protocol/proto/event/v1/
 go test ./bpmn/
 cd protocol/proto && ./build.sh
 go run ./gateway/cmd/sparrow -data-dir ./data -listen :50051
+cd wasm && ./build.sh   # → dist/sparrow.wasm (gitignored)
 ```
 
 Edit `.proto`, then run `build.sh`. Do not hand-edit `*.pb.go`. Element semantics live in `handlers/` and [`processing/README.md`](./processing/README.md). Apache-2.0 headers.

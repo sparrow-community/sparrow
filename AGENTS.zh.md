@@ -74,17 +74,18 @@ Agent、叠加 UI、运维工具与 MCP 适配器是对等消费者：各自消�
 
 `Deploy` · `CreateInstance` · `Complete` · `ThrowError` · `ResolveIncident` · `FireDue` · `PublishMessage` · `PublishSignal` · `EvaluateConditionalStarts` · `EvaluateConditions` · Job Activate / Fail / Heartbeat · `GetDeployment` · `GetInstance` · `ListEvents`
 
-`EventLog` + `deploy.Store` + 可选 `runtime.Store` · `Recover` / `Open` · gRPC 仅在 `gateway`
+`EventLog` + `deploy.Store` + 可选 `runtime.Store` · `Recover` / `Open` · gRPC 仅在 `gateway` · 浏览器宿主在 `wasm`（内存引擎；由 JS 调度 `FireDue` / job）
 
 ## Workspace（工作区）
 
-Go **1.26.5** · 模块：`bpmn` · `protocol` · `processing` · `gateway`
+Go **1.26.5** · 模块：`bpmn` · `protocol` · `processing` · `gateway` · `wasm`
 
 ```shell
 go test ./processing/ ./gateway/ ./protocol/proto/event/v1/
 go test ./bpmn/
 cd protocol/proto && ./build.sh
 go run ./gateway/cmd/sparrow -data-dir ./data -listen :50051
+cd wasm && ./build.sh   # → dist/sparrow.wasm（不进 git）
 ```
 
 修改 `.proto` 后运行 `build.sh`。不要手改 `*.pb.go`。元素语义在 `handlers/` 与 [`processing/README.md`](./processing/README.md)。Apache-2.0 文件头。
