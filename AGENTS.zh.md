@@ -70,6 +70,8 @@ Sparrow 是 BPMN **执行与事实内核**：接受版本化的流程定义、�
 
 Agent、叠加 UI、运维工具与 MCP 适配器是对等消费者：各自消费同一套 COMMAND 面与事件日志。它们可以起草定义、查询实例与轨迹、协助等待、提议 COMMAND，或从定义 + Event 派生视图。它们不得发明非 OMG 核心元素类型、跳过 COMMAND/EVENT、发明账本主体或空 intent，或在日志之外改写投影。某一消费者与模型或工具集成到多深，不在本内核范围之内。
 
+静态浏览器 wiki/演示：同级 [`sparrow-playground`](../sparrow-playground/)（加载 `wasm` 产物；由 JS 调度计时器与 job）。Cursor 多根工作区：[`sparrow-dev.code-workspace`](../sparrow-dev.code-workspace)。
+
 ## API and persistence（API 与持久化）
 
 `Deploy` · `CreateInstance` · `Complete` · `ThrowError` · `ResolveIncident` · `FireDue` · `PublishMessage` · `PublishSignal` · `EvaluateConditionalStarts` · `EvaluateConditions` · Job Activate / Fail / Heartbeat · `GetDeployment` · `GetInstance` · `ListEvents`

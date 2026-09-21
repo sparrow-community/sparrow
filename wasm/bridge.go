@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"syscall/js"
 	"time"
 
@@ -64,9 +65,20 @@ func (a *api) value() js.Value {
 
 func (a *api) fn(fn func(js.Value, []js.Value) (any, error)) js.Func {
 	return js.FuncOf(func(this js.Value, args []js.Value) any {
-		out, err := fn(this, args)
+		// Never panic out of a JS callback: that exits the Go WASM runtime
+		// ("Go program has already exited") and breaks later calls.
+		var out any
+		var err error
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					err = fmt.Errorf("%v", r)
+				}
+			}()
+			out, err = fn(this, args)
+		}()
 		if err != nil {
-			panic(js.Error{Value: js.Global().Get("Error").New(err.Error())})
+			return toJS(map[string]any{"$error": err.Error()})
 		}
 		return toJS(out)
 	})
@@ -76,6 +88,9 @@ func (a *api) deploy(_ js.Value, args []js.Value) (any, error) {
 	xml, err := argString(args, 0, "bpmnXml")
 	if err != nil {
 		return nil, err
+	}
+	if strings.TrimSpace(xml) == "" {
+		return nil, fmt.Errorf("INVALID_ARGUMENT: bpmnXml is empty")
 	}
 	id, err := a.eng.Deploy(context.Background(), []byte(xml))
 	if err != nil {

@@ -70,6 +70,8 @@ Non-goals. Moving an item out of Excluded requires an AGENTS (both language edit
 
 Agents, overlay UIs, ops tools, and MCP adapters are peers: each consumes the same COMMAND surface and event log. They may draft definitions, query instances and trails, assist waits, propose COMMANDs, or derive views from definition + Events. They must not invent non-OMG core element types, skip COMMAND/EVENT, invent ledger subjects or empty intents, or mutate projections outside the log. How deeply any one consumer integrates with models or tools is outside this kernel's scope.
 
+Static browser wiki/demo: sibling [`sparrow-playground`](../sparrow-playground/) (loads `wasm` artifacts; JS schedules timers and jobs). Cursor multi-root: [`sparrow-dev.code-workspace`](../sparrow-dev.code-workspace).
+
 ## API and persistence
 
 `Deploy` · `CreateInstance` · `Complete` · `ThrowError` · `ResolveIncident` · `FireDue` · `PublishMessage` · `PublishSignal` · `EvaluateConditionalStarts` · `EvaluateConditions` · Job Activate / Fail / Heartbeat · `GetDeployment` · `GetInstance` · `ListEvents`

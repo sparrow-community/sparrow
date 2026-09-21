@@ -3,6 +3,10 @@
 Thin browser host for `processing.Engine`. Same COMMAND surface as the gRPC
 gateway; timers and job/script workers are scheduled by the JS page.
 
+## JS contract
+
+`sparrow.d.ts` is the TypeScript surface for `globalThis.sparrow`. Playground syncs it via `../sparrow-playground/scripts/sync-wasm.sh`.
+
 ## Build
 
 ```bash
@@ -89,6 +93,13 @@ async function drainJobs(jobType) {
   }
 }
 ```
+
+## Errors
+
+Host methods return a normal result on success. On failure they return
+`{ "$error": "<message>" }` instead of panicking (a panic would exit the Go
+WASM runtime). JS should treat `$error` as a thrown Error. Empty BPMN is
+rejected with `INVALID_ARGUMENT: bpmnXml is empty`.
 
 ## API surface
 
