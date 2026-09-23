@@ -1,0 +1,41 @@
+Sparrow
+Copyright 2025 The Sparrow community and contributors
+
+This product is licensed under the Apache License, Version 2.0.
+The license text is in the LICENSE file at the root of this repository.
+That license covers Sparrow source code.
+
+It does not cover the BPMN MIWG fixtures described below.
+
+--------------------------------------------------------------------------------
+
+BPMN Model Interchange Working Group (BPMN MIWG) test fixtures
+
+The files under bpmn/test/ (BPMN XML and PNG) are unmodified copies of the
+"bpmn.io (Camunda Modeler) 18.6.1" results from the BPMN Model Interchange
+Test Suite:
+
+    https://github.com/bpmn-miwg/bpmn-miwg-test-suite
+    https://github.com/bpmn-miwg/bpmn-miwg-test-suite/tree/master/bpmn.io%20(Camunda%20Modeler)%2018.6.1
+
+The upstream LICENSE.txt states:
+
+    This work is licensed under the Creative Commons Attribution 3.0
+    Unported License. To view a copy of this license, visit
+    http://creativecommons.org/licenses/by/3.0/ or send a letter to
+    Creative Commons, 444 Castro Street, Suite 900, Mountain View,
+    California, 94041, USA.
+
+Those fixtures are Creative Commons Attribution 3.0 Unported (CC BY 3.0).
+They are not licensed under the Apache License, Version 2.0.
+The copy of that upstream notice shipped next to the files is
+bpmn/test/LICENSE.txt.
+
+Submitted results in the MIWG suite are published under the same
+CC BY 3.0 terms (see the upstream README). Exporter metadata inside
+some XML files (including bpmn.io and Camunda Modeler) identifies the
+tool that wrote the file. It does not relicense the fixtures.
+
+Attribute the fixtures to the BPMN Model Interchange Working Group (OMG),
+BPMN Model Interchange Test Suite, under CC BY 3.0:
+http://creativecommons.org/licenses/by/3.0/
