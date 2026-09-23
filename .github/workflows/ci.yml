@@ -1,0 +1,44 @@
+# Module-scoped tests. The repository root has go.work and no go.mod, so
+# `go test ./...` from the root fails:
+#   pattern ./...: directory prefix . does not contain modules listed in go.work
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test ${{ matrix.module }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module:
+          - bpmn
+          - processing
+          - gateway
+          - protocol
+          - wasm
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.5"
+          cache-dependency-path: |
+            bpmn/go.sum
+            processing/go.sum
+            gateway/go.sum
+            protocol/go.sum
+            wasm/go.sum
+
+      - name: go test
+        run: go test -C "${{ matrix.module }}" ./...
