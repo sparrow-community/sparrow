@@ -1,1 +1,0 @@
-test source from https://github.com/bpmn-miwg/bpmn-miwg-test-suite bpmn.io
