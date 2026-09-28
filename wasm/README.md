@@ -3,15 +3,47 @@
 Thin browser host for `processing.Engine`. Same COMMAND surface as the gRPC
 gateway; timers and job/script workers are scheduled by the JS page.
 
+## npm package
+
+Published (when released) as **`@sparrow-community/wasm`** on [npmjs.com](https://www.npmjs.com/).
+
+```bash
+npm install @sparrow-community/wasm
+```
+
+Package contents (after `npm install`):
+
+| Path | Role |
+|------|------|
+| `dist/sparrow.wasm.gz` | Engine binary (gzip) |
+| `dist/wasm_exec.js` | Go JS/WASM support script (BSD) |
+| `dist/wasm_exec.LICENSE` | License for `wasm_exec.js` |
+| `sparrow.d.ts` | TypeScript surface for `globalThis.sparrow` |
+
+The package ships artifacts only. Load `wasm_exec.js` as a classic script (it
+defines `globalThis.Go`), inflate `sparrow.wasm.gz`, instantiate, then use
+`globalThis.sparrow`. See **Load (browser)** below. Playground still vendors a
+copy via `scripts/sync-wasm.sh`; switching it to the npm package is optional.
+
+```bash
+cd wasm
+./build.sh          # → dist/sparrow.wasm(.gz), dist/wasm_exec.js(+LICENSE)
+npm run pack:dry    # verify tarball contents (no registry auth)
+# npm publish --access public   # requires npm auth; do not commit tokens
+```
+
+`prepack` runs `./build.sh`, so `npm pack` / `npm publish` always rebuild.
+
 ## JS contract
 
-`sparrow.d.ts` is the TypeScript surface for `globalThis.sparrow`. Playground syncs it via `../sparrow-playground/scripts/sync-wasm.sh`.
+`sparrow.d.ts` is the TypeScript surface for `globalThis.sparrow`. Playground
+syncs it via `../sparrow-playground/scripts/sync-wasm.sh`.
 
 ## Build
 
 ```bash
 ./build.sh
-# → dist/sparrow.wasm (+ .gz) and dist/wasm_exec.js
+# → dist/sparrow.wasm (+ .gz), dist/wasm_exec.js, dist/wasm_exec.LICENSE
 ```
 
 Requires Go 1.26+ with `js/wasm` support. Artifacts under `dist/` are gitignored.
@@ -28,6 +60,17 @@ Requires Go 1.26+ with `js/wasm` support. Artifacts under `dist/` are gitignored
   });
 </script>
 ```
+
+With the npm package and a gzipped binary (modern browsers):
+
+```js
+import wasmGzUrl from "@sparrow-community/wasm/sparrow.wasm.gz?url"; // bundler-dependent
+// or: new URL("@sparrow-community/wasm/dist/sparrow.wasm.gz", import.meta.url)
+```
+
+Prefer resolving package file URLs with your bundler; then inflate with
+`DecompressionStream("gzip")` before `WebAssembly.instantiate`, and load
+`wasm_exec.js` via a classic `<script>` or equivalent.
 
 ## Timer host (JS)
 
@@ -116,3 +159,7 @@ rejected with `INVALID_ARGUMENT: bpmnXml is empty`.
 | `getInstance(id)` / `listInstanceIds()` / `listEvents(id)` | |
 
 In-memory only (no filesystem Recover). Playground / MCP consumers live outside this module.
+
+## License
+
+Sparrow sources: Apache-2.0 (`LICENSE`). `wasm_exec.js`: BSD (`dist/wasm_exec.LICENSE`). See `NOTICE`.

@@ -1,0 +1,14 @@
+Sparrow WASM host
+Copyright 2026 The Sparrow community and contributors
+
+This product is licensed under the Apache License, Version 2.0.
+The license text is in the LICENSE file in this package.
+
+--------------------------------------------------------------------------------
+
+Go wasm_exec.js
+
+This package redistributes lib/wasm/wasm_exec.js from the Go toolchain
+(https://go.dev/). That file is governed by the BSD-style license in
+dist/wasm_exec.LICENSE (and wasm_exec.LICENSE in the source tree). It is not
+covered by the Apache License 2.0 that applies to Sparrow source code.

@@ -42,3 +42,10 @@ jobs:
 
       - name: go test
         run: go test -C "${{ matrix.module }}" ./...
+
+      - name: wasm npm pack dry-run
+        if: matrix.module == 'wasm'
+        run: |
+          cd wasm
+          ./build.sh
+          npm pack --dry-run

@@ -1,0 +1,55 @@
+{
+  "name": "@sparrow-community/wasm",
+  "version": "0.1.0-alpha.0",
+  "description": "Sparrow BPMN execution kernel — in-memory browser WASM host (globalThis.sparrow)",
+  "license": "Apache-2.0",
+  "private": false,
+  "type": "module",
+  "types": "./sparrow.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    "./sparrow.d.ts": "./sparrow.d.ts",
+    "./sparrow.wasm.gz": "./dist/sparrow.wasm.gz",
+    "./wasm_exec.js": "./dist/wasm_exec.js",
+    "./wasm_exec.LICENSE": "./dist/wasm_exec.LICENSE"
+  },
+  "files": [
+    "dist/sparrow.wasm.gz",
+    "dist/wasm_exec.js",
+    "dist/wasm_exec.LICENSE",
+    "sparrow.d.ts",
+    "LICENSE",
+    "NOTICE",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "./build.sh",
+    "prepack": "./build.sh",
+    "pack:dry": "npm pack --dry-run"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sparrow-community/sparrow.git",
+    "directory": "wasm"
+  },
+  "homepage": "https://github.com/sparrow-community/sparrow/tree/main/wasm",
+  "bugs": {
+    "url": "https://github.com/sparrow-community/sparrow/issues"
+  },
+  "keywords": [
+    "bpmn",
+    "wasm",
+    "webassembly",
+    "sparrow",
+    "workflow",
+    "process-engine"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/",
+    "tag": "alpha"
+  }
+}

@@ -70,7 +70,9 @@ cd wasm && ./build.sh
 # writes dist/sparrow.wasm (gitignored) and dist/wasm_exec.js
 ```
 
-The JS host contract is [`wasm/README.md`](./wasm/README.md).
+The JS host contract is [`wasm/README.md`](./wasm/README.md). The npm package
+identity is `@sparrow-community/wasm` (see `wasm/package.json`); publish is
+maintainer-operated and is not part of the default CI path.
 
 ## License
 

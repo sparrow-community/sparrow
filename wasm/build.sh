@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the browser WASM host adapter into ./dist.
+# Build the browser WASM host adapter into ./dist (and stage npm package files).
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -13,9 +13,19 @@ GOROOT="$(go env GOROOT)"
 cp "$GOROOT/lib/wasm/wasm_exec.js" dist/wasm_exec.js 2>/dev/null \
   || cp "$GOROOT/misc/wasm/wasm_exec.js" dist/wasm_exec.js
 
+# Stage Go's wasm_exec license next to the script for the npm package.
+if [[ -f wasm_exec.LICENSE ]]; then
+  cp wasm_exec.LICENSE dist/wasm_exec.LICENSE
+elif [[ -f "$GOROOT/LICENSE" ]]; then
+  cp "$GOROOT/LICENSE" dist/wasm_exec.LICENSE
+fi
+
 BYTES="$(wc -c < "$OUT" | tr -d ' ')"
 echo "wrote $OUT ($BYTES bytes)"
 echo "copied dist/wasm_exec.js"
+if [[ -f dist/wasm_exec.LICENSE ]]; then
+  echo "copied dist/wasm_exec.LICENSE"
+fi
 if command -v gzip >/dev/null 2>&1; then
   gzip -kf "$OUT"
   GBYTES="$(wc -c < "${OUT}.gz" | tr -d ' ')"

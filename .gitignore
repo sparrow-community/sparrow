@@ -142,6 +142,7 @@ Icon
 /wasm/dist/
 *.wasm
 *.wasm.gz
+/wasm/*.tgz
 
 # Directories potentially created on remote AFP share
 .AppleDB
