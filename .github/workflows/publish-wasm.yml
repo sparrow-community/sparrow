@@ -67,7 +67,7 @@ jobs:
             }
           ' "$NPM_VER"
 
-      - name: Bump alpha version (0.0.0-alpha.YYYYMMDD.N)
+      - name: Bump alpha version (YYYY.M.D-alpha.N, UTC, no leading zeros)
         run: ./scripts/bump-alpha-version.sh
 
       - name: Build WASM artifacts

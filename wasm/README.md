@@ -14,12 +14,16 @@ npm install @sparrow-community/wasm@alpha
 
 ### Version scheme (alpha)
 
-`0.0.0-alpha.YYYYMMDD.N`
+`YYYY.M.D-alpha.N` (UTC calendar date as semver major.minor.patch; prerelease `alpha.N`)
 
-- `YYYYMMDD` — UTC calendar day of the publish
+- `YYYY` / `M` / `D` — UTC year, month, day **without leading zeros** (node-semver)
 - `N` — starts at **1** each UTC day; increments for each publish that day
-- Committed `package.json` keeps placeholder `0.0.0-alpha.0`; CI runs
+- No leading `v` in `package.json` (optional git tags may use `vYYYY.M.D-alpha.N`)
+- Committed `package.json` keeps placeholder `0.0.0-dev`; CI runs
   `scripts/bump-alpha-version.sh` before publish
+
+Display intent `v2026.09.28.1-alpha` is not npm-valid (leading `v`, leading zeros,
+four numeric segments). Mapped form: `2026.9.28-alpha.1`.
 
 Releases run from GitHub Actions (`.github/workflows/publish-wasm.yml`) via npm
 **Trusted Publishing** (OIDC). No long-lived npm tokens in the repo or Actions
@@ -45,7 +49,7 @@ copy via `scripts/sync-wasm.sh`; switching it to the npm package is optional.
 cd wasm
 ./build.sh          # → dist/sparrow.wasm(.gz), dist/wasm_exec.js(+LICENSE)
 npm run pack:dry    # verify tarball contents (no registry auth)
-npm run bump:alpha  # optional local preview of next 0.0.0-alpha.YYYYMMDD.N
+npm run bump:alpha  # optional local preview of next YYYY.M.D-alpha.N
 ```
 
 `prepack` runs `./build.sh`, so `npm pack` / `npm publish` always rebuild.

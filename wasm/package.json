@@ -1,6 +1,6 @@
 {
   "name": "@sparrow-community/wasm",
-  "version": "0.0.0-alpha.0",
+  "version": "0.0.0-dev",
   "description": "Sparrow BPMN execution kernel — in-memory browser WASM host (globalThis.sparrow)",
   "license": "Apache-2.0",
   "private": false,
