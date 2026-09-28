@@ -6,6 +6,8 @@ This repository is the kernel: BPMN XML model, protobuf contract, execution engi
 
 **Early public preview (alpha).** Behavior covered by the test suite is real, and the wire contract is still moving. Protobuf package names such as `engine.v1`, `event.v1`, and `job.v1` are not a compatibility freeze. RPC shapes, event payloads, and module paths can still change before a stable release.
 
+Public repository: [github.com/sparrow-community/sparrow](https://github.com/sparrow-community/sparrow). Browser demo: [sparrow-playground](https://github.com/sparrow-community/sparrow-playground). How to contribute: [`CONTRIBUTING.md`](./CONTRIBUTING.md).
+
 The supported executable-process subset, and the combinations this kernel refuses, are the agent contract in [`AGENTS.md`](./AGENTS.md) (Chinese: [`AGENTS.zh.md`](./AGENTS.zh.md)). Runtime notes live in [`processing/README.md`](./processing/README.md).
 
 ## Requirements
@@ -61,7 +63,7 @@ The listener has **no authentication and no TLS**. `gateway.NewServer` does not 
 
 ## WebAssembly demo
 
-The browser demo is a separate repository, **sparrow-playground**. It is not published from this tree. Playground loads the artifact produced by the `wasm` module and schedules timers and jobs in JavaScript. The engine build itself stays in memory and does not open a port.
+The browser demo is a separate repository, [sparrow-playground](https://github.com/sparrow-community/sparrow-playground). It is not published from this tree. Playground loads the artifact produced by the `wasm` module and schedules timers and jobs in JavaScript. The engine build itself stays in memory and does not open a port.
 
 ```shell
 cd wasm && ./build.sh

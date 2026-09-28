@@ -6,7 +6,7 @@ Sparrow is an early public preview (alpha). There is no bug bounty and no separa
 
 Report suspected vulnerabilities in private. Do not open a public issue or pull request with exploit details, proof-of-concept BPMN, or steps that attack a running kernel.
 
-Once this repository is on GitHub, use [private vulnerability reporting](https://docs.github.com/en/code-security/security-advisories/guidance-on-reporting-and-writing-information-about-vulnerabilities/privately-reporting-a-security-vulnerability) (Security Advisories on the repository). If that channel is not enabled yet, contact the maintainers directly and keep the details off public trackers.
+Use [private vulnerability reporting](https://docs.github.com/en/code-security/security-advisories/guidance-on-reporting-and-writing-information-about-vulnerabilities/privately-reporting-a-security-vulnerability) on [github.com/sparrow-community/sparrow](https://github.com/sparrow-community/sparrow) when that channel is enabled. If it is not enabled yet, contact the maintainers directly and keep the details off public trackers.
 
 ## Trusted network
 
