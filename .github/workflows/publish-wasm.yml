@@ -1,0 +1,78 @@
+# Publish @sparrow-community/wasm to npm via Trusted Publishing (OIDC).
+#
+# No NPM_TOKEN / NODE_AUTH_TOKEN. npm CLI exchanges a short-lived GitHub OIDC
+# token for publish credentials. Requires:
+#   - npm Trusted Publisher on the package (GitHub Actions → this workflow file)
+#   - Node 24+ / npm 11.5.1+ on the runner
+#   - Package already exists on the registry (first version is a one-time
+#     interactive bootstrap — see docs in the Project store / wasm README)
+#
+# Trusted Publisher fields Jiaxing configures once on npmjs.com:
+#   Organization or user: sparrow-community
+#   Repository:           sparrow
+#   Workflow filename:    publish-wasm.yml
+#   Environment name:     (leave blank)
+#   Allowed actions:      npm publish
+name: publish-wasm
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "wasm/**"
+      - ".github/workflows/publish-wasm.yml"
+
+concurrency:
+  group: publish-wasm-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    name: build and publish alpha
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: wasm
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.5"
+          cache-dependency-path: |
+            bpmn/go.sum
+            processing/go.sum
+            protocol/go.sum
+            wasm/go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Require npm OIDC support (11.5.1+)
+        run: |
+          NPM_VER="$(npm --version)"
+          echo "npm version: $NPM_VER"
+          node -e '
+            const [a,b,c] = process.argv[1].split(".").map(Number);
+            if (a < 11 || (a === 11 && b < 5) || (a === 11 && b === 5 && c < 1)) {
+              console.error("npm " + process.argv[1] + " lacks OIDC trusted publishing (need 11.5.1+)");
+              process.exit(1);
+            }
+          ' "$NPM_VER"
+
+      - name: Bump alpha version (0.0.0-alpha.YYYYMMDD.N)
+        run: ./scripts/bump-alpha-version.sh
+
+      - name: Build WASM artifacts
+        run: ./build.sh
+
+      - name: Publish to npm (OIDC, tag alpha)
+        # Do not set NODE_AUTH_TOKEN / NPM_TOKEN — that disables OIDC.
+        run: npm publish --access public --tag alpha

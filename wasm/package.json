@@ -1,6 +1,6 @@
 {
   "name": "@sparrow-community/wasm",
-  "version": "0.1.0-alpha.0",
+  "version": "0.0.0-alpha.0",
   "description": "Sparrow BPMN execution kernel — in-memory browser WASM host (globalThis.sparrow)",
   "license": "Apache-2.0",
   "private": false,
@@ -25,7 +25,8 @@
   "scripts": {
     "build": "./build.sh",
     "prepack": "./build.sh",
-    "pack:dry": "npm pack --dry-run"
+    "pack:dry": "npm pack --dry-run",
+    "bump:alpha": "./scripts/bump-alpha-version.sh"
   },
   "engines": {
     "node": ">=18"

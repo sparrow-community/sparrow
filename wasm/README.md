@@ -5,11 +5,27 @@ gateway; timers and job/script workers are scheduled by the JS page.
 
 ## npm package
 
-Published (when released) as **`@sparrow-community/wasm`** on [npmjs.com](https://www.npmjs.com/).
+Published as **`@sparrow-community/wasm`** on [npmjs.com](https://www.npmjs.com/)
+under dist-tag **`alpha`**.
 
 ```bash
-npm install @sparrow-community/wasm
+npm install @sparrow-community/wasm@alpha
 ```
+
+### Version scheme (alpha)
+
+`0.0.0-alpha.YYYYMMDD.N`
+
+- `YYYYMMDD` — UTC calendar day of the publish
+- `N` — starts at **1** each UTC day; increments for each publish that day
+- Committed `package.json` keeps placeholder `0.0.0-alpha.0`; CI runs
+  `scripts/bump-alpha-version.sh` before publish
+
+Releases run from GitHub Actions (`.github/workflows/publish-wasm.yml`) via npm
+**Trusted Publishing** (OIDC). No long-lived npm tokens in the repo or Actions
+secrets. The first-ever package version must be bootstrapped interactively once
+(npm cannot attach a Trusted Publisher until the package exists); after that,
+Actions publishes without tokens.
 
 Package contents (after `npm install`):
 
@@ -29,7 +45,7 @@ copy via `scripts/sync-wasm.sh`; switching it to the npm package is optional.
 cd wasm
 ./build.sh          # → dist/sparrow.wasm(.gz), dist/wasm_exec.js(+LICENSE)
 npm run pack:dry    # verify tarball contents (no registry auth)
-# npm publish --access public   # requires npm auth; do not commit tokens
+npm run bump:alpha  # optional local preview of next 0.0.0-alpha.YYYYMMDD.N
 ```
 
 `prepack` runs `./build.sh`, so `npm pack` / `npm publish` always rebuild.

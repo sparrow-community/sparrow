@@ -71,8 +71,9 @@ cd wasm && ./build.sh
 ```
 
 The JS host contract is [`wasm/README.md`](./wasm/README.md). The npm package
-identity is `@sparrow-community/wasm` (see `wasm/package.json`); publish is
-maintainer-operated and is not part of the default CI path.
+is `@sparrow-community/wasm` (alpha versions `0.0.0-alpha.YYYYMMDD.N`). Publishes
+go through GitHub Actions Trusted Publishing (`.github/workflows/publish-wasm.yml`),
+not long-lived npm tokens.
 
 ## License
 
