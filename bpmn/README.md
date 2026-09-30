@@ -26,7 +26,7 @@ Attribute them to the BPMN Model Interchange Working Group (OMG), BPMN Model Int
 # Parse every MIWG fixture
 go test -C bpmn -run TestMIWGFixturesLoad ./...
 
-# Kernel: Deploy + run (or intentional UNSUPPORTED / INVALID_CONDITION skip)
+# Kernel: Deploy + run every MIWG fixture (completed/terminated)
 go test -C processing -run TestMIWGKernelFixtures ./...
 
 # Convenience wrapper (same two packages)

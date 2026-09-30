@@ -16,6 +16,26 @@ func (CallActivityHandler) OnEnter(in EnterInput) (*Effect, error) {
 	if !ok {
 		return nil, fmt.Errorf("NOT_FOUND: callActivity %q", in.ElementID)
 	}
+	if call.Opaque {
+		// Missing calledElement: modeling stub — wait → Complete like empty SubProcess.
+		idx := in.LoopInstanceIndex
+		if idx < 0 && in.Instance != nil {
+			if tok := in.Instance.Tokens[in.TokenID]; tok != nil {
+				idx = tok.LoopInstanceIndex
+			}
+		}
+		var base *eventv1.ActivityPayload
+		if idx < 0 {
+			var err error
+			base, err = attachBoundary(in.Deployment, in.ElementID, in.Now, nil)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			base = activityPayloadWithIndex(nil, idx)
+		}
+		return waitingTaskEnter(in, base)
+	}
 	if spec, ok := in.Deployment.MultiInstanceSpec(in.ElementID); ok && !isMultiInstanceInner(in) {
 		total, err := spec.InstanceCount(in.Instance.Variables)
 		if err != nil {
@@ -87,6 +107,9 @@ func (CallActivityHandler) OnEnter(in EnterInput) (*Effect, error) {
 }
 
 func (CallActivityHandler) OnComplete(in CompleteInput) (*Effect, error) {
+	if call, ok := in.Deployment.CallActivitySpec(in.ElementID); ok && call.Opaque {
+		return waitingTaskComplete(in)
+	}
 	idx := int32(-1)
 	if in.Token != nil {
 		idx = in.Token.LoopInstanceIndex

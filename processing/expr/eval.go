@@ -29,6 +29,8 @@ const notFn = "__sparrow_not"
 var (
 	reGetDataObject   = regexp.MustCompile(`(?i)bpmn:getDataObject\(\s*'([^']+)'\s*\)`)
 	reGetDataObjectDQ = regexp.MustCompile(`(?i)bpmn:getDataObject\(\s*"([^"]+)"\s*\)`)
+	reFeelSome        = regexp.MustCompile(`(?i)^some\s+([A-Za-z_][\w]*)\s+in\s+(\S+)\s+satisfies\s+(.+)$`)
+	reFeelEvery       = regexp.MustCompile(`(?i)^every\s+([A-Za-z_][\w]*)\s+in\s+(\S+)\s+satisfies\s+(.+)$`)
 )
 
 // Eval evaluates a condition against instance variables (name → json_value).
@@ -42,6 +44,7 @@ var (
 //   - leading FEEL "=" expression marker stripped
 //   - FEEL "=" equality rewritten to "=="
 //   - FEEL not(x) available as an env function
+//   - FEEL some/every … satisfies → expr any/all
 func Eval(text string, vars map[string]string) (bool, error) {
 	s := unwrap(text)
 	if s == "" {
@@ -111,7 +114,26 @@ func rewriteInterop(s string) string {
 	}
 	s = reGetDataObject.ReplaceAllString(s, "$1")
 	s = reGetDataObjectDQ.ReplaceAllString(s, "$1")
+	s = rewriteFeelQuantifiers(s)
 	return rewriteFeelEquality(s)
+}
+
+// rewriteFeelQuantifiers maps FEEL `some/every x in coll satisfies pred` to
+// expr-lang `any/all(coll, {pred with x → #})`.
+func rewriteFeelQuantifiers(s string) string {
+	s = strings.TrimSpace(s)
+	if m := reFeelSome.FindStringSubmatch(s); m != nil {
+		return "any(" + m[2] + ", {" + replaceBoundIdent(m[3], m[1], "#") + "})"
+	}
+	if m := reFeelEvery.FindStringSubmatch(s); m != nil {
+		return "all(" + m[2] + ", {" + replaceBoundIdent(m[3], m[1], "#") + "})"
+	}
+	return s
+}
+
+func replaceBoundIdent(pred, bound, repl string) string {
+	re := regexp.MustCompile(`\b` + regexp.QuoteMeta(bound) + `\b`)
+	return re.ReplaceAllString(pred, repl)
 }
 
 // rewriteSpacedIdentifiers turns `Vacation Approval == "x"` into a safe alias

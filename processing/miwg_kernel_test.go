@@ -31,12 +31,12 @@ import (
 	eventv1 "github.com/sparrow-community/sparrow/protocol/gen/go/event/v1"
 )
 
-// TestMIWGKernelFixtures deploys every bpmn/test MIWG fixture and, when the
-// root process is Supported, mints an instance and drives waits until the
-// instance completes.
+// TestMIWGKernelFixtures deploys every bpmn/test MIWG fixture and mints an
+// instance, driving waits until completed/terminated.
 //
-// Deploy failures that contain UNSUPPORTED_ELEMENT or INVALID_CONDITION are
-// intentional skips (Excluded / current kernel limits). Other deploy errors fail.
+// Deploy failures that still contain UNSUPPORTED_ELEMENT or INVALID_CONDITION
+// (true control-flow gaps) are reported as intentional skips. Decorative /
+// modeling stubs must not land here — they Deploy and run (opaque / defaults).
 // A successful Deploy that does not reach completed/terminated fails the test.
 func TestMIWGKernelFixtures(t *testing.T) {
 	dir := filepath.Join("..", "bpmn", "test")
@@ -186,9 +186,11 @@ func mintMIWGInstance(ctx context.Context, eng *processing.Engine, dep *deploy.D
 // author conditions can leave on the progressing branch.
 func miwgHappyVars() map[string]any {
 	return map[string]any{
-		"approved":           true,
-		"clarified":          "yes",
-		"Vacation Approval":  "Approved",
+		"approved":          true,
+		"clarified":         "yes",
+		"Vacation Approval": "Approved",
+		// C.9.0-roundtrip Risk gateway: non-red/non-all-yellow → default Green path.
+		"riskLevels": []string{"green"},
 	}
 }
 
@@ -297,6 +299,17 @@ func driveMIWGInstance(t *testing.T, ctx context.Context, eng *processing.Engine
 			}
 		}
 		if progressed {
+			continue
+		}
+
+		inst, _ = eng.GetInstance(instanceID)
+		// Conditional catches / boundaries: evaluate with happy-path vars.
+		if n, err := eng.EvaluateConditions(ctx, processing.EvaluateConditionsRequest{
+			ProcessInstanceID: instanceID,
+			Variables:         miwgHappyVars(),
+		}); err != nil {
+			t.Fatalf("EvaluateConditions: %v", err)
+		} else if n > 0 {
 			continue
 		}
 

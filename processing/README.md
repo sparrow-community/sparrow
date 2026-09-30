@@ -2,7 +2,7 @@
 
 BPMN execution and fact kernel. Append-only `event.v1` ledger; projections rebuild from EVENTs. Axioms and Completeness: [`../AGENTS.md`](../AGENTS.md) · 中文: [`../AGENTS.zh.md`](../AGENTS.zh.md).
 
-Event = behavior; Element (Type, id, token_id, Intent, payload) = subject. The ledger records process behavior only—documentary constructs stay on the definition. Consumers (agents, overlay UIs) read COMMAND/EVENT; they must not invent ledger subjects or empty intents.
+Event = behavior; Element (Type, id, token_id, Intent, payload) = subject. The ledger records process behavior only—documentary constructs stay on the definition. `UNSUPPORTED_ELEMENT` rejects unsupported **executable** control-flow work at Deploy; decorative / descriptive / non-operational constructs must not block Deploy or token passage. Consumers (agents, overlay UIs) read COMMAND/EVENT; they must not invent ledger subjects or empty intents.
 
 ## Layout
 
@@ -32,13 +32,13 @@ New element: handler + registry + deploy validation. Semantics stay out of `engi
 | ServiceTask / BusinessRuleTask / ScriptTask | Wait as Job → Complete; multi-instance and standard loop supported (Script: job type from scriptFormat → name → id; no in-engine script runtime) |
 | SendTask | Publish message then continue |
 | ReceiveTask | Wait for PublishMessage; **instantiate** receive may be process entry |
-| Catch / throw / boundary | Timer (`PTnHnMnS`, day/week `PnD`/`PnW`, cycles; empty timer expression → `PT0S`), message, signal, error (`cancelActivity` XSD default true), escalation (including standalone intermediate catch), compensate, **conditional** (EvaluateConditions); multiple same-kind per activity (unique message/signal names / condition text); link throw/catch; `implicitThrowEvent` as a flow element rejected at Deploy (only valid as a multi-instance behavior event) |
+| Catch / throw / boundary | Timer (`PTnHnMnS`, day/week `PnD`/`PnW`, cycles; empty timer expression → `PT0S`), message, signal, error (`cancelActivity` XSD default true), escalation (including standalone intermediate catch), compensate, **conditional** (EvaluateConditions; empty condition → `true`); multiple same-kind per activity (unique message/signal names / condition text); link throw/catch; `implicitThrowEvent` as a flow element rejected at Deploy (only valid as a multi-instance behavior event) |
 | Gateways | XOR, AND, inclusive, complex (activationCondition join; inclusive-style split), event-based (catch; exclusive/parallel; instantiate; targets may be catch or receive) |
 | SubProcess | Embedded scope; empty/collapsed SubProcess with no inner flow nodes runs as opaque Activity (wait → Complete); Event Sub-Process (including compensation and conditional start via EvaluateConditions); multi-instance |
 | Transaction | Transaction SubProcess (`##Compensate`); Cancel End → in-scope compensate → interrupting Cancel Boundary; nested/MI rejected at Deploy |
 | AdHocSubProcess | Flat inner activities enabled without sequence flow; `ordering` Parallel (all) / Sequential (one at a time in document order); `completionCondition` finishes the scope, `cancelRemainingInstances` (default true) cancels inner activities still enabled; exhausting all inner activities also completes the scope; non-flat bodies and a missing `completionCondition` rejected at Deploy |
-| CallActivity | Child instance; IO mapping (name copy, transformation, assignment); cross-deployment; boundary & compensation (including into unfinished child); multi-instance |
-| SequenceFlow | `SEQUENCE_FLOW_TAKEN`; conditions on gateway and activity outgoings (+ `default`); multiple unconditional outs fan out in parallel; endpoints and declared `incoming`/`outgoing` must resolve at Deploy (a flow into an unmodeled element such as `choreographyTask` is rejected, not discovered at runtime) |
+| CallActivity | Child instance; IO mapping (name copy, transformation, assignment); cross-deployment; boundary & compensation (including into unfinished child); multi-instance; missing `calledElement` → opaque Activity (wait → Complete) |
+| SequenceFlow | `SEQUENCE_FLOW_TAKEN`; conditions on gateway and activity outgoings (+ `default`; FEEL `some`/`every` … `satisfies`); multiple unconditional outs fan out in parallel; endpoints and declared `incoming`/`outgoing` must resolve at Deploy (a flow into an unmodeled element such as `choreographyTask` is rejected, not discovered at runtime) |
 
 Full snapshot + roadmap: [`../AGENTS.md`](../AGENTS.md).
 
