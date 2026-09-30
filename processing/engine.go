@@ -152,6 +152,17 @@ func (e *Engine) createInstanceAt(ctx context.Context, dep *deploy.Deployment, v
 		return "", err
 	}
 
+	// When intervention is enabled and not paused, rebind focus to the new instance
+	// so Step/Continuous policy applies to this CreateInstance burst (T5 fork barrier).
+	if e.executor != nil && e.executor.intervention != nil {
+		ctl := e.executor.intervention
+		ctl.mu.Lock()
+		if ctl.session.Enabled && !ctl.session.Paused {
+			ctl.session.FocusInstanceID = instanceID
+		}
+		ctl.mu.Unlock()
+	}
+
 	pv, err := projection.VariablesFromMap(vars)
 	if err != nil {
 		return "", err
@@ -198,10 +209,14 @@ func (e *Engine) createInstanceAt(ctx context.Context, dep *deploy.Deployment, v
 		lock.Unlock()
 		return "", err
 	}
+	e.executor.activeSourceCmdID = cmdID
+	e.executor.activeInstanceID = instanceID
 	var pubs []handlers.Publication
 	more, err := e.executor.Enter(ctx, dep, inst, tokenID, startID, emit)
 	pubs = append(pubs, more...)
 	if err != nil {
+		e.executor.activeSourceCmdID = ""
+		e.executor.activeInstanceID = ""
 		e.rejectEnterFailure(ctx, dep, inst, err)
 		lock.Unlock()
 		return "", err
@@ -209,22 +224,25 @@ func (e *Engine) createInstanceAt(ctx context.Context, dep *deploy.Deployment, v
 	for _, extraID := range startElementIDs[1:] {
 		extraTok, err := NextID()
 		if err != nil {
+			e.executor.activeSourceCmdID = ""
+			e.executor.activeInstanceID = ""
 			lock.Unlock()
 			return "", err
 		}
 		more, err := e.executor.Enter(ctx, dep, inst, extraTok, extraID, emit)
 		pubs = append(pubs, more...)
 		if err != nil {
+			e.executor.activeSourceCmdID = ""
+			e.executor.activeInstanceID = ""
 			e.rejectEnterFailure(ctx, dep, inst, err)
 			lock.Unlock()
 			return "", err
 		}
 	}
+	e.executor.activeSourceCmdID = ""
+	e.executor.activeInstanceID = ""
 	lock.Unlock()
-	if err := e.flushPublications(ctx, pubs); err != nil {
-		return "", err
-	}
-	if err := e.tryDeliverBuffered(ctx, instanceID); err != nil {
+	if err := e.afterUnlockedCommand(ctx, instanceID, pubs); err != nil {
 		return "", err
 	}
 	return instanceID, nil
@@ -284,6 +302,9 @@ func (e *Engine) GetDeploymentXML(deploymentID string) ([]byte, error) {
 }
 
 func (e *Engine) Complete(ctx context.Context, instanceID, elementID, tokenID string, vars map[string]any) error {
+	if err := e.errIfInstancePaused(instanceID); err != nil {
+		return err
+	}
 	e.mu.Lock()
 	inst := e.instances[instanceID]
 	lock := e.instMu[instanceID]
@@ -302,10 +323,7 @@ func (e *Engine) Complete(ctx context.Context, instanceID, elementID, tokenID st
 	if err != nil {
 		return err
 	}
-	if err := e.flushPublications(ctx, pubs); err != nil {
-		return err
-	}
-	return e.tryDeliverBuffered(ctx, instanceID)
+	return e.afterUnlockedCommand(ctx, instanceID, pubs)
 }
 
 // ResolveIncident closes an open Service Task incident and restores waiting job semantics.
@@ -437,7 +455,11 @@ func (e *Engine) completeLocked(ctx context.Context, dep *deploy.Deployment, ins
 		return nil, err
 	}
 
+	e.executor.activeSourceCmdID = cmdID
+	e.executor.activeInstanceID = instanceID
 	pubs, err := e.executor.Complete(ctx, dep, inst, tokenID, elementID, pv, e.emitter(ctx, inst, cmdID))
+	e.executor.activeSourceCmdID = ""
+	e.executor.activeInstanceID = ""
 	if err != nil {
 		e.rejectEnterFailure(ctx, dep, inst, err)
 		return pubs, err

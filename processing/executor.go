@@ -19,13 +19,19 @@ type Emitter func(el *eventv1.Element) error
 type Executor struct {
 	Handlers *handlers.Registry
 	Now      func() time.Time
+
+	// intervention is the Engine control plane (nil-safe / default-off).
+	intervention *interventionCtl
+	// activeSourceCmdID / activeInstanceID are set by Engine for the in-flight COMMAND.
+	activeSourceCmdID string
+	activeInstanceID  string
 }
 
 func NewExecutor(reg *handlers.Registry) *Executor {
 	if reg == nil {
 		reg = handlers.DefaultRegistry()
 	}
-	return &Executor{Handlers: reg}
+	return &Executor{Handlers: reg, intervention: &interventionCtl{}}
 }
 
 func (x *Executor) now() time.Time {
@@ -116,6 +122,17 @@ func (x *Executor) Enter(
 			return pubs, err
 		}
 		if effect.EnterChild != "" {
+			pending := &PendingTransition{
+				Kind:            PendingEnterChild,
+				FromElementID:   elementID,
+				TokenID:         tokenID,
+				EnterChildID:    effect.EnterChild,
+				SpawnChildToken: effect.SpawnChildToken,
+				NextElementIDs:  []string{effect.EnterChild},
+			}
+			if x.tryBarrier(inst, elementID, tokenID, pending) {
+				return pubs, nil
+			}
 			childTokenID := tokenID
 			if effect.SpawnChildToken {
 				var err error
@@ -139,11 +156,28 @@ func (x *Executor) Enter(
 			}
 		}
 		if len(effect.Fork) > 0 {
+			pending, err := pendingFork(dep, tokenID, elementID, effect.Fork)
+			if err != nil {
+				return pubs, err
+			}
+			if x.tryBarrier(inst, elementID, tokenID, pending) {
+				return pubs, nil
+			}
 			more, err := x.forkOutgoings(ctx, dep, inst, tokenID, elementID, effect.Fork, emit)
 			pubs = append(pubs, more...)
 			return pubs, err
 		}
 		if len(effect.LinkContinue) > 0 {
+			pending := &PendingTransition{
+				Kind:           PendingLink,
+				FromElementID:  elementID,
+				TokenID:        tokenID,
+				LinkCatchIDs:   append([]string(nil), effect.LinkContinue...),
+				NextElementIDs: append([]string(nil), effect.LinkContinue...),
+			}
+			if x.tryBarrier(inst, elementID, tokenID, pending) {
+				return pubs, nil
+			}
 			for i, catchID := range effect.LinkContinue {
 				tid := tokenID
 				if i > 0 {
@@ -460,6 +494,13 @@ func (x *Executor) leaveViaOutgoings(
 	emit Emitter,
 ) ([]handlers.Publication, error) {
 	if preferredFlowID != "" {
+		pending, err := pendingLeave(dep, tokenID, fromElementID, preferredFlowID)
+		if err != nil {
+			return nil, err
+		}
+		if x.tryBarrier(inst, fromElementID, tokenID, pending) {
+			return nil, nil
+		}
 		next, err := x.takeOutgoing(dep, inst, tokenID, fromElementID, preferredFlowID, emit)
 		if err != nil {
 			return nil, err
@@ -475,7 +516,21 @@ func (x *Executor) leaveViaOutgoings(
 		return nil, err
 	}
 	if len(flows) > 1 {
+		pending, err := pendingFork(dep, tokenID, fromElementID, flows)
+		if err != nil {
+			return nil, err
+		}
+		if x.tryBarrier(inst, fromElementID, tokenID, pending) {
+			return nil, nil
+		}
 		return x.forkOutgoings(ctx, dep, inst, tokenID, fromElementID, flows, emit)
+	}
+	pending, err := pendingLeave(dep, tokenID, fromElementID, flows[0])
+	if err != nil {
+		return nil, err
+	}
+	if x.tryBarrier(inst, fromElementID, tokenID, pending) {
+		return nil, nil
 	}
 	next, err := x.takeOutgoing(dep, inst, tokenID, fromElementID, flows[0], emit)
 	if err != nil {
@@ -492,6 +547,16 @@ func (x *Executor) forkOutgoings(
 	flows []string,
 	emit Emitter,
 ) ([]handlers.Publication, error) {
+	if x.intervention != nil {
+		x.intervention.mu.Lock()
+		x.intervention.forkSuppressDepth++
+		x.intervention.mu.Unlock()
+		defer func() {
+			x.intervention.mu.Lock()
+			x.intervention.forkSuppressDepth--
+			x.intervention.mu.Unlock()
+		}()
+	}
 	type forkBranch struct {
 		tid  string
 		next string
@@ -526,6 +591,75 @@ func (x *Executor) forkOutgoings(
 		}
 	}
 	return pubs, nil
+}
+
+func (x *Executor) tryBarrier(inst *projection.Instance, elementID, tokenID string, pending *PendingTransition) bool {
+	if x == nil || x.intervention == nil || pending == nil {
+		return false
+	}
+	instanceID := x.activeInstanceID
+	if instanceID == "" && inst != nil {
+		instanceID = inst.ID
+	}
+	return x.intervention.shouldBarrier(instanceID, elementID, tokenID, x.activeSourceCmdID, pending)
+}
+
+func (x *Executor) resumePending(
+	ctx context.Context,
+	dep *deploy.Deployment,
+	inst *projection.Instance,
+	pending *PendingTransition,
+	emit Emitter,
+) ([]handlers.Publication, error) {
+	if pending == nil {
+		return nil, fmt.Errorf("INVALID_STATE: no pending transition")
+	}
+	switch pending.Kind {
+	case PendingLeave:
+		flowID := pending.OutgoingFlowID
+		if flowID == "" && len(pending.TakenFlowIDs) > 0 {
+			flowID = pending.TakenFlowIDs[0]
+		}
+		return x.leaveViaOutgoings(ctx, dep, inst, pending.TokenID, pending.FromElementID, flowID, emit)
+	case PendingFork:
+		return x.forkOutgoings(ctx, dep, inst, pending.TokenID, pending.FromElementID, pending.TakenFlowIDs, emit)
+	case PendingEnterChild:
+		childTokenID := pending.TokenID
+		if pending.SpawnChildToken {
+			var err error
+			childTokenID, err = spawnScopeChildToken(inst, pending.TokenID)
+			if err != nil {
+				return nil, err
+			}
+		}
+		typ, err := dep.TypeOf(pending.FromElementID)
+		if err == nil && (typ == eventv1.Element_TYPE_SUB_PROCESS || typ == eventv1.Element_TYPE_TRANSACTION) {
+			if err := emitEventSubProcessStartArms(dep, inst, pending.FromElementID, x.now(), emit); err != nil {
+				return nil, err
+			}
+		}
+		return x.Enter(ctx, dep, inst, childTokenID, pending.EnterChildID, emit)
+	case PendingLink:
+		var pubs []handlers.Publication
+		for i, catchID := range pending.LinkCatchIDs {
+			tid := pending.TokenID
+			if i > 0 {
+				var err error
+				tid, err = NextID()
+				if err != nil {
+					return pubs, err
+				}
+			}
+			more, err := x.Enter(ctx, dep, inst, tid, catchID, emit)
+			pubs = append(pubs, more...)
+			if err != nil {
+				return pubs, err
+			}
+		}
+		return pubs, nil
+	default:
+		return nil, fmt.Errorf("INVALID_STATE: unknown pending kind %q", pending.Kind)
+	}
 }
 
 // tryCompleteScope checks if the scope containing elementID can be completed.
