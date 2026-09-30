@@ -216,6 +216,112 @@ message ListEventsResponse {
   repeated event.v1.Event events = 1;
 }
 
+// --- Intervention control plane (ephemeral session; not ledger EVENTs) ---
+
+// PendingTransition is resume work held at an Enter-settled barrier.
+message PendingTransition {
+  // leave | fork | enterChild | link | decide
+  string kind = 1;
+  string from_element_id = 2;
+  string token_id = 3;
+  repeated string taken_flow_ids = 4;
+  repeated string next_element_ids = 5;
+  string outgoing_flow_id = 6;
+  string enter_child_id = 7;
+  bool spawn_child_token = 8;
+  repeated string link_catch_ids = 9;
+}
+
+// InterventionState is the read model for GetInterventionState.
+message InterventionState {
+  bool enabled = 1;
+  string focus_instance_id = 2;
+  // continuous | step | breakpoints | stepOver
+  string policy = 3;
+  repeated string breakpoints = 4;
+  bool paused = 5;
+  // step | breakpoint | manual
+  string pause_reason = 6;
+  string pause_element_id = 7;
+  string pause_token_id = 8;
+  PendingTransition pending = 9;
+}
+
+message EnableInterventionRequest {
+  string process_instance_id = 1;
+  // continuous | step | breakpoints; empty defaults to continuous
+  string policy = 2;
+}
+
+message EnableInterventionResponse {
+  bool ok = 1;
+}
+
+message DisableInterventionRequest {}
+
+message DisableInterventionResponse {
+  bool ok = 1;
+}
+
+message SetBreakpointsRequest {
+  string process_instance_id = 1;
+  repeated string element_ids = 2;
+}
+
+message SetBreakpointsResponse {
+  bool ok = 1;
+  repeated string element_ids = 2;
+}
+
+message ContinueRequest {
+  string process_instance_id = 1;
+}
+
+message ContinueResponse {
+  bool ok = 1;
+  bool paused = 2;
+  InterventionState state = 3;
+}
+
+message StepIntoRequest {
+  string process_instance_id = 1;
+}
+
+message StepIntoResponse {
+  bool ok = 1;
+  bool paused = 2;
+  InterventionState state = 3;
+}
+
+message StepOverRequest {
+  string process_instance_id = 1;
+}
+
+message StepOverResponse {
+  bool ok = 1;
+  bool paused = 2;
+  InterventionState state = 3;
+}
+
+message GetInterventionStateRequest {
+  string process_instance_id = 1;
+}
+
+message GetInterventionStateResponse {
+  InterventionState state = 1;
+}
+
+message SetVariablesRequest {
+  string process_instance_id = 1;
+  // Variable deltas: name -> JSON text.
+  map<string, string> variables = 2;
+}
+
+message SetVariablesResponse {
+  bool ok = 1;
+  InterventionState state = 2;
+}
+
 // EngineService is the process-client command surface (deploy, start, complete, query).
 // Worker pull APIs live on job.v1.JobService. Neither service is the event ledger.
 service EngineService {
@@ -239,4 +345,21 @@ service EngineService {
   rpc GetInstance(GetInstanceRequest) returns (GetInstanceResponse);
   // ListEvents returns the instance audit timeline.
   rpc ListEvents(ListEventsRequest) returns (ListEventsResponse);
+
+  // EnableIntervention opts into the ephemeral intervention session for one focus instance.
+  rpc EnableIntervention(EnableInterventionRequest) returns (EnableInterventionResponse);
+  // DisableIntervention clears the session when not barrier-paused.
+  rpc DisableIntervention(DisableInterventionRequest) returns (DisableInterventionResponse);
+  // SetBreakpoints replaces the breakpoint element id set.
+  rpc SetBreakpoints(SetBreakpointsRequest) returns (SetBreakpointsResponse);
+  // Continue resumes pending transit under continuous policy (honors breakpoints).
+  rpc Continue(ContinueRequest) returns (ContinueResponse);
+  // StepInto resumes one pending transit then stops at the next Enter-settled barrier.
+  rpc StepInto(StepIntoRequest) returns (StepIntoResponse);
+  // StepOver resumes pending transit and drains Enter-settled barriers past breakpoints until Wait/end.
+  rpc StepOver(StepOverRequest) returns (StepOverResponse);
+  // GetInterventionState returns the ephemeral session snapshot.
+  rpc GetInterventionState(GetInterventionStateRequest) returns (GetInterventionStateResponse);
+  // SetVariables patches variables while barrier-paused (ledger PROCESS variable EVENT).
+  rpc SetVariables(SetVariablesRequest) returns (SetVariablesResponse);
 }

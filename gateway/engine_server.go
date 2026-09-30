@@ -187,6 +187,137 @@ func (s *EngineServer) ListEvents(ctx context.Context, req *enginev1.ListEventsR
 	return &enginev1.ListEventsResponse{Events: events}, nil
 }
 
+func (s *EngineServer) EnableIntervention(ctx context.Context, req *enginev1.EnableInterventionRequest) (*enginev1.EnableInterventionResponse, error) {
+	if s.engine == nil {
+		return nil, status.Error(codes.FailedPrecondition, "engine is required")
+	}
+	_, err := s.engine.EnableIntervention(ctx, processing.EnableInterventionRequest{
+		InstanceID: req.GetProcessInstanceId(),
+		Policy:     processing.RunPolicy(req.GetPolicy()),
+	})
+	if err != nil {
+		return nil, statusFromEngine(err)
+	}
+	return &enginev1.EnableInterventionResponse{Ok: true}, nil
+}
+
+func (s *EngineServer) DisableIntervention(ctx context.Context, req *enginev1.DisableInterventionRequest) (*enginev1.DisableInterventionResponse, error) {
+	if s.engine == nil {
+		return nil, status.Error(codes.FailedPrecondition, "engine is required")
+	}
+	_, err := s.engine.DisableIntervention(ctx, processing.DisableInterventionRequest{})
+	if err != nil {
+		return nil, statusFromEngine(err)
+	}
+	return &enginev1.DisableInterventionResponse{Ok: true}, nil
+}
+
+func (s *EngineServer) SetBreakpoints(ctx context.Context, req *enginev1.SetBreakpointsRequest) (*enginev1.SetBreakpointsResponse, error) {
+	if s.engine == nil {
+		return nil, status.Error(codes.FailedPrecondition, "engine is required")
+	}
+	resp, err := s.engine.SetBreakpoints(ctx, processing.SetBreakpointsRequest{
+		InstanceID: req.GetProcessInstanceId(),
+		ElementIDs: req.GetElementIds(),
+	})
+	if err != nil {
+		return nil, statusFromEngine(err)
+	}
+	return &enginev1.SetBreakpointsResponse{Ok: true, ElementIds: resp.ElementIDs}, nil
+}
+
+func (s *EngineServer) Continue(ctx context.Context, req *enginev1.ContinueRequest) (*enginev1.ContinueResponse, error) {
+	if s.engine == nil {
+		return nil, status.Error(codes.FailedPrecondition, "engine is required")
+	}
+	resp, err := s.engine.Continue(ctx, processing.ContinueRequest{InstanceID: req.GetProcessInstanceId()})
+	if err != nil {
+		return nil, statusFromEngine(err)
+	}
+	return &enginev1.ContinueResponse{Ok: true, Paused: resp.Paused, State: interventionStateToProto(&resp.State)}, nil
+}
+
+func (s *EngineServer) StepInto(ctx context.Context, req *enginev1.StepIntoRequest) (*enginev1.StepIntoResponse, error) {
+	if s.engine == nil {
+		return nil, status.Error(codes.FailedPrecondition, "engine is required")
+	}
+	resp, err := s.engine.StepInto(ctx, processing.StepIntoRequest{InstanceID: req.GetProcessInstanceId()})
+	if err != nil {
+		return nil, statusFromEngine(err)
+	}
+	return &enginev1.StepIntoResponse{Ok: true, Paused: resp.Paused, State: interventionStateToProto(&resp.State)}, nil
+}
+
+func (s *EngineServer) StepOver(ctx context.Context, req *enginev1.StepOverRequest) (*enginev1.StepOverResponse, error) {
+	if s.engine == nil {
+		return nil, status.Error(codes.FailedPrecondition, "engine is required")
+	}
+	resp, err := s.engine.StepOver(ctx, processing.StepOverRequest{InstanceID: req.GetProcessInstanceId()})
+	if err != nil {
+		return nil, statusFromEngine(err)
+	}
+	return &enginev1.StepOverResponse{Ok: true, Paused: resp.Paused, State: interventionStateToProto(&resp.State)}, nil
+}
+
+func (s *EngineServer) GetInterventionState(ctx context.Context, req *enginev1.GetInterventionStateRequest) (*enginev1.GetInterventionStateResponse, error) {
+	if s.engine == nil {
+		return nil, status.Error(codes.FailedPrecondition, "engine is required")
+	}
+	st, err := s.engine.GetInterventionState(ctx, req.GetProcessInstanceId())
+	if err != nil {
+		return nil, statusFromEngine(err)
+	}
+	return &enginev1.GetInterventionStateResponse{State: interventionStateToProto(st)}, nil
+}
+
+func (s *EngineServer) SetVariables(ctx context.Context, req *enginev1.SetVariablesRequest) (*enginev1.SetVariablesResponse, error) {
+	if s.engine == nil {
+		return nil, status.Error(codes.FailedPrecondition, "engine is required")
+	}
+	vars, err := variablesFromJSONMap(req.GetVariables())
+	if err != nil {
+		return nil, statusFromEngine(err)
+	}
+	resp, err := s.engine.SetVariables(ctx, processing.SetVariablesRequest{
+		InstanceID: req.GetProcessInstanceId(),
+		Variables:  vars,
+	})
+	if err != nil {
+		return nil, statusFromEngine(err)
+	}
+	return &enginev1.SetVariablesResponse{Ok: true, State: interventionStateToProto(&resp.State)}, nil
+}
+
+func interventionStateToProto(st *processing.InterventionState) *enginev1.InterventionState {
+	if st == nil {
+		return nil
+	}
+	out := &enginev1.InterventionState{
+		Enabled:         st.Enabled,
+		FocusInstanceId: st.FocusInstanceID,
+		Policy:          string(st.Policy),
+		Breakpoints:     append([]string(nil), st.Breakpoints...),
+		Paused:          st.Paused,
+		PauseReason:     string(st.PauseReason),
+		PauseElementId:  st.PauseElementID,
+		PauseTokenId:    st.PauseTokenID,
+	}
+	if st.Pending != nil {
+		out.Pending = &enginev1.PendingTransition{
+			Kind:            string(st.Pending.Kind),
+			FromElementId:   st.Pending.FromElementID,
+			TokenId:         st.Pending.TokenID,
+			TakenFlowIds:    append([]string(nil), st.Pending.TakenFlowIDs...),
+			NextElementIds:  append([]string(nil), st.Pending.NextElementIDs...),
+			OutgoingFlowId:  st.Pending.OutgoingFlowID,
+			EnterChildId:    st.Pending.EnterChildID,
+			SpawnChildToken: st.Pending.SpawnChildToken,
+			LinkCatchIds:    append([]string(nil), st.Pending.LinkCatchIDs...),
+		}
+	}
+	return out
+}
+
 func instanceToProto(inst *projection.Instance) *enginev1.Instance {
 	if inst == nil {
 		return nil
