@@ -343,7 +343,6 @@ func TestC_7_0_export(t *testing.T) {
 											Outgoing: []string{"Flow_14ytgtt", "Flow_0puyce6"},
 										},
 									},
-									Default: "Flow_0puyce6",
 								},
 							},
 							ParallelGatewaies: []element.ParallelGateway{

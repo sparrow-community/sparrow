@@ -33,7 +33,7 @@
         <bpmn:outgoing>Flow_15i7o7s</bpmn:outgoing>
         <bpmn:messageEventDefinition id="MessageEventDefinition_06v4lrd" />
       </bpmn:startEvent>
-      <bpmn:callActivity id="Activity_0ikw23h" name="Document Request" calledElement="requestDocument_en">
+      <bpmn:callActivity id="Activity_0ikw23h" name="Document Request">
         <bpmn:extensionElements>
           <zeebe:calledElement propagateAllChildVariables="false" />
         </bpmn:extensionElements>

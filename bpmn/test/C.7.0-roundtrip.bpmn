@@ -90,7 +90,7 @@
         <semantic:resourceRef>_b5b6808a-be81-426c-98ae-f33f44a2f871</semantic:resourceRef>
       </semantic:performer>
     </semantic:userTask>
-    <semantic:exclusiveGateway id="_26c40c03-5d1f-46c5-81f1-ddd485868125" name="Advertisement approved?" gatewayDirection="Diverging" default="_1d201a22-d500-4412-a32a-2c7e24ad4d6b">
+    <semantic:exclusiveGateway id="_26c40c03-5d1f-46c5-81f1-ddd485868125" name="Advertisement approved?" gatewayDirection="Diverging">
       <semantic:incoming>_7b66938e-e5cb-4026-a863-1e6de6d11a79</semantic:incoming>
       <semantic:outgoing>_d74707c7-6af3-4db7-9403-924bfdf6a7d8</semantic:outgoing>
       <semantic:outgoing>_1d201a22-d500-4412-a32a-2c7e24ad4d6b</semantic:outgoing>

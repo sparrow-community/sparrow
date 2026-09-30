@@ -21,7 +21,7 @@
       <bpmn:outgoing>Flow_1qhwarq</bpmn:outgoing>
       <bpmn:outgoing>Flow_1t7mfpf</bpmn:outgoing>
     </bpmn:exclusiveGateway>
-    <bpmn:callActivity id="Activity_0zdpcxw" name="Manual Check" calledElement="ManualCheck">
+    <bpmn:callActivity id="Activity_0zdpcxw" name="Manual Check">
       <bpmn:extensionElements>
         <zeebe:calledElement propagateAllChildVariables="false" />
       </bpmn:extensionElements>

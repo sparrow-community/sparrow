@@ -1120,15 +1120,6 @@ func ConditionText(f element.SequenceFlow) string {
 	}
 }
 
-// IsOpaqueCallActivity reports whether id is a Call Activity without calledElement.
-func (d *Deployment) IsOpaqueCallActivity(id string) bool {
-	if d == nil {
-		return false
-	}
-	spec, ok := d.callActivities[id]
-	return ok && spec.Opaque
-}
-
 // DefaultOutgoing returns the BPMN default sequence flow id for an exclusive
 // gateway or activity, or empty if none.
 func (d *Deployment) DefaultOutgoing(elementID string) string {
@@ -1204,8 +1195,9 @@ func findActivityDefaultIn(fe *element.FlowElements, id string) string {
 }
 
 // ChooseConditionalOutgoing picks an outgoing flow: first matching non-default
-// condition, else default. If there are no conditions and no default, returns the
-// first outgoing (callers that need take-all should use ChooseOutgoingFlows).
+// condition, else default. If there are no conditions and no default, prefers a
+// non-back-edge outgoing when multiple exist (interchange stubs with unlabeled
+// Yes/No splits), else returns the first outgoing.
 func (d *Deployment) ChooseConditionalOutgoing(elementID string, vars map[string]string) (string, error) {
 	outs := d.Outgoing(elementID)
 	if len(outs) == 0 {
@@ -1227,6 +1219,13 @@ func (d *Deployment) ChooseConditionalOutgoing(elementID string, vars map[string
 		if def != "" {
 			if _, err := d.SequenceFlow(def); err == nil {
 				return def, nil
+			}
+		}
+		// Unlabeled exclusive splits (no conditions, no default) are underspecified.
+		// Prefer a non-back-edge outgoing so interchange stubs (C.4 / C.7) progress.
+		if len(outs) > 1 && findExclusiveGatewayIn(&d.Process.FlowElements, elementID) != nil {
+			if id := preferAcyclicExclusiveOutgoing(d, elementID, outs); id != "" {
+				return id, nil
 			}
 		}
 		return outs[0], nil
@@ -1257,6 +1256,81 @@ func (d *Deployment) ChooseConditionalOutgoing(elementID string, vars map[string
 		}
 	}
 	return "", fmt.Errorf("NO_OUTGOING_FLOW: element %q", elementID)
+}
+
+// preferAcyclicExclusiveOutgoing returns the first outgoing whose target cannot
+// reach elementID again (not a revise/reject back-edge). When several progress
+// outs exist, prefers an affirmative flow name (Yes/Approved/…). Empty means
+// fall back to outs[0]. Used only when an exclusive split has neither
+// conditions nor default (BPMN-underspecified interchange stubs).
+func preferAcyclicExclusiveOutgoing(d *Deployment, elementID string, outs []string) string {
+	var progress []string
+	for _, flowID := range outs {
+		flow, err := d.SequenceFlow(flowID)
+		if err != nil {
+			continue
+		}
+		if canReachElement(d, flow.TargetRef, elementID, 64) {
+			continue
+		}
+		progress = append(progress, flowID)
+	}
+	if len(progress) == 0 {
+		return ""
+	}
+	for _, flowID := range progress {
+		flow, err := d.SequenceFlow(flowID)
+		if err != nil {
+			continue
+		}
+		if isAffirmativeFlowName(flow.Name) {
+			return flowID
+		}
+	}
+	return progress[0]
+}
+
+func isAffirmativeFlowName(name string) bool {
+	n := strings.ToLower(strings.TrimSpace(name))
+	switch n {
+	case "yes", "approved", "ok", "true", "accept", "accepted":
+		return true
+	default:
+		return false
+	}
+}
+
+// canReachElement reports whether a path of sequence flows exists from fromID to
+// toID within maxHops (cycle-safe via visited set).
+func canReachElement(d *Deployment, fromID, toID string, maxHops int) bool {
+	if fromID == "" || toID == "" || d == nil {
+		return false
+	}
+	if fromID == toID {
+		return true
+	}
+	visited := map[string]bool{fromID: true}
+	queue := []string{fromID}
+	for hops := 0; hops < maxHops && len(queue) > 0; hops++ {
+		cur := queue[0]
+		queue = queue[1:]
+		for _, flowID := range d.Outgoing(cur) {
+			flow, err := d.SequenceFlow(flowID)
+			if err != nil {
+				continue
+			}
+			next := flow.TargetRef
+			if next == toID {
+				return true
+			}
+			if next == "" || visited[next] {
+				continue
+			}
+			visited[next] = true
+			queue = append(queue, next)
+		}
+	}
+	return false
 }
 
 // ChooseOutgoingFlows selects outgoing sequence flows when leaving an element.
