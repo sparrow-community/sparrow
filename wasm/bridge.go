@@ -66,6 +66,8 @@ func (a *api) value() js.Value {
 	o.Set("continueIntervention", a.fn(a.continueIntervention))
 	o.Set("stepInto", a.fn(a.stepInto))
 	o.Set("stepOver", a.fn(a.stepOver))
+	o.Set("pause", a.fn(a.pauseIntervention))
+	o.Set("hostEffectAllowed", a.fn(a.hostEffectAllowed))
 	o.Set("getInterventionState", a.fn(a.getInterventionState))
 	o.Set("setVariables", a.fn(a.setVariables))
 	return o
@@ -414,8 +416,22 @@ func (a *api) enableIntervention(_ js.Value, args []js.Value) (any, error) {
 	return map[string]any{"ok": err == nil}, err
 }
 
-func (a *api) disableIntervention(_ js.Value, _ []js.Value) (any, error) {
-	_, err := a.eng.DisableIntervention(context.Background(), processing.DisableInterventionRequest{})
+func (a *api) disableIntervention(_ js.Value, args []js.Value) (any, error) {
+	instanceID := ""
+	if len(args) > 0 && !args[0].IsUndefined() && !args[0].IsNull() {
+		if args[0].Type() == js.TypeString {
+			instanceID = args[0].String()
+		} else {
+			req, err := argObject(args, 0)
+			if err != nil {
+				return nil, err
+			}
+			instanceID = asString(req["instanceId"])
+		}
+	}
+	_, err := a.eng.DisableIntervention(context.Background(), processing.DisableInterventionRequest{
+		InstanceID: instanceID,
+	})
 	return map[string]any{"ok": err == nil}, err
 }
 
@@ -519,31 +535,67 @@ func (a *api) setVariables(_ js.Value, args []js.Value) (any, error) {
 	return map[string]any{"ok": true, "state": interventionStateJSON(&resp.State)}, nil
 }
 
+func (a *api) pauseIntervention(_ js.Value, args []js.Value) (any, error) {
+	req, err := argObject(args, 0)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := a.eng.Pause(context.Background(), processing.PauseRequest{
+		InstanceID: asString(req["instanceId"]),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"ok": true, "state": interventionStateJSON(&resp.State)}, nil
+}
+
+func (a *api) hostEffectAllowed(_ js.Value, args []js.Value) (any, error) {
+	instanceID := ""
+	if len(args) > 0 && !args[0].IsUndefined() && !args[0].IsNull() {
+		if args[0].Type() == js.TypeString {
+			instanceID = args[0].String()
+		} else {
+			req, err := argObject(args, 0)
+			if err != nil {
+				return nil, err
+			}
+			instanceID = asString(req["instanceId"])
+		}
+	}
+	if instanceID == "" {
+		return nil, fmt.Errorf("INVALID_ARGUMENT: instanceId is required")
+	}
+	return map[string]any{"allowed": a.eng.HostEffectAllowed(instanceID)}, nil
+}
+
 func interventionStateJSON(st *processing.InterventionState) map[string]any {
 	if st == nil {
 		return nil
 	}
 	out := map[string]any{
-		"enabled":         st.Enabled,
-		"focusInstanceId": st.FocusInstanceID,
-		"policy":          string(st.Policy),
-		"breakpoints":     st.Breakpoints,
-		"paused":          st.Paused,
-		"pauseReason":     string(st.PauseReason),
-		"pauseElementId":  st.PauseElementID,
-		"pauseTokenId":    st.PauseTokenID,
+		"enabled":          st.Enabled,
+		"focusInstanceId":  st.FocusInstanceID,
+		"policy":           string(st.Policy),
+		"breakpoints":      st.Breakpoints,
+		"paused":           st.Paused,
+		"pauseReason":      string(st.PauseReason),
+		"pauseElementId":   st.PauseElementID,
+		"pauseTokenId":     st.PauseTokenID,
+		"blockHostEffects": st.BlockHostEffects,
 	}
 	if st.Pending != nil {
 		out["pending"] = map[string]any{
-			"kind":            string(st.Pending.Kind),
-			"fromElementId":   st.Pending.FromElementID,
-			"tokenId":         st.Pending.TokenID,
-			"takenFlowIds":    st.Pending.TakenFlowIDs,
-			"nextElementIds":  st.Pending.NextElementIDs,
-			"outgoingFlowId":  st.Pending.OutgoingFlowID,
-			"enterChildId":    st.Pending.EnterChildID,
-			"spawnChildToken": st.Pending.SpawnChildToken,
-			"linkCatchIds":    st.Pending.LinkCatchIDs,
+			"kind":               string(st.Pending.Kind),
+			"fromElementId":      st.Pending.FromElementID,
+			"tokenId":            st.Pending.TokenID,
+			"takenFlowIds":       st.Pending.TakenFlowIDs,
+			"nextElementIds":     st.Pending.NextElementIDs,
+			"outgoingFlowId":     st.Pending.OutgoingFlowID,
+			"enterChildId":       st.Pending.EnterChildID,
+			"spawnChildToken":    st.Pending.SpawnChildToken,
+			"linkCatchIds":       st.Pending.LinkCatchIDs,
+			"decideMode":         string(st.Pending.DecideMode),
+			"terminateJoinPeers": st.Pending.TerminateJoinPeers,
 		}
 	}
 	return out

@@ -152,15 +152,10 @@ func (e *Engine) createInstanceAt(ctx context.Context, dep *deploy.Deployment, v
 		return "", err
 	}
 
-	// When intervention is enabled and not paused, rebind focus to the new instance
-	// so Step/Continuous policy applies to this CreateInstance burst (T5 fork barrier).
+	// When intervention is enabled and not paused, bind a session for the new
+	// instance so Step/Continuous policy applies to this CreateInstance burst (T5).
 	if e.executor != nil && e.executor.intervention != nil {
-		ctl := e.executor.intervention
-		ctl.mu.Lock()
-		if ctl.session.Enabled && !ctl.session.Paused {
-			ctl.session.FocusInstanceID = instanceID
-		}
-		ctl.mu.Unlock()
+		e.executor.intervention.bindNewInstance(instanceID)
 	}
 
 	pv, err := projection.VariablesFromMap(vars)
@@ -328,6 +323,9 @@ func (e *Engine) Complete(ctx context.Context, instanceID, elementID, tokenID st
 
 // ResolveIncident closes an open Service Task incident and restores waiting job semantics.
 func (e *Engine) ResolveIncident(ctx context.Context, instanceID, elementID, tokenID string) error {
+	if err := e.errIfInstancePaused(instanceID); err != nil {
+		return err
+	}
 	e.mu.Lock()
 	inst := e.instances[instanceID]
 	lock := e.instMu[instanceID]
@@ -656,6 +654,9 @@ func (e *Engine) now() time.Time {
 // It terminates all tokens inside the scope, terminates the SubProcess,
 // completes the boundary, and takes the boundary's outgoing flow.
 func (e *Engine) completeScopeBoundary(ctx context.Context, instanceID, boundaryID string) error {
+	if err := e.errIfInstancePaused(instanceID); err != nil {
+		return err
+	}
 	e.mu.Lock()
 	inst := e.instances[instanceID]
 	lock := e.instMu[instanceID]

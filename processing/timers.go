@@ -40,6 +40,9 @@ func (e *Engine) FireDue(ctx context.Context) error {
 			return err
 		}
 		if err := e.completeScopeBoundary(ctx, sd.instanceID, sd.boundaryID); err != nil {
+			if strings.HasPrefix(err.Error(), "INVALID_STATE:") {
+				continue
+			}
 			if first == nil {
 				first = err
 			}
@@ -50,6 +53,9 @@ func (e *Engine) FireDue(ctx context.Context) error {
 			return err
 		}
 		if err := e.triggerEventSubProcess(ctx, ew.instanceID, ew.eventSubProcessElementID, nil); err != nil {
+			if strings.HasPrefix(err.Error(), "INVALID_STATE:") {
+				continue
+			}
 			if first == nil {
 				first = err
 			}
