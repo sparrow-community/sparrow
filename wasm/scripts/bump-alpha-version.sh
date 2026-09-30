@@ -4,7 +4,8 @@
 # Scheme: YYYY.M.D-alpha.N  (UTC calendar date as major.minor.patch; prerelease alpha.N)
 #   - YYYY / M / D are UTC year, month, day with no leading zeros (node-semver valid)
 #   - N starts at 1 each UTC day and increments for each publish that day
-#   - Dist-tag remains "alpha" (see package.json publishConfig.tag)
+#   - CI publishes with dist-tag "latest" (package.json publishConfig.tag) and
+#     also promotes "alpha" to the same version when OIDC dist-tag is enabled
 #   - No leading "v" in package.json (git tags may use vYYYY.M.D-alpha.N separately)
 #
 # Why not Jiaxing's display form v2026.09.28.1-alpha:
