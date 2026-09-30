@@ -41,7 +41,13 @@ func TestEval(t *testing.T) {
 		{"= not(approved)", false},
 		{"Vacation Approval = 'Approved'", true},
 		{"Vacation Approval = 'Rejected'", false},
+		{`= some risk in riskLevels satisfies risk = "red"`, true},
+		{`= some risk in riskLevels satisfies risk = "blue"`, false},
+		{`= every risk in riskLevels satisfies risk = "yellow"`, false},
+		{`= every risk in allYellow satisfies risk = "yellow"`, true},
 	}
+	vars["riskLevels"] = `["red","green"]`
+	vars["allYellow"] = `["yellow","yellow"]`
 	for _, tc := range cases {
 		got, err := Eval(tc.in, vars)
 		if err != nil {

@@ -208,9 +208,10 @@ func conditionalStartText(e element.StartEvent) (string, error) {
 	if len(e.ConditionalEventDefinitions) != 1 {
 		return "", fmt.Errorf("UNSUPPORTED_ELEMENT: startEvent %q must have exactly one conditionalEventDefinition", e.ID)
 	}
-	text := expressionText(e.ConditionalEventDefinitions[0].Condition)
+	text := strings.TrimSpace(expressionText(e.ConditionalEventDefinitions[0].Condition))
 	if text == "" {
-		return "", fmt.Errorf("UNSUPPORTED_ELEMENT: startEvent %q conditional start needs a condition expression", e.ID)
+		// Empty condition stub (MIWG / incomplete export): always-true, like empty timer → PT0S.
+		return "true", nil
 	}
 	return text, nil
 }

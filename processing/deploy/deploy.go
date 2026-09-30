@@ -429,11 +429,11 @@ func (d *Deployment) indexCallActivities(fe *element.FlowElements, catalog map[s
 			if err != nil {
 				return err
 			}
-			if spec.CalledProcessID == d.Process.ID {
+			if !spec.Opaque && spec.CalledProcessID == d.Process.ID {
 				return fmt.Errorf("UNSUPPORTED_ELEMENT: callActivity %q cannot call the root process", ca.ID)
 			}
 			d.callActivities[spec.ID] = spec
-			if spec.ExternalCallee {
+			if spec.Opaque || spec.ExternalCallee {
 				continue
 			}
 			called := catalog[spec.CalledProcessID]
@@ -483,9 +483,6 @@ func validateProcess(proc *element.Process, messages []element.Message, signals 
 		return err
 	}
 	if err := validateCatchAndThrow(&proc.FlowElements); err != nil {
-		return err
-	}
-	if err := validateSequenceFlowConditions(&proc.FlowElements); err != nil {
 		return err
 	}
 	type seenKey struct {
@@ -1123,42 +1120,13 @@ func ConditionText(f element.SequenceFlow) string {
 	}
 }
 
-// validateSequenceFlowConditions rejects FEEL constructs Sparrow does not evaluate
-// (quantifiers / satisfies). Narrow interop sugar lives in processing/expr.
-func validateSequenceFlowConditions(fe *element.FlowElements) error {
-	if fe == nil {
-		return nil
+// IsOpaqueCallActivity reports whether id is a Call Activity without calledElement.
+func (d *Deployment) IsOpaqueCallActivity(id string) bool {
+	if d == nil {
+		return false
 	}
-	for _, f := range fe.SequenceFlows {
-		text := strings.TrimSpace(ConditionText(f))
-		if text == "" {
-			continue
-		}
-		lower := strings.ToLower(text)
-		if strings.Contains(lower, " satisfies ") ||
-			strings.Contains(lower, " some ") ||
-			strings.HasPrefix(lower, "some ") ||
-			strings.Contains(lower, " every ") ||
-			strings.HasPrefix(lower, "every ") {
-			return fmt.Errorf("INVALID_CONDITION: flow %s: FEEL quantifier expressions are not supported", f.ID)
-		}
-	}
-	for i := range fe.SubProcesses {
-		if err := validateSequenceFlowConditions(&fe.SubProcesses[i].FlowElements); err != nil {
-			return err
-		}
-	}
-	for i := range fe.Transactions {
-		if err := validateSequenceFlowConditions(&fe.Transactions[i].FlowElements); err != nil {
-			return err
-		}
-	}
-	for i := range fe.AdHocSubProcesses {
-		if err := validateSequenceFlowConditions(&fe.AdHocSubProcesses[i].FlowElements); err != nil {
-			return err
-		}
-	}
-	return nil
+	spec, ok := d.callActivities[id]
+	return ok && spec.Opaque
 }
 
 // DefaultOutgoing returns the BPMN default sequence flow id for an exclusive
