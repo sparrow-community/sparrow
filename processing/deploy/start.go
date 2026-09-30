@@ -16,6 +16,7 @@ package deploy
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/sparrow-community/sparrow/bpmn/element"
@@ -219,9 +220,29 @@ func (d *Deployment) MessageStartIDs(name string) []string {
 	return append([]string(nil), d.messageStarts[name]...)
 }
 
+// MessageStartNames returns sorted process-level message start names.
+func (d *Deployment) MessageStartNames() []string {
+	out := make([]string, 0, len(d.messageStarts))
+	for name := range d.messageStarts {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
 // SignalStartIDs returns process-level signal start event ids for name.
 func (d *Deployment) SignalStartIDs(name string) []string {
 	return append([]string(nil), d.signalStarts[name]...)
+}
+
+// SignalStartNames returns sorted process-level signal start names.
+func (d *Deployment) SignalStartNames() []string {
+	out := make([]string, 0, len(d.signalStarts))
+	for name := range d.signalStarts {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // TimerStartIDs returns process-level timer start event ids.
