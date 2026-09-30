@@ -38,7 +38,7 @@ New element: handler + registry + deploy validation. Semantics stay out of `engi
 | Transaction | Transaction SubProcess (`##Compensate`); Cancel End → in-scope compensate → interrupting Cancel Boundary; nested/MI rejected at Deploy |
 | AdHocSubProcess | Flat inner activities enabled without sequence flow; `ordering` Parallel (all) / Sequential (one at a time in document order); `completionCondition` finishes the scope, `cancelRemainingInstances` (default true) cancels inner activities still enabled; exhausting all inner activities also completes the scope; non-flat bodies and a missing `completionCondition` rejected at Deploy |
 | CallActivity | Child instance; IO mapping (name copy, transformation, assignment); cross-deployment; boundary & compensation (including into unfinished child); multi-instance; missing `calledElement` → opaque Activity (wait → Complete) |
-| SequenceFlow | `SEQUENCE_FLOW_TAKEN`; conditions on gateway and activity outgoings (+ `default`; FEEL `some`/`every` … `satisfies`); multiple unconditional outs fan out in parallel; endpoints and declared `incoming`/`outgoing` must resolve at Deploy (a flow into an unmodeled element such as `choreographyTask` is rejected, not discovered at runtime) |
+| SequenceFlow | `SEQUENCE_FLOW_TAKEN`; conditions on gateway and activity outgoings (+ `default`; FEEL `some`/`every` … `satisfies`); when an exclusive gateway has neither conditions nor default, prefer a non-back-edge outgoing (else first out); multiple unconditional outs with no default fan out in parallel; endpoints and declared `incoming`/`outgoing` must resolve at Deploy (a flow into an unmodeled element such as `choreographyTask` is rejected, not discovered at runtime) |
 
 Full snapshot + roadmap: [`../AGENTS.md`](../AGENTS.md).
 

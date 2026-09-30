@@ -62,7 +62,7 @@
         <bpmn:targetRef>DataObjectReference_0iennvg</bpmn:targetRef>
       </bpmn:dataOutputAssociation>
     </bpmn:userTask>
-    <bpmn:exclusiveGateway id="Gateway_1i2920t" name="Advertisement approved?" default="Flow_0puyce6">
+    <bpmn:exclusiveGateway id="Gateway_1i2920t" name="Advertisement approved?">
       <bpmn:incoming>Flow_1phkfiv</bpmn:incoming>
       <bpmn:outgoing>Flow_14ytgtt</bpmn:outgoing>
       <bpmn:outgoing>Flow_0puyce6</bpmn:outgoing>

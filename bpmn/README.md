@@ -8,7 +8,7 @@ Go source in this module is Apache License 2.0. See [`LICENSE`](./LICENSE) and t
 
 [`test/`](./test/) holds the BPMN XML and PNG files used by the MIWG load tests and the structural export/round-trip tests in this module.
 
-Those files are unmodified copies of the **bpmn.io (Camunda Modeler) 18.6.1** results in the [BPMN Model Interchange Working Group (BPMN MIWG) test suite](https://github.com/bpmn-miwg/bpmn-miwg-test-suite/tree/master/bpmn.io%20(Camunda%20Modeler)%2018.6.1), plus `C.10.0-reference.*` copied from upstream `Reference/` (Camunda 18.6.1 has no C.10.0 vendor export).
+Those files are unmodified copies of the **bpmn.io (Camunda Modeler) 18.6.1** results in the [BPMN Model Interchange Working Group (BPMN MIWG) test suite](https://github.com/bpmn-miwg/bpmn-miwg-test-suite/tree/master/bpmn.io%20(Camunda%20Modeler)%2018.6.1). The only additive (non-vendor) fixtures are `C.10.0-reference.*` copied from upstream `Reference/` (Camunda 18.6.1 has no C.10.0 vendor export).
 
 **Upstream pin:** [`test/MIWG_UPSTREAM_SHA`](./test/MIWG_UPSTREAM_SHA) — `8416c1118ff98e9161e9e342220460be545ebf7c` (2026-09-25, bpmn-miwg/bpmn-miwg-test-suite `master`).
 

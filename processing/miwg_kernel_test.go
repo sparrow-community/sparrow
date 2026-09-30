@@ -34,9 +34,8 @@ import (
 // TestMIWGKernelFixtures deploys every bpmn/test MIWG fixture and mints an
 // instance, driving waits until completed/terminated.
 //
-// Deploy failures that still contain UNSUPPORTED_ELEMENT or INVALID_CONDITION
-// (true control-flow gaps) are reported as intentional skips. Decorative /
-// modeling stubs must not land here — they Deploy and run (opaque / defaults).
+// Compile / Deploy / mint failures fail the test (no intentional skips).
+// Decorative / modeling stubs must Deploy and run (opaque / defaults).
 // A successful Deploy that does not reach completed/terminated fails the test.
 func TestMIWGKernelFixtures(t *testing.T) {
 	dir := filepath.Join("..", "bpmn", "test")
@@ -65,10 +64,6 @@ func TestMIWGKernelFixtures(t *testing.T) {
 			}
 			compiled, err := deploy.Compile(xml)
 			if err != nil {
-				msg := err.Error()
-				if isIntentionalDeploySkip(msg) {
-					t.Skipf("intentional skip: %s", firstLine(msg))
-				}
 				t.Fatalf("Deploy/Compile: %v", err)
 			}
 
@@ -79,10 +74,6 @@ func TestMIWGKernelFixtures(t *testing.T) {
 
 			depID, err := eng.Deploy(ctx, xml)
 			if err != nil {
-				msg := err.Error()
-				if isIntentionalDeploySkip(msg) {
-					t.Skipf("intentional skip: %s", firstLine(msg))
-				}
 				t.Fatalf("Deploy: %v", err)
 			}
 			dep, ok := eng.GetDeployment(depID)
@@ -92,9 +83,6 @@ func TestMIWGKernelFixtures(t *testing.T) {
 
 			instanceID, err := mintMIWGInstance(ctx, eng, dep, depID)
 			if err != nil {
-				if isIntentionalRunSkip(err.Error()) {
-					t.Skipf("intentional skip: %s", firstLine(err.Error()))
-				}
 				t.Fatalf("mint instance: %v", err)
 			}
 
@@ -108,29 +96,6 @@ func TestMIWGKernelFixtures(t *testing.T) {
 			}
 		})
 	}
-}
-
-func isIntentionalDeploySkip(msg string) bool {
-	return strings.Contains(msg, "UNSUPPORTED_ELEMENT") ||
-		strings.Contains(msg, "INVALID_CONDITION")
-}
-
-func isIntentionalRunSkip(msg string) bool {
-	return strings.Contains(msg, "UNSUPPORTED_ELEMENT") ||
-		strings.Contains(msg, "INVALID_CONDITION") ||
-		strings.Contains(msg, "INVALID_ARGUMENT") ||
-		strings.Contains(msg, "no CreateInstance entry") ||
-		strings.Contains(msg, "typed start")
-}
-
-func firstLine(s string) string {
-	if i := strings.IndexByte(s, '\n'); i >= 0 {
-		s = s[:i]
-	}
-	if len(s) > 240 {
-		return s[:240] + "..."
-	}
-	return s
 }
 
 func mintMIWGInstance(ctx context.Context, eng *processing.Engine, dep *deploy.Deployment, depID string) (string, error) {
@@ -183,7 +148,8 @@ func mintMIWGInstance(ctx context.Context, eng *processing.Engine, dep *deploy.D
 }
 
 // miwgHappyVars seeds common decision variables so exclusive gateways with
-// author conditions can leave on the progressing branch.
+// author conditions can leave on the progressing branch. Unlabeled exclusive
+// splits (C.4 / C.7) rely on kernel non-back-edge preference instead of fixture edits.
 func miwgHappyVars() map[string]any {
 	return map[string]any{
 		"approved":          true,
