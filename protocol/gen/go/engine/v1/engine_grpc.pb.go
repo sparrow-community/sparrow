@@ -19,16 +19,24 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	EngineService_Deploy_FullMethodName          = "/engine.v1.EngineService/Deploy"
-	EngineService_CreateInstance_FullMethodName  = "/engine.v1.EngineService/CreateInstance"
-	EngineService_Complete_FullMethodName        = "/engine.v1.EngineService/Complete"
-	EngineService_PublishMessage_FullMethodName  = "/engine.v1.EngineService/PublishMessage"
-	EngineService_PublishSignal_FullMethodName   = "/engine.v1.EngineService/PublishSignal"
-	EngineService_ThrowError_FullMethodName      = "/engine.v1.EngineService/ThrowError"
-	EngineService_ResolveIncident_FullMethodName = "/engine.v1.EngineService/ResolveIncident"
-	EngineService_GetDeployment_FullMethodName   = "/engine.v1.EngineService/GetDeployment"
-	EngineService_GetInstance_FullMethodName     = "/engine.v1.EngineService/GetInstance"
-	EngineService_ListEvents_FullMethodName      = "/engine.v1.EngineService/ListEvents"
+	EngineService_Deploy_FullMethodName               = "/engine.v1.EngineService/Deploy"
+	EngineService_CreateInstance_FullMethodName       = "/engine.v1.EngineService/CreateInstance"
+	EngineService_Complete_FullMethodName             = "/engine.v1.EngineService/Complete"
+	EngineService_PublishMessage_FullMethodName       = "/engine.v1.EngineService/PublishMessage"
+	EngineService_PublishSignal_FullMethodName        = "/engine.v1.EngineService/PublishSignal"
+	EngineService_ThrowError_FullMethodName           = "/engine.v1.EngineService/ThrowError"
+	EngineService_ResolveIncident_FullMethodName      = "/engine.v1.EngineService/ResolveIncident"
+	EngineService_GetDeployment_FullMethodName        = "/engine.v1.EngineService/GetDeployment"
+	EngineService_GetInstance_FullMethodName          = "/engine.v1.EngineService/GetInstance"
+	EngineService_ListEvents_FullMethodName           = "/engine.v1.EngineService/ListEvents"
+	EngineService_EnableIntervention_FullMethodName   = "/engine.v1.EngineService/EnableIntervention"
+	EngineService_DisableIntervention_FullMethodName  = "/engine.v1.EngineService/DisableIntervention"
+	EngineService_SetBreakpoints_FullMethodName       = "/engine.v1.EngineService/SetBreakpoints"
+	EngineService_Continue_FullMethodName             = "/engine.v1.EngineService/Continue"
+	EngineService_StepInto_FullMethodName             = "/engine.v1.EngineService/StepInto"
+	EngineService_StepOver_FullMethodName             = "/engine.v1.EngineService/StepOver"
+	EngineService_GetInterventionState_FullMethodName = "/engine.v1.EngineService/GetInterventionState"
+	EngineService_SetVariables_FullMethodName         = "/engine.v1.EngineService/SetVariables"
 )
 
 // EngineServiceClient is the client API for EngineService service.
@@ -58,6 +66,22 @@ type EngineServiceClient interface {
 	GetInstance(ctx context.Context, in *GetInstanceRequest, opts ...grpc.CallOption) (*GetInstanceResponse, error)
 	// ListEvents returns the instance audit timeline.
 	ListEvents(ctx context.Context, in *ListEventsRequest, opts ...grpc.CallOption) (*ListEventsResponse, error)
+	// EnableIntervention opts into the ephemeral intervention session for one focus instance.
+	EnableIntervention(ctx context.Context, in *EnableInterventionRequest, opts ...grpc.CallOption) (*EnableInterventionResponse, error)
+	// DisableIntervention clears the session when not barrier-paused.
+	DisableIntervention(ctx context.Context, in *DisableInterventionRequest, opts ...grpc.CallOption) (*DisableInterventionResponse, error)
+	// SetBreakpoints replaces the breakpoint element id set.
+	SetBreakpoints(ctx context.Context, in *SetBreakpointsRequest, opts ...grpc.CallOption) (*SetBreakpointsResponse, error)
+	// Continue resumes pending transit under continuous policy (honors breakpoints).
+	Continue(ctx context.Context, in *ContinueRequest, opts ...grpc.CallOption) (*ContinueResponse, error)
+	// StepInto resumes one pending transit then stops at the next Enter-settled barrier.
+	StepInto(ctx context.Context, in *StepIntoRequest, opts ...grpc.CallOption) (*StepIntoResponse, error)
+	// StepOver resumes pending transit and drains Enter-settled barriers past breakpoints until Wait/end.
+	StepOver(ctx context.Context, in *StepOverRequest, opts ...grpc.CallOption) (*StepOverResponse, error)
+	// GetInterventionState returns the ephemeral session snapshot.
+	GetInterventionState(ctx context.Context, in *GetInterventionStateRequest, opts ...grpc.CallOption) (*GetInterventionStateResponse, error)
+	// SetVariables patches variables while barrier-paused (ledger PROCESS variable EVENT).
+	SetVariables(ctx context.Context, in *SetVariablesRequest, opts ...grpc.CallOption) (*SetVariablesResponse, error)
 }
 
 type engineServiceClient struct {
@@ -168,6 +192,86 @@ func (c *engineServiceClient) ListEvents(ctx context.Context, in *ListEventsRequ
 	return out, nil
 }
 
+func (c *engineServiceClient) EnableIntervention(ctx context.Context, in *EnableInterventionRequest, opts ...grpc.CallOption) (*EnableInterventionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EnableInterventionResponse)
+	err := c.cc.Invoke(ctx, EngineService_EnableIntervention_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *engineServiceClient) DisableIntervention(ctx context.Context, in *DisableInterventionRequest, opts ...grpc.CallOption) (*DisableInterventionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DisableInterventionResponse)
+	err := c.cc.Invoke(ctx, EngineService_DisableIntervention_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *engineServiceClient) SetBreakpoints(ctx context.Context, in *SetBreakpointsRequest, opts ...grpc.CallOption) (*SetBreakpointsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SetBreakpointsResponse)
+	err := c.cc.Invoke(ctx, EngineService_SetBreakpoints_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *engineServiceClient) Continue(ctx context.Context, in *ContinueRequest, opts ...grpc.CallOption) (*ContinueResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ContinueResponse)
+	err := c.cc.Invoke(ctx, EngineService_Continue_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *engineServiceClient) StepInto(ctx context.Context, in *StepIntoRequest, opts ...grpc.CallOption) (*StepIntoResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StepIntoResponse)
+	err := c.cc.Invoke(ctx, EngineService_StepInto_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *engineServiceClient) StepOver(ctx context.Context, in *StepOverRequest, opts ...grpc.CallOption) (*StepOverResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StepOverResponse)
+	err := c.cc.Invoke(ctx, EngineService_StepOver_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *engineServiceClient) GetInterventionState(ctx context.Context, in *GetInterventionStateRequest, opts ...grpc.CallOption) (*GetInterventionStateResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetInterventionStateResponse)
+	err := c.cc.Invoke(ctx, EngineService_GetInterventionState_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *engineServiceClient) SetVariables(ctx context.Context, in *SetVariablesRequest, opts ...grpc.CallOption) (*SetVariablesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SetVariablesResponse)
+	err := c.cc.Invoke(ctx, EngineService_SetVariables_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // EngineServiceServer is the server API for EngineService service.
 // All implementations must embed UnimplementedEngineServiceServer
 // for forward compatibility.
@@ -195,6 +299,22 @@ type EngineServiceServer interface {
 	GetInstance(context.Context, *GetInstanceRequest) (*GetInstanceResponse, error)
 	// ListEvents returns the instance audit timeline.
 	ListEvents(context.Context, *ListEventsRequest) (*ListEventsResponse, error)
+	// EnableIntervention opts into the ephemeral intervention session for one focus instance.
+	EnableIntervention(context.Context, *EnableInterventionRequest) (*EnableInterventionResponse, error)
+	// DisableIntervention clears the session when not barrier-paused.
+	DisableIntervention(context.Context, *DisableInterventionRequest) (*DisableInterventionResponse, error)
+	// SetBreakpoints replaces the breakpoint element id set.
+	SetBreakpoints(context.Context, *SetBreakpointsRequest) (*SetBreakpointsResponse, error)
+	// Continue resumes pending transit under continuous policy (honors breakpoints).
+	Continue(context.Context, *ContinueRequest) (*ContinueResponse, error)
+	// StepInto resumes one pending transit then stops at the next Enter-settled barrier.
+	StepInto(context.Context, *StepIntoRequest) (*StepIntoResponse, error)
+	// StepOver resumes pending transit and drains Enter-settled barriers past breakpoints until Wait/end.
+	StepOver(context.Context, *StepOverRequest) (*StepOverResponse, error)
+	// GetInterventionState returns the ephemeral session snapshot.
+	GetInterventionState(context.Context, *GetInterventionStateRequest) (*GetInterventionStateResponse, error)
+	// SetVariables patches variables while barrier-paused (ledger PROCESS variable EVENT).
+	SetVariables(context.Context, *SetVariablesRequest) (*SetVariablesResponse, error)
 	mustEmbedUnimplementedEngineServiceServer()
 }
 
@@ -234,6 +354,30 @@ func (UnimplementedEngineServiceServer) GetInstance(context.Context, *GetInstanc
 }
 func (UnimplementedEngineServiceServer) ListEvents(context.Context, *ListEventsRequest) (*ListEventsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListEvents not implemented")
+}
+func (UnimplementedEngineServiceServer) EnableIntervention(context.Context, *EnableInterventionRequest) (*EnableInterventionResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method EnableIntervention not implemented")
+}
+func (UnimplementedEngineServiceServer) DisableIntervention(context.Context, *DisableInterventionRequest) (*DisableInterventionResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DisableIntervention not implemented")
+}
+func (UnimplementedEngineServiceServer) SetBreakpoints(context.Context, *SetBreakpointsRequest) (*SetBreakpointsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetBreakpoints not implemented")
+}
+func (UnimplementedEngineServiceServer) Continue(context.Context, *ContinueRequest) (*ContinueResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Continue not implemented")
+}
+func (UnimplementedEngineServiceServer) StepInto(context.Context, *StepIntoRequest) (*StepIntoResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method StepInto not implemented")
+}
+func (UnimplementedEngineServiceServer) StepOver(context.Context, *StepOverRequest) (*StepOverResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method StepOver not implemented")
+}
+func (UnimplementedEngineServiceServer) GetInterventionState(context.Context, *GetInterventionStateRequest) (*GetInterventionStateResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetInterventionState not implemented")
+}
+func (UnimplementedEngineServiceServer) SetVariables(context.Context, *SetVariablesRequest) (*SetVariablesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetVariables not implemented")
 }
 func (UnimplementedEngineServiceServer) mustEmbedUnimplementedEngineServiceServer() {}
 func (UnimplementedEngineServiceServer) testEmbeddedByValue()                       {}
@@ -436,6 +580,150 @@ func _EngineService_ListEvents_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _EngineService_EnableIntervention_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EnableInterventionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EngineServiceServer).EnableIntervention(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EngineService_EnableIntervention_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EngineServiceServer).EnableIntervention(ctx, req.(*EnableInterventionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _EngineService_DisableIntervention_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DisableInterventionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EngineServiceServer).DisableIntervention(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EngineService_DisableIntervention_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EngineServiceServer).DisableIntervention(ctx, req.(*DisableInterventionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _EngineService_SetBreakpoints_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetBreakpointsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EngineServiceServer).SetBreakpoints(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EngineService_SetBreakpoints_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EngineServiceServer).SetBreakpoints(ctx, req.(*SetBreakpointsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _EngineService_Continue_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ContinueRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EngineServiceServer).Continue(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EngineService_Continue_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EngineServiceServer).Continue(ctx, req.(*ContinueRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _EngineService_StepInto_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StepIntoRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EngineServiceServer).StepInto(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EngineService_StepInto_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EngineServiceServer).StepInto(ctx, req.(*StepIntoRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _EngineService_StepOver_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StepOverRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EngineServiceServer).StepOver(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EngineService_StepOver_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EngineServiceServer).StepOver(ctx, req.(*StepOverRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _EngineService_GetInterventionState_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetInterventionStateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EngineServiceServer).GetInterventionState(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EngineService_GetInterventionState_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EngineServiceServer).GetInterventionState(ctx, req.(*GetInterventionStateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _EngineService_SetVariables_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetVariablesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EngineServiceServer).SetVariables(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EngineService_SetVariables_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EngineServiceServer).SetVariables(ctx, req.(*SetVariablesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // EngineService_ServiceDesc is the grpc.ServiceDesc for EngineService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -482,6 +770,38 @@ var EngineService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListEvents",
 			Handler:    _EngineService_ListEvents_Handler,
+		},
+		{
+			MethodName: "EnableIntervention",
+			Handler:    _EngineService_EnableIntervention_Handler,
+		},
+		{
+			MethodName: "DisableIntervention",
+			Handler:    _EngineService_DisableIntervention_Handler,
+		},
+		{
+			MethodName: "SetBreakpoints",
+			Handler:    _EngineService_SetBreakpoints_Handler,
+		},
+		{
+			MethodName: "Continue",
+			Handler:    _EngineService_Continue_Handler,
+		},
+		{
+			MethodName: "StepInto",
+			Handler:    _EngineService_StepInto_Handler,
+		},
+		{
+			MethodName: "StepOver",
+			Handler:    _EngineService_StepOver_Handler,
+		},
+		{
+			MethodName: "GetInterventionState",
+			Handler:    _EngineService_GetInterventionState_Handler,
+		},
+		{
+			MethodName: "SetVariables",
+			Handler:    _EngineService_SetVariables_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

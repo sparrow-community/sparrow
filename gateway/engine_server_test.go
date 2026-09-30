@@ -541,6 +541,94 @@ func TestEngineServiceResolveIncident(t *testing.T) {
 	_ = eng
 }
 
+func TestEngineServiceInterventionStepContinue(t *testing.T) {
+	_, conn, stop := startGRPC(t)
+	defer stop()
+	ctx := context.Background()
+	client := enginev1.NewEngineServiceClient(conn)
+
+	xml, err := os.ReadFile(filepath.Join("..", "processing", "testdata", "m1_simple.bpmn"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dep, err := client.Deploy(ctx, &enginev1.DeployRequest{BpmnXml: xml})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := client.CreateInstance(ctx, &enginev1.CreateInstanceRequest{DeploymentId: dep.GetDeploymentId()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := created.GetProcessInstanceId()
+	if _, err := client.EnableIntervention(ctx, &enginev1.EnableInterventionRequest{
+		ProcessInstanceId: id,
+		Policy:            "step",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := client.GetInstance(ctx, &enginev1.GetInstanceRequest{ProcessInstanceId: id})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var elementID, tokenID string
+	for _, tok := range got.GetInstance().GetTokens() {
+		if tok.GetStatus() == string(projection.TokenWaiting) {
+			elementID, tokenID = tok.GetElementId(), tok.GetId()
+			break
+		}
+	}
+	if elementID == "" {
+		t.Fatal("no waiting token")
+	}
+	if _, err := client.Complete(ctx, &enginev1.CompleteRequest{
+		ProcessInstanceId: id,
+		ElementId:         elementID,
+		TokenId:           tokenID,
+		Variables:         map[string]string{"approved": "true"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	st, err := client.GetInterventionState(ctx, &enginev1.GetInterventionStateRequest{ProcessInstanceId: id})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !st.GetState().GetPaused() {
+		t.Fatalf("want paused after step Complete, got %#v", st.GetState())
+	}
+	for i := 0; i < 8 && st.GetState().GetPauseElementId() != "Gateway_1"; i++ {
+		if _, err := client.StepInto(ctx, &enginev1.StepIntoRequest{ProcessInstanceId: id}); err != nil {
+			t.Fatal(err)
+		}
+		st, err = client.GetInterventionState(ctx, &enginev1.GetInterventionStateRequest{ProcessInstanceId: id})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if st.GetState().GetPauseElementId() != "Gateway_1" {
+		t.Fatalf("want Gateway_1, got %#v", st.GetState())
+	}
+	if _, err := client.SetVariables(ctx, &enginev1.SetVariablesRequest{
+		ProcessInstanceId: id,
+		Variables:         map[string]string{"approved": "false"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cont, err := client.Continue(ctx, &enginev1.ContinueRequest{ProcessInstanceId: id})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cont.GetPaused() {
+		t.Fatalf("want unpaused after Continue, %#v", cont.GetState())
+	}
+	got, err = client.GetInstance(ctx, &enginev1.GetInstanceRequest{ProcessInstanceId: id})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.GetInstance().GetStatus() != string(projection.StatusCompleted) {
+		t.Fatalf("status=%s", got.GetInstance().GetStatus())
+	}
+}
+
 func startGRPC(t *testing.T) (*processing.Engine, *grpc.ClientConn, func()) {
 	t.Helper()
 	eng := processing.NewEngine(eventlog.NewMemory())

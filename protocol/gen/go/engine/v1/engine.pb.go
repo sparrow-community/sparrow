@@ -1383,6 +1383,1013 @@ func (x *ListEventsResponse) GetEvents() []*v1.Event {
 	return nil
 }
 
+// PendingTransition is resume work held at an Enter-settled barrier.
+type PendingTransition struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// leave | fork | enterChild | link | decide
+	Kind            string   `protobuf:"bytes,1,opt,name=kind,proto3" json:"kind,omitempty"`
+	FromElementId   string   `protobuf:"bytes,2,opt,name=from_element_id,json=fromElementId,proto3" json:"from_element_id,omitempty"`
+	TokenId         string   `protobuf:"bytes,3,opt,name=token_id,json=tokenId,proto3" json:"token_id,omitempty"`
+	TakenFlowIds    []string `protobuf:"bytes,4,rep,name=taken_flow_ids,json=takenFlowIds,proto3" json:"taken_flow_ids,omitempty"`
+	NextElementIds  []string `protobuf:"bytes,5,rep,name=next_element_ids,json=nextElementIds,proto3" json:"next_element_ids,omitempty"`
+	OutgoingFlowId  string   `protobuf:"bytes,6,opt,name=outgoing_flow_id,json=outgoingFlowId,proto3" json:"outgoing_flow_id,omitempty"`
+	EnterChildId    string   `protobuf:"bytes,7,opt,name=enter_child_id,json=enterChildId,proto3" json:"enter_child_id,omitempty"`
+	SpawnChildToken bool     `protobuf:"varint,8,opt,name=spawn_child_token,json=spawnChildToken,proto3" json:"spawn_child_token,omitempty"`
+	LinkCatchIds    []string `protobuf:"bytes,9,rep,name=link_catch_ids,json=linkCatchIds,proto3" json:"link_catch_ids,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *PendingTransition) Reset() {
+	*x = PendingTransition{}
+	mi := &file_engine_v1_engine_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PendingTransition) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PendingTransition) ProtoMessage() {}
+
+func (x *PendingTransition) ProtoReflect() protoreflect.Message {
+	mi := &file_engine_v1_engine_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PendingTransition.ProtoReflect.Descriptor instead.
+func (*PendingTransition) Descriptor() ([]byte, []int) {
+	return file_engine_v1_engine_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *PendingTransition) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *PendingTransition) GetFromElementId() string {
+	if x != nil {
+		return x.FromElementId
+	}
+	return ""
+}
+
+func (x *PendingTransition) GetTokenId() string {
+	if x != nil {
+		return x.TokenId
+	}
+	return ""
+}
+
+func (x *PendingTransition) GetTakenFlowIds() []string {
+	if x != nil {
+		return x.TakenFlowIds
+	}
+	return nil
+}
+
+func (x *PendingTransition) GetNextElementIds() []string {
+	if x != nil {
+		return x.NextElementIds
+	}
+	return nil
+}
+
+func (x *PendingTransition) GetOutgoingFlowId() string {
+	if x != nil {
+		return x.OutgoingFlowId
+	}
+	return ""
+}
+
+func (x *PendingTransition) GetEnterChildId() string {
+	if x != nil {
+		return x.EnterChildId
+	}
+	return ""
+}
+
+func (x *PendingTransition) GetSpawnChildToken() bool {
+	if x != nil {
+		return x.SpawnChildToken
+	}
+	return false
+}
+
+func (x *PendingTransition) GetLinkCatchIds() []string {
+	if x != nil {
+		return x.LinkCatchIds
+	}
+	return nil
+}
+
+// InterventionState is the read model for GetInterventionState.
+type InterventionState struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Enabled         bool                   `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	FocusInstanceId string                 `protobuf:"bytes,2,opt,name=focus_instance_id,json=focusInstanceId,proto3" json:"focus_instance_id,omitempty"`
+	// continuous | step | breakpoints | stepOver
+	Policy      string   `protobuf:"bytes,3,opt,name=policy,proto3" json:"policy,omitempty"`
+	Breakpoints []string `protobuf:"bytes,4,rep,name=breakpoints,proto3" json:"breakpoints,omitempty"`
+	Paused      bool     `protobuf:"varint,5,opt,name=paused,proto3" json:"paused,omitempty"`
+	// step | breakpoint | manual
+	PauseReason    string             `protobuf:"bytes,6,opt,name=pause_reason,json=pauseReason,proto3" json:"pause_reason,omitempty"`
+	PauseElementId string             `protobuf:"bytes,7,opt,name=pause_element_id,json=pauseElementId,proto3" json:"pause_element_id,omitempty"`
+	PauseTokenId   string             `protobuf:"bytes,8,opt,name=pause_token_id,json=pauseTokenId,proto3" json:"pause_token_id,omitempty"`
+	Pending        *PendingTransition `protobuf:"bytes,9,opt,name=pending,proto3" json:"pending,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *InterventionState) Reset() {
+	*x = InterventionState{}
+	mi := &file_engine_v1_engine_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InterventionState) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InterventionState) ProtoMessage() {}
+
+func (x *InterventionState) ProtoReflect() protoreflect.Message {
+	mi := &file_engine_v1_engine_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InterventionState.ProtoReflect.Descriptor instead.
+func (*InterventionState) Descriptor() ([]byte, []int) {
+	return file_engine_v1_engine_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *InterventionState) GetEnabled() bool {
+	if x != nil {
+		return x.Enabled
+	}
+	return false
+}
+
+func (x *InterventionState) GetFocusInstanceId() string {
+	if x != nil {
+		return x.FocusInstanceId
+	}
+	return ""
+}
+
+func (x *InterventionState) GetPolicy() string {
+	if x != nil {
+		return x.Policy
+	}
+	return ""
+}
+
+func (x *InterventionState) GetBreakpoints() []string {
+	if x != nil {
+		return x.Breakpoints
+	}
+	return nil
+}
+
+func (x *InterventionState) GetPaused() bool {
+	if x != nil {
+		return x.Paused
+	}
+	return false
+}
+
+func (x *InterventionState) GetPauseReason() string {
+	if x != nil {
+		return x.PauseReason
+	}
+	return ""
+}
+
+func (x *InterventionState) GetPauseElementId() string {
+	if x != nil {
+		return x.PauseElementId
+	}
+	return ""
+}
+
+func (x *InterventionState) GetPauseTokenId() string {
+	if x != nil {
+		return x.PauseTokenId
+	}
+	return ""
+}
+
+func (x *InterventionState) GetPending() *PendingTransition {
+	if x != nil {
+		return x.Pending
+	}
+	return nil
+}
+
+type EnableInterventionRequest struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	ProcessInstanceId string                 `protobuf:"bytes,1,opt,name=process_instance_id,json=processInstanceId,proto3" json:"process_instance_id,omitempty"`
+	// continuous | step | breakpoints; empty defaults to continuous
+	Policy        string `protobuf:"bytes,2,opt,name=policy,proto3" json:"policy,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EnableInterventionRequest) Reset() {
+	*x = EnableInterventionRequest{}
+	mi := &file_engine_v1_engine_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EnableInterventionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EnableInterventionRequest) ProtoMessage() {}
+
+func (x *EnableInterventionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_engine_v1_engine_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EnableInterventionRequest.ProtoReflect.Descriptor instead.
+func (*EnableInterventionRequest) Descriptor() ([]byte, []int) {
+	return file_engine_v1_engine_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *EnableInterventionRequest) GetProcessInstanceId() string {
+	if x != nil {
+		return x.ProcessInstanceId
+	}
+	return ""
+}
+
+func (x *EnableInterventionRequest) GetPolicy() string {
+	if x != nil {
+		return x.Policy
+	}
+	return ""
+}
+
+type EnableInterventionResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ok            bool                   `protobuf:"varint,1,opt,name=ok,proto3" json:"ok,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EnableInterventionResponse) Reset() {
+	*x = EnableInterventionResponse{}
+	mi := &file_engine_v1_engine_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EnableInterventionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EnableInterventionResponse) ProtoMessage() {}
+
+func (x *EnableInterventionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_engine_v1_engine_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EnableInterventionResponse.ProtoReflect.Descriptor instead.
+func (*EnableInterventionResponse) Descriptor() ([]byte, []int) {
+	return file_engine_v1_engine_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *EnableInterventionResponse) GetOk() bool {
+	if x != nil {
+		return x.Ok
+	}
+	return false
+}
+
+type DisableInterventionRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DisableInterventionRequest) Reset() {
+	*x = DisableInterventionRequest{}
+	mi := &file_engine_v1_engine_proto_msgTypes[26]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DisableInterventionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DisableInterventionRequest) ProtoMessage() {}
+
+func (x *DisableInterventionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_engine_v1_engine_proto_msgTypes[26]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DisableInterventionRequest.ProtoReflect.Descriptor instead.
+func (*DisableInterventionRequest) Descriptor() ([]byte, []int) {
+	return file_engine_v1_engine_proto_rawDescGZIP(), []int{26}
+}
+
+type DisableInterventionResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ok            bool                   `protobuf:"varint,1,opt,name=ok,proto3" json:"ok,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DisableInterventionResponse) Reset() {
+	*x = DisableInterventionResponse{}
+	mi := &file_engine_v1_engine_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DisableInterventionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DisableInterventionResponse) ProtoMessage() {}
+
+func (x *DisableInterventionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_engine_v1_engine_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DisableInterventionResponse.ProtoReflect.Descriptor instead.
+func (*DisableInterventionResponse) Descriptor() ([]byte, []int) {
+	return file_engine_v1_engine_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *DisableInterventionResponse) GetOk() bool {
+	if x != nil {
+		return x.Ok
+	}
+	return false
+}
+
+type SetBreakpointsRequest struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	ProcessInstanceId string                 `protobuf:"bytes,1,opt,name=process_instance_id,json=processInstanceId,proto3" json:"process_instance_id,omitempty"`
+	ElementIds        []string               `protobuf:"bytes,2,rep,name=element_ids,json=elementIds,proto3" json:"element_ids,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *SetBreakpointsRequest) Reset() {
+	*x = SetBreakpointsRequest{}
+	mi := &file_engine_v1_engine_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetBreakpointsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetBreakpointsRequest) ProtoMessage() {}
+
+func (x *SetBreakpointsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_engine_v1_engine_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetBreakpointsRequest.ProtoReflect.Descriptor instead.
+func (*SetBreakpointsRequest) Descriptor() ([]byte, []int) {
+	return file_engine_v1_engine_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *SetBreakpointsRequest) GetProcessInstanceId() string {
+	if x != nil {
+		return x.ProcessInstanceId
+	}
+	return ""
+}
+
+func (x *SetBreakpointsRequest) GetElementIds() []string {
+	if x != nil {
+		return x.ElementIds
+	}
+	return nil
+}
+
+type SetBreakpointsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ok            bool                   `protobuf:"varint,1,opt,name=ok,proto3" json:"ok,omitempty"`
+	ElementIds    []string               `protobuf:"bytes,2,rep,name=element_ids,json=elementIds,proto3" json:"element_ids,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetBreakpointsResponse) Reset() {
+	*x = SetBreakpointsResponse{}
+	mi := &file_engine_v1_engine_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetBreakpointsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetBreakpointsResponse) ProtoMessage() {}
+
+func (x *SetBreakpointsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_engine_v1_engine_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetBreakpointsResponse.ProtoReflect.Descriptor instead.
+func (*SetBreakpointsResponse) Descriptor() ([]byte, []int) {
+	return file_engine_v1_engine_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *SetBreakpointsResponse) GetOk() bool {
+	if x != nil {
+		return x.Ok
+	}
+	return false
+}
+
+func (x *SetBreakpointsResponse) GetElementIds() []string {
+	if x != nil {
+		return x.ElementIds
+	}
+	return nil
+}
+
+type ContinueRequest struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	ProcessInstanceId string                 `protobuf:"bytes,1,opt,name=process_instance_id,json=processInstanceId,proto3" json:"process_instance_id,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *ContinueRequest) Reset() {
+	*x = ContinueRequest{}
+	mi := &file_engine_v1_engine_proto_msgTypes[30]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ContinueRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ContinueRequest) ProtoMessage() {}
+
+func (x *ContinueRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_engine_v1_engine_proto_msgTypes[30]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ContinueRequest.ProtoReflect.Descriptor instead.
+func (*ContinueRequest) Descriptor() ([]byte, []int) {
+	return file_engine_v1_engine_proto_rawDescGZIP(), []int{30}
+}
+
+func (x *ContinueRequest) GetProcessInstanceId() string {
+	if x != nil {
+		return x.ProcessInstanceId
+	}
+	return ""
+}
+
+type ContinueResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ok            bool                   `protobuf:"varint,1,opt,name=ok,proto3" json:"ok,omitempty"`
+	Paused        bool                   `protobuf:"varint,2,opt,name=paused,proto3" json:"paused,omitempty"`
+	State         *InterventionState     `protobuf:"bytes,3,opt,name=state,proto3" json:"state,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ContinueResponse) Reset() {
+	*x = ContinueResponse{}
+	mi := &file_engine_v1_engine_proto_msgTypes[31]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ContinueResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ContinueResponse) ProtoMessage() {}
+
+func (x *ContinueResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_engine_v1_engine_proto_msgTypes[31]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ContinueResponse.ProtoReflect.Descriptor instead.
+func (*ContinueResponse) Descriptor() ([]byte, []int) {
+	return file_engine_v1_engine_proto_rawDescGZIP(), []int{31}
+}
+
+func (x *ContinueResponse) GetOk() bool {
+	if x != nil {
+		return x.Ok
+	}
+	return false
+}
+
+func (x *ContinueResponse) GetPaused() bool {
+	if x != nil {
+		return x.Paused
+	}
+	return false
+}
+
+func (x *ContinueResponse) GetState() *InterventionState {
+	if x != nil {
+		return x.State
+	}
+	return nil
+}
+
+type StepIntoRequest struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	ProcessInstanceId string                 `protobuf:"bytes,1,opt,name=process_instance_id,json=processInstanceId,proto3" json:"process_instance_id,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *StepIntoRequest) Reset() {
+	*x = StepIntoRequest{}
+	mi := &file_engine_v1_engine_proto_msgTypes[32]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StepIntoRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StepIntoRequest) ProtoMessage() {}
+
+func (x *StepIntoRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_engine_v1_engine_proto_msgTypes[32]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StepIntoRequest.ProtoReflect.Descriptor instead.
+func (*StepIntoRequest) Descriptor() ([]byte, []int) {
+	return file_engine_v1_engine_proto_rawDescGZIP(), []int{32}
+}
+
+func (x *StepIntoRequest) GetProcessInstanceId() string {
+	if x != nil {
+		return x.ProcessInstanceId
+	}
+	return ""
+}
+
+type StepIntoResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ok            bool                   `protobuf:"varint,1,opt,name=ok,proto3" json:"ok,omitempty"`
+	Paused        bool                   `protobuf:"varint,2,opt,name=paused,proto3" json:"paused,omitempty"`
+	State         *InterventionState     `protobuf:"bytes,3,opt,name=state,proto3" json:"state,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StepIntoResponse) Reset() {
+	*x = StepIntoResponse{}
+	mi := &file_engine_v1_engine_proto_msgTypes[33]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StepIntoResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StepIntoResponse) ProtoMessage() {}
+
+func (x *StepIntoResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_engine_v1_engine_proto_msgTypes[33]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StepIntoResponse.ProtoReflect.Descriptor instead.
+func (*StepIntoResponse) Descriptor() ([]byte, []int) {
+	return file_engine_v1_engine_proto_rawDescGZIP(), []int{33}
+}
+
+func (x *StepIntoResponse) GetOk() bool {
+	if x != nil {
+		return x.Ok
+	}
+	return false
+}
+
+func (x *StepIntoResponse) GetPaused() bool {
+	if x != nil {
+		return x.Paused
+	}
+	return false
+}
+
+func (x *StepIntoResponse) GetState() *InterventionState {
+	if x != nil {
+		return x.State
+	}
+	return nil
+}
+
+type StepOverRequest struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	ProcessInstanceId string                 `protobuf:"bytes,1,opt,name=process_instance_id,json=processInstanceId,proto3" json:"process_instance_id,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *StepOverRequest) Reset() {
+	*x = StepOverRequest{}
+	mi := &file_engine_v1_engine_proto_msgTypes[34]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StepOverRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StepOverRequest) ProtoMessage() {}
+
+func (x *StepOverRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_engine_v1_engine_proto_msgTypes[34]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StepOverRequest.ProtoReflect.Descriptor instead.
+func (*StepOverRequest) Descriptor() ([]byte, []int) {
+	return file_engine_v1_engine_proto_rawDescGZIP(), []int{34}
+}
+
+func (x *StepOverRequest) GetProcessInstanceId() string {
+	if x != nil {
+		return x.ProcessInstanceId
+	}
+	return ""
+}
+
+type StepOverResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ok            bool                   `protobuf:"varint,1,opt,name=ok,proto3" json:"ok,omitempty"`
+	Paused        bool                   `protobuf:"varint,2,opt,name=paused,proto3" json:"paused,omitempty"`
+	State         *InterventionState     `protobuf:"bytes,3,opt,name=state,proto3" json:"state,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StepOverResponse) Reset() {
+	*x = StepOverResponse{}
+	mi := &file_engine_v1_engine_proto_msgTypes[35]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StepOverResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StepOverResponse) ProtoMessage() {}
+
+func (x *StepOverResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_engine_v1_engine_proto_msgTypes[35]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StepOverResponse.ProtoReflect.Descriptor instead.
+func (*StepOverResponse) Descriptor() ([]byte, []int) {
+	return file_engine_v1_engine_proto_rawDescGZIP(), []int{35}
+}
+
+func (x *StepOverResponse) GetOk() bool {
+	if x != nil {
+		return x.Ok
+	}
+	return false
+}
+
+func (x *StepOverResponse) GetPaused() bool {
+	if x != nil {
+		return x.Paused
+	}
+	return false
+}
+
+func (x *StepOverResponse) GetState() *InterventionState {
+	if x != nil {
+		return x.State
+	}
+	return nil
+}
+
+type GetInterventionStateRequest struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	ProcessInstanceId string                 `protobuf:"bytes,1,opt,name=process_instance_id,json=processInstanceId,proto3" json:"process_instance_id,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *GetInterventionStateRequest) Reset() {
+	*x = GetInterventionStateRequest{}
+	mi := &file_engine_v1_engine_proto_msgTypes[36]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetInterventionStateRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetInterventionStateRequest) ProtoMessage() {}
+
+func (x *GetInterventionStateRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_engine_v1_engine_proto_msgTypes[36]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetInterventionStateRequest.ProtoReflect.Descriptor instead.
+func (*GetInterventionStateRequest) Descriptor() ([]byte, []int) {
+	return file_engine_v1_engine_proto_rawDescGZIP(), []int{36}
+}
+
+func (x *GetInterventionStateRequest) GetProcessInstanceId() string {
+	if x != nil {
+		return x.ProcessInstanceId
+	}
+	return ""
+}
+
+type GetInterventionStateResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	State         *InterventionState     `protobuf:"bytes,1,opt,name=state,proto3" json:"state,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetInterventionStateResponse) Reset() {
+	*x = GetInterventionStateResponse{}
+	mi := &file_engine_v1_engine_proto_msgTypes[37]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetInterventionStateResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetInterventionStateResponse) ProtoMessage() {}
+
+func (x *GetInterventionStateResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_engine_v1_engine_proto_msgTypes[37]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetInterventionStateResponse.ProtoReflect.Descriptor instead.
+func (*GetInterventionStateResponse) Descriptor() ([]byte, []int) {
+	return file_engine_v1_engine_proto_rawDescGZIP(), []int{37}
+}
+
+func (x *GetInterventionStateResponse) GetState() *InterventionState {
+	if x != nil {
+		return x.State
+	}
+	return nil
+}
+
+type SetVariablesRequest struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	ProcessInstanceId string                 `protobuf:"bytes,1,opt,name=process_instance_id,json=processInstanceId,proto3" json:"process_instance_id,omitempty"`
+	// Variable deltas: name -> JSON text.
+	Variables     map[string]string `protobuf:"bytes,2,rep,name=variables,proto3" json:"variables,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetVariablesRequest) Reset() {
+	*x = SetVariablesRequest{}
+	mi := &file_engine_v1_engine_proto_msgTypes[38]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetVariablesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetVariablesRequest) ProtoMessage() {}
+
+func (x *SetVariablesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_engine_v1_engine_proto_msgTypes[38]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetVariablesRequest.ProtoReflect.Descriptor instead.
+func (*SetVariablesRequest) Descriptor() ([]byte, []int) {
+	return file_engine_v1_engine_proto_rawDescGZIP(), []int{38}
+}
+
+func (x *SetVariablesRequest) GetProcessInstanceId() string {
+	if x != nil {
+		return x.ProcessInstanceId
+	}
+	return ""
+}
+
+func (x *SetVariablesRequest) GetVariables() map[string]string {
+	if x != nil {
+		return x.Variables
+	}
+	return nil
+}
+
+type SetVariablesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ok            bool                   `protobuf:"varint,1,opt,name=ok,proto3" json:"ok,omitempty"`
+	State         *InterventionState     `protobuf:"bytes,2,opt,name=state,proto3" json:"state,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetVariablesResponse) Reset() {
+	*x = SetVariablesResponse{}
+	mi := &file_engine_v1_engine_proto_msgTypes[39]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetVariablesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetVariablesResponse) ProtoMessage() {}
+
+func (x *SetVariablesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_engine_v1_engine_proto_msgTypes[39]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetVariablesResponse.ProtoReflect.Descriptor instead.
+func (*SetVariablesResponse) Descriptor() ([]byte, []int) {
+	return file_engine_v1_engine_proto_rawDescGZIP(), []int{39}
+}
+
+func (x *SetVariablesResponse) GetOk() bool {
+	if x != nil {
+		return x.Ok
+	}
+	return false
+}
+
+func (x *SetVariablesResponse) GetState() *InterventionState {
+	if x != nil {
+		return x.State
+	}
+	return nil
+}
+
 var File_engine_v1_engine_proto protoreflect.FileDescriptor
 
 const file_engine_v1_engine_proto_rawDesc = "" +
@@ -1499,7 +2506,74 @@ const file_engine_v1_engine_proto_rawDesc = "" +
 	"\x11ListEventsRequest\x12.\n" +
 	"\x13process_instance_id\x18\x01 \x01(\tR\x11processInstanceId\"=\n" +
 	"\x12ListEventsResponse\x12'\n" +
-	"\x06events\x18\x01 \x03(\v2\x0f.event.v1.EventR\x06events2\xa7\x06\n" +
+	"\x06events\x18\x01 \x03(\v2\x0f.event.v1.EventR\x06events\"\xdc\x02\n" +
+	"\x11PendingTransition\x12\x12\n" +
+	"\x04kind\x18\x01 \x01(\tR\x04kind\x12&\n" +
+	"\x0ffrom_element_id\x18\x02 \x01(\tR\rfromElementId\x12\x19\n" +
+	"\btoken_id\x18\x03 \x01(\tR\atokenId\x12$\n" +
+	"\x0etaken_flow_ids\x18\x04 \x03(\tR\ftakenFlowIds\x12(\n" +
+	"\x10next_element_ids\x18\x05 \x03(\tR\x0enextElementIds\x12(\n" +
+	"\x10outgoing_flow_id\x18\x06 \x01(\tR\x0eoutgoingFlowId\x12$\n" +
+	"\x0eenter_child_id\x18\a \x01(\tR\fenterChildId\x12*\n" +
+	"\x11spawn_child_token\x18\b \x01(\bR\x0fspawnChildToken\x12$\n" +
+	"\x0elink_catch_ids\x18\t \x03(\tR\flinkCatchIds\"\xd6\x02\n" +
+	"\x11InterventionState\x12\x18\n" +
+	"\aenabled\x18\x01 \x01(\bR\aenabled\x12*\n" +
+	"\x11focus_instance_id\x18\x02 \x01(\tR\x0ffocusInstanceId\x12\x16\n" +
+	"\x06policy\x18\x03 \x01(\tR\x06policy\x12 \n" +
+	"\vbreakpoints\x18\x04 \x03(\tR\vbreakpoints\x12\x16\n" +
+	"\x06paused\x18\x05 \x01(\bR\x06paused\x12!\n" +
+	"\fpause_reason\x18\x06 \x01(\tR\vpauseReason\x12(\n" +
+	"\x10pause_element_id\x18\a \x01(\tR\x0epauseElementId\x12$\n" +
+	"\x0epause_token_id\x18\b \x01(\tR\fpauseTokenId\x126\n" +
+	"\apending\x18\t \x01(\v2\x1c.engine.v1.PendingTransitionR\apending\"c\n" +
+	"\x19EnableInterventionRequest\x12.\n" +
+	"\x13process_instance_id\x18\x01 \x01(\tR\x11processInstanceId\x12\x16\n" +
+	"\x06policy\x18\x02 \x01(\tR\x06policy\",\n" +
+	"\x1aEnableInterventionResponse\x12\x0e\n" +
+	"\x02ok\x18\x01 \x01(\bR\x02ok\"\x1c\n" +
+	"\x1aDisableInterventionRequest\"-\n" +
+	"\x1bDisableInterventionResponse\x12\x0e\n" +
+	"\x02ok\x18\x01 \x01(\bR\x02ok\"h\n" +
+	"\x15SetBreakpointsRequest\x12.\n" +
+	"\x13process_instance_id\x18\x01 \x01(\tR\x11processInstanceId\x12\x1f\n" +
+	"\velement_ids\x18\x02 \x03(\tR\n" +
+	"elementIds\"I\n" +
+	"\x16SetBreakpointsResponse\x12\x0e\n" +
+	"\x02ok\x18\x01 \x01(\bR\x02ok\x12\x1f\n" +
+	"\velement_ids\x18\x02 \x03(\tR\n" +
+	"elementIds\"A\n" +
+	"\x0fContinueRequest\x12.\n" +
+	"\x13process_instance_id\x18\x01 \x01(\tR\x11processInstanceId\"n\n" +
+	"\x10ContinueResponse\x12\x0e\n" +
+	"\x02ok\x18\x01 \x01(\bR\x02ok\x12\x16\n" +
+	"\x06paused\x18\x02 \x01(\bR\x06paused\x122\n" +
+	"\x05state\x18\x03 \x01(\v2\x1c.engine.v1.InterventionStateR\x05state\"A\n" +
+	"\x0fStepIntoRequest\x12.\n" +
+	"\x13process_instance_id\x18\x01 \x01(\tR\x11processInstanceId\"n\n" +
+	"\x10StepIntoResponse\x12\x0e\n" +
+	"\x02ok\x18\x01 \x01(\bR\x02ok\x12\x16\n" +
+	"\x06paused\x18\x02 \x01(\bR\x06paused\x122\n" +
+	"\x05state\x18\x03 \x01(\v2\x1c.engine.v1.InterventionStateR\x05state\"A\n" +
+	"\x0fStepOverRequest\x12.\n" +
+	"\x13process_instance_id\x18\x01 \x01(\tR\x11processInstanceId\"n\n" +
+	"\x10StepOverResponse\x12\x0e\n" +
+	"\x02ok\x18\x01 \x01(\bR\x02ok\x12\x16\n" +
+	"\x06paused\x18\x02 \x01(\bR\x06paused\x122\n" +
+	"\x05state\x18\x03 \x01(\v2\x1c.engine.v1.InterventionStateR\x05state\"M\n" +
+	"\x1bGetInterventionStateRequest\x12.\n" +
+	"\x13process_instance_id\x18\x01 \x01(\tR\x11processInstanceId\"R\n" +
+	"\x1cGetInterventionStateResponse\x122\n" +
+	"\x05state\x18\x01 \x01(\v2\x1c.engine.v1.InterventionStateR\x05state\"\xd0\x01\n" +
+	"\x13SetVariablesRequest\x12.\n" +
+	"\x13process_instance_id\x18\x01 \x01(\tR\x11processInstanceId\x12K\n" +
+	"\tvariables\x18\x02 \x03(\v2-.engine.v1.SetVariablesRequest.VariablesEntryR\tvariables\x1a<\n" +
+	"\x0eVariablesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"Z\n" +
+	"\x14SetVariablesResponse\x12\x0e\n" +
+	"\x02ok\x18\x01 \x01(\bR\x02ok\x122\n" +
+	"\x05state\x18\x02 \x01(\v2\x1c.engine.v1.InterventionStateR\x05state2\xd0\v\n" +
 	"\rEngineService\x12=\n" +
 	"\x06Deploy\x12\x18.engine.v1.DeployRequest\x1a\x19.engine.v1.DeployResponse\x12U\n" +
 	"\x0eCreateInstance\x12 .engine.v1.CreateInstanceRequest\x1a!.engine.v1.CreateInstanceResponse\x12C\n" +
@@ -1512,7 +2586,15 @@ const file_engine_v1_engine_proto_rawDesc = "" +
 	"\rGetDeployment\x12\x1f.engine.v1.GetDeploymentRequest\x1a .engine.v1.GetDeploymentResponse\x12L\n" +
 	"\vGetInstance\x12\x1d.engine.v1.GetInstanceRequest\x1a\x1e.engine.v1.GetInstanceResponse\x12I\n" +
 	"\n" +
-	"ListEvents\x12\x1c.engine.v1.ListEventsRequest\x1a\x1d.engine.v1.ListEventsResponseB\xaa\x01\n" +
+	"ListEvents\x12\x1c.engine.v1.ListEventsRequest\x1a\x1d.engine.v1.ListEventsResponse\x12a\n" +
+	"\x12EnableIntervention\x12$.engine.v1.EnableInterventionRequest\x1a%.engine.v1.EnableInterventionResponse\x12d\n" +
+	"\x13DisableIntervention\x12%.engine.v1.DisableInterventionRequest\x1a&.engine.v1.DisableInterventionResponse\x12U\n" +
+	"\x0eSetBreakpoints\x12 .engine.v1.SetBreakpointsRequest\x1a!.engine.v1.SetBreakpointsResponse\x12C\n" +
+	"\bContinue\x12\x1a.engine.v1.ContinueRequest\x1a\x1b.engine.v1.ContinueResponse\x12C\n" +
+	"\bStepInto\x12\x1a.engine.v1.StepIntoRequest\x1a\x1b.engine.v1.StepIntoResponse\x12C\n" +
+	"\bStepOver\x12\x1a.engine.v1.StepOverRequest\x1a\x1b.engine.v1.StepOverResponse\x12g\n" +
+	"\x14GetInterventionState\x12&.engine.v1.GetInterventionStateRequest\x1a'.engine.v1.GetInterventionStateResponse\x12O\n" +
+	"\fSetVariables\x12\x1e.engine.v1.SetVariablesRequest\x1a\x1f.engine.v1.SetVariablesResponseB\xaa\x01\n" +
 	"\rcom.engine.v1B\vEngineProtoP\x01ZGgithub.com/sparrow-community/sparrow/protocol/gen/go/engine/v1;enginev1\xa2\x02\x03EXX\xaa\x02\tEngine.V1\xca\x02\tEngine\\V1\xe2\x02\x15Engine\\V1\\GPBMetadata\xea\x02\n" +
 	"Engine::V1b\x06proto3"
 
@@ -1528,73 +2610,115 @@ func file_engine_v1_engine_proto_rawDescGZIP() []byte {
 	return file_engine_v1_engine_proto_rawDescData
 }
 
-var file_engine_v1_engine_proto_msgTypes = make([]protoimpl.MessageInfo, 28)
+var file_engine_v1_engine_proto_msgTypes = make([]protoimpl.MessageInfo, 47)
 var file_engine_v1_engine_proto_goTypes = []any{
-	(*Token)(nil),                   // 0: engine.v1.Token
-	(*Instance)(nil),                // 1: engine.v1.Instance
-	(*DeployRequest)(nil),           // 2: engine.v1.DeployRequest
-	(*DeployResponse)(nil),          // 3: engine.v1.DeployResponse
-	(*CreateInstanceRequest)(nil),   // 4: engine.v1.CreateInstanceRequest
-	(*CreateInstanceResponse)(nil),  // 5: engine.v1.CreateInstanceResponse
-	(*CompleteRequest)(nil),         // 6: engine.v1.CompleteRequest
-	(*CompleteResponse)(nil),        // 7: engine.v1.CompleteResponse
-	(*GetInstanceRequest)(nil),      // 8: engine.v1.GetInstanceRequest
-	(*GetInstanceResponse)(nil),     // 9: engine.v1.GetInstanceResponse
-	(*PublishMessageRequest)(nil),   // 10: engine.v1.PublishMessageRequest
-	(*PublishMessageResponse)(nil),  // 11: engine.v1.PublishMessageResponse
-	(*PublishSignalRequest)(nil),    // 12: engine.v1.PublishSignalRequest
-	(*PublishSignalResponse)(nil),   // 13: engine.v1.PublishSignalResponse
-	(*ThrowErrorRequest)(nil),       // 14: engine.v1.ThrowErrorRequest
-	(*ThrowErrorResponse)(nil),      // 15: engine.v1.ThrowErrorResponse
-	(*ResolveIncidentRequest)(nil),  // 16: engine.v1.ResolveIncidentRequest
-	(*ResolveIncidentResponse)(nil), // 17: engine.v1.ResolveIncidentResponse
-	(*GetDeploymentRequest)(nil),    // 18: engine.v1.GetDeploymentRequest
-	(*GetDeploymentResponse)(nil),   // 19: engine.v1.GetDeploymentResponse
-	(*ListEventsRequest)(nil),       // 20: engine.v1.ListEventsRequest
-	(*ListEventsResponse)(nil),      // 21: engine.v1.ListEventsResponse
-	nil,                             // 22: engine.v1.Instance.VariablesEntry
-	nil,                             // 23: engine.v1.CreateInstanceRequest.VariablesEntry
-	nil,                             // 24: engine.v1.CompleteRequest.VariablesEntry
-	nil,                             // 25: engine.v1.PublishMessageRequest.VariablesEntry
-	nil,                             // 26: engine.v1.PublishMessageRequest.CorrelationKeysEntry
-	nil,                             // 27: engine.v1.PublishSignalRequest.VariablesEntry
-	(*v1.Event)(nil),                // 28: event.v1.Event
+	(*Token)(nil),                        // 0: engine.v1.Token
+	(*Instance)(nil),                     // 1: engine.v1.Instance
+	(*DeployRequest)(nil),                // 2: engine.v1.DeployRequest
+	(*DeployResponse)(nil),               // 3: engine.v1.DeployResponse
+	(*CreateInstanceRequest)(nil),        // 4: engine.v1.CreateInstanceRequest
+	(*CreateInstanceResponse)(nil),       // 5: engine.v1.CreateInstanceResponse
+	(*CompleteRequest)(nil),              // 6: engine.v1.CompleteRequest
+	(*CompleteResponse)(nil),             // 7: engine.v1.CompleteResponse
+	(*GetInstanceRequest)(nil),           // 8: engine.v1.GetInstanceRequest
+	(*GetInstanceResponse)(nil),          // 9: engine.v1.GetInstanceResponse
+	(*PublishMessageRequest)(nil),        // 10: engine.v1.PublishMessageRequest
+	(*PublishMessageResponse)(nil),       // 11: engine.v1.PublishMessageResponse
+	(*PublishSignalRequest)(nil),         // 12: engine.v1.PublishSignalRequest
+	(*PublishSignalResponse)(nil),        // 13: engine.v1.PublishSignalResponse
+	(*ThrowErrorRequest)(nil),            // 14: engine.v1.ThrowErrorRequest
+	(*ThrowErrorResponse)(nil),           // 15: engine.v1.ThrowErrorResponse
+	(*ResolveIncidentRequest)(nil),       // 16: engine.v1.ResolveIncidentRequest
+	(*ResolveIncidentResponse)(nil),      // 17: engine.v1.ResolveIncidentResponse
+	(*GetDeploymentRequest)(nil),         // 18: engine.v1.GetDeploymentRequest
+	(*GetDeploymentResponse)(nil),        // 19: engine.v1.GetDeploymentResponse
+	(*ListEventsRequest)(nil),            // 20: engine.v1.ListEventsRequest
+	(*ListEventsResponse)(nil),           // 21: engine.v1.ListEventsResponse
+	(*PendingTransition)(nil),            // 22: engine.v1.PendingTransition
+	(*InterventionState)(nil),            // 23: engine.v1.InterventionState
+	(*EnableInterventionRequest)(nil),    // 24: engine.v1.EnableInterventionRequest
+	(*EnableInterventionResponse)(nil),   // 25: engine.v1.EnableInterventionResponse
+	(*DisableInterventionRequest)(nil),   // 26: engine.v1.DisableInterventionRequest
+	(*DisableInterventionResponse)(nil),  // 27: engine.v1.DisableInterventionResponse
+	(*SetBreakpointsRequest)(nil),        // 28: engine.v1.SetBreakpointsRequest
+	(*SetBreakpointsResponse)(nil),       // 29: engine.v1.SetBreakpointsResponse
+	(*ContinueRequest)(nil),              // 30: engine.v1.ContinueRequest
+	(*ContinueResponse)(nil),             // 31: engine.v1.ContinueResponse
+	(*StepIntoRequest)(nil),              // 32: engine.v1.StepIntoRequest
+	(*StepIntoResponse)(nil),             // 33: engine.v1.StepIntoResponse
+	(*StepOverRequest)(nil),              // 34: engine.v1.StepOverRequest
+	(*StepOverResponse)(nil),             // 35: engine.v1.StepOverResponse
+	(*GetInterventionStateRequest)(nil),  // 36: engine.v1.GetInterventionStateRequest
+	(*GetInterventionStateResponse)(nil), // 37: engine.v1.GetInterventionStateResponse
+	(*SetVariablesRequest)(nil),          // 38: engine.v1.SetVariablesRequest
+	(*SetVariablesResponse)(nil),         // 39: engine.v1.SetVariablesResponse
+	nil,                                  // 40: engine.v1.Instance.VariablesEntry
+	nil,                                  // 41: engine.v1.CreateInstanceRequest.VariablesEntry
+	nil,                                  // 42: engine.v1.CompleteRequest.VariablesEntry
+	nil,                                  // 43: engine.v1.PublishMessageRequest.VariablesEntry
+	nil,                                  // 44: engine.v1.PublishMessageRequest.CorrelationKeysEntry
+	nil,                                  // 45: engine.v1.PublishSignalRequest.VariablesEntry
+	nil,                                  // 46: engine.v1.SetVariablesRequest.VariablesEntry
+	(*v1.Event)(nil),                     // 47: event.v1.Event
 }
 var file_engine_v1_engine_proto_depIdxs = []int32{
-	22, // 0: engine.v1.Instance.variables:type_name -> engine.v1.Instance.VariablesEntry
+	40, // 0: engine.v1.Instance.variables:type_name -> engine.v1.Instance.VariablesEntry
 	0,  // 1: engine.v1.Instance.tokens:type_name -> engine.v1.Token
-	23, // 2: engine.v1.CreateInstanceRequest.variables:type_name -> engine.v1.CreateInstanceRequest.VariablesEntry
-	24, // 3: engine.v1.CompleteRequest.variables:type_name -> engine.v1.CompleteRequest.VariablesEntry
+	41, // 2: engine.v1.CreateInstanceRequest.variables:type_name -> engine.v1.CreateInstanceRequest.VariablesEntry
+	42, // 3: engine.v1.CompleteRequest.variables:type_name -> engine.v1.CompleteRequest.VariablesEntry
 	1,  // 4: engine.v1.GetInstanceResponse.instance:type_name -> engine.v1.Instance
-	25, // 5: engine.v1.PublishMessageRequest.variables:type_name -> engine.v1.PublishMessageRequest.VariablesEntry
-	26, // 6: engine.v1.PublishMessageRequest.correlation_keys:type_name -> engine.v1.PublishMessageRequest.CorrelationKeysEntry
-	27, // 7: engine.v1.PublishSignalRequest.variables:type_name -> engine.v1.PublishSignalRequest.VariablesEntry
-	28, // 8: engine.v1.ListEventsResponse.events:type_name -> event.v1.Event
-	2,  // 9: engine.v1.EngineService.Deploy:input_type -> engine.v1.DeployRequest
-	4,  // 10: engine.v1.EngineService.CreateInstance:input_type -> engine.v1.CreateInstanceRequest
-	6,  // 11: engine.v1.EngineService.Complete:input_type -> engine.v1.CompleteRequest
-	10, // 12: engine.v1.EngineService.PublishMessage:input_type -> engine.v1.PublishMessageRequest
-	12, // 13: engine.v1.EngineService.PublishSignal:input_type -> engine.v1.PublishSignalRequest
-	14, // 14: engine.v1.EngineService.ThrowError:input_type -> engine.v1.ThrowErrorRequest
-	16, // 15: engine.v1.EngineService.ResolveIncident:input_type -> engine.v1.ResolveIncidentRequest
-	18, // 16: engine.v1.EngineService.GetDeployment:input_type -> engine.v1.GetDeploymentRequest
-	8,  // 17: engine.v1.EngineService.GetInstance:input_type -> engine.v1.GetInstanceRequest
-	20, // 18: engine.v1.EngineService.ListEvents:input_type -> engine.v1.ListEventsRequest
-	3,  // 19: engine.v1.EngineService.Deploy:output_type -> engine.v1.DeployResponse
-	5,  // 20: engine.v1.EngineService.CreateInstance:output_type -> engine.v1.CreateInstanceResponse
-	7,  // 21: engine.v1.EngineService.Complete:output_type -> engine.v1.CompleteResponse
-	11, // 22: engine.v1.EngineService.PublishMessage:output_type -> engine.v1.PublishMessageResponse
-	13, // 23: engine.v1.EngineService.PublishSignal:output_type -> engine.v1.PublishSignalResponse
-	15, // 24: engine.v1.EngineService.ThrowError:output_type -> engine.v1.ThrowErrorResponse
-	17, // 25: engine.v1.EngineService.ResolveIncident:output_type -> engine.v1.ResolveIncidentResponse
-	19, // 26: engine.v1.EngineService.GetDeployment:output_type -> engine.v1.GetDeploymentResponse
-	9,  // 27: engine.v1.EngineService.GetInstance:output_type -> engine.v1.GetInstanceResponse
-	21, // 28: engine.v1.EngineService.ListEvents:output_type -> engine.v1.ListEventsResponse
-	19, // [19:29] is the sub-list for method output_type
-	9,  // [9:19] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	43, // 5: engine.v1.PublishMessageRequest.variables:type_name -> engine.v1.PublishMessageRequest.VariablesEntry
+	44, // 6: engine.v1.PublishMessageRequest.correlation_keys:type_name -> engine.v1.PublishMessageRequest.CorrelationKeysEntry
+	45, // 7: engine.v1.PublishSignalRequest.variables:type_name -> engine.v1.PublishSignalRequest.VariablesEntry
+	47, // 8: engine.v1.ListEventsResponse.events:type_name -> event.v1.Event
+	22, // 9: engine.v1.InterventionState.pending:type_name -> engine.v1.PendingTransition
+	23, // 10: engine.v1.ContinueResponse.state:type_name -> engine.v1.InterventionState
+	23, // 11: engine.v1.StepIntoResponse.state:type_name -> engine.v1.InterventionState
+	23, // 12: engine.v1.StepOverResponse.state:type_name -> engine.v1.InterventionState
+	23, // 13: engine.v1.GetInterventionStateResponse.state:type_name -> engine.v1.InterventionState
+	46, // 14: engine.v1.SetVariablesRequest.variables:type_name -> engine.v1.SetVariablesRequest.VariablesEntry
+	23, // 15: engine.v1.SetVariablesResponse.state:type_name -> engine.v1.InterventionState
+	2,  // 16: engine.v1.EngineService.Deploy:input_type -> engine.v1.DeployRequest
+	4,  // 17: engine.v1.EngineService.CreateInstance:input_type -> engine.v1.CreateInstanceRequest
+	6,  // 18: engine.v1.EngineService.Complete:input_type -> engine.v1.CompleteRequest
+	10, // 19: engine.v1.EngineService.PublishMessage:input_type -> engine.v1.PublishMessageRequest
+	12, // 20: engine.v1.EngineService.PublishSignal:input_type -> engine.v1.PublishSignalRequest
+	14, // 21: engine.v1.EngineService.ThrowError:input_type -> engine.v1.ThrowErrorRequest
+	16, // 22: engine.v1.EngineService.ResolveIncident:input_type -> engine.v1.ResolveIncidentRequest
+	18, // 23: engine.v1.EngineService.GetDeployment:input_type -> engine.v1.GetDeploymentRequest
+	8,  // 24: engine.v1.EngineService.GetInstance:input_type -> engine.v1.GetInstanceRequest
+	20, // 25: engine.v1.EngineService.ListEvents:input_type -> engine.v1.ListEventsRequest
+	24, // 26: engine.v1.EngineService.EnableIntervention:input_type -> engine.v1.EnableInterventionRequest
+	26, // 27: engine.v1.EngineService.DisableIntervention:input_type -> engine.v1.DisableInterventionRequest
+	28, // 28: engine.v1.EngineService.SetBreakpoints:input_type -> engine.v1.SetBreakpointsRequest
+	30, // 29: engine.v1.EngineService.Continue:input_type -> engine.v1.ContinueRequest
+	32, // 30: engine.v1.EngineService.StepInto:input_type -> engine.v1.StepIntoRequest
+	34, // 31: engine.v1.EngineService.StepOver:input_type -> engine.v1.StepOverRequest
+	36, // 32: engine.v1.EngineService.GetInterventionState:input_type -> engine.v1.GetInterventionStateRequest
+	38, // 33: engine.v1.EngineService.SetVariables:input_type -> engine.v1.SetVariablesRequest
+	3,  // 34: engine.v1.EngineService.Deploy:output_type -> engine.v1.DeployResponse
+	5,  // 35: engine.v1.EngineService.CreateInstance:output_type -> engine.v1.CreateInstanceResponse
+	7,  // 36: engine.v1.EngineService.Complete:output_type -> engine.v1.CompleteResponse
+	11, // 37: engine.v1.EngineService.PublishMessage:output_type -> engine.v1.PublishMessageResponse
+	13, // 38: engine.v1.EngineService.PublishSignal:output_type -> engine.v1.PublishSignalResponse
+	15, // 39: engine.v1.EngineService.ThrowError:output_type -> engine.v1.ThrowErrorResponse
+	17, // 40: engine.v1.EngineService.ResolveIncident:output_type -> engine.v1.ResolveIncidentResponse
+	19, // 41: engine.v1.EngineService.GetDeployment:output_type -> engine.v1.GetDeploymentResponse
+	9,  // 42: engine.v1.EngineService.GetInstance:output_type -> engine.v1.GetInstanceResponse
+	21, // 43: engine.v1.EngineService.ListEvents:output_type -> engine.v1.ListEventsResponse
+	25, // 44: engine.v1.EngineService.EnableIntervention:output_type -> engine.v1.EnableInterventionResponse
+	27, // 45: engine.v1.EngineService.DisableIntervention:output_type -> engine.v1.DisableInterventionResponse
+	29, // 46: engine.v1.EngineService.SetBreakpoints:output_type -> engine.v1.SetBreakpointsResponse
+	31, // 47: engine.v1.EngineService.Continue:output_type -> engine.v1.ContinueResponse
+	33, // 48: engine.v1.EngineService.StepInto:output_type -> engine.v1.StepIntoResponse
+	35, // 49: engine.v1.EngineService.StepOver:output_type -> engine.v1.StepOverResponse
+	37, // 50: engine.v1.EngineService.GetInterventionState:output_type -> engine.v1.GetInterventionStateResponse
+	39, // 51: engine.v1.EngineService.SetVariables:output_type -> engine.v1.SetVariablesResponse
+	34, // [34:52] is the sub-list for method output_type
+	16, // [16:34] is the sub-list for method input_type
+	16, // [16:16] is the sub-list for extension type_name
+	16, // [16:16] is the sub-list for extension extendee
+	0,  // [0:16] is the sub-list for field type_name
 }
 
 func init() { file_engine_v1_engine_proto_init() }
@@ -1608,7 +2732,7 @@ func file_engine_v1_engine_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_engine_v1_engine_proto_rawDesc), len(file_engine_v1_engine_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   28,
+			NumMessages:   47,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
