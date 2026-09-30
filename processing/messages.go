@@ -48,6 +48,9 @@ func (e *Engine) PublishMessage(ctx context.Context, req PublishMessageRequest) 
 		if !ok {
 			return 0, fmt.Errorf("NOT_FOUND: instance %q", instanceID)
 		}
+		if err := e.errIfInstancePaused(instanceID); err != nil {
+			return 0, err
+		}
 	}
 	keys, err := projection.VariablesFromMap(req.CorrelationKeys)
 	if err != nil {

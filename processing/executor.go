@@ -121,6 +121,19 @@ func (x *Executor) Enter(
 			pubs = append(pubs, more...)
 			return pubs, err
 		}
+		if effect.DecideExclusive {
+			pending := &PendingTransition{
+				Kind:          PendingDecide,
+				FromElementID: elementID,
+				TokenID:       tokenID,
+			}
+			if x.tryBarrier(inst, elementID, tokenID, pending) {
+				return pubs, nil
+			}
+			more, err := x.finalizeExclusiveDecide(ctx, dep, inst, tokenID, elementID, emit)
+			pubs = append(pubs, more...)
+			return pubs, err
+		}
 		if effect.EnterChild != "" {
 			pending := &PendingTransition{
 				Kind:            PendingEnterChild,
@@ -615,6 +628,8 @@ func (x *Executor) resumePending(
 		return nil, fmt.Errorf("INVALID_STATE: no pending transition")
 	}
 	switch pending.Kind {
+	case PendingDecide:
+		return x.finalizeExclusiveDecide(ctx, dep, inst, pending.TokenID, pending.FromElementID, emit)
 	case PendingLeave:
 		flowID := pending.OutgoingFlowID
 		if flowID == "" && len(pending.TakenFlowIDs) > 0 {
@@ -660,6 +675,60 @@ func (x *Executor) resumePending(
 	default:
 		return nil, fmt.Errorf("INVALID_STATE: unknown pending kind %q", pending.Kind)
 	}
+}
+
+// finalizeExclusiveDecide chooses the exclusive outgoing with current variables,
+// emits COMPLETING/COMPLETED, then leaves. Leave barriers are suppressed in this
+// burst so StepInto from PendingDecide does not double-stop on the same gateway.
+func (x *Executor) finalizeExclusiveDecide(
+	ctx context.Context,
+	dep *deploy.Deployment,
+	inst *projection.Instance,
+	tokenID, elementID string,
+	emit Emitter,
+) ([]handlers.Publication, error) {
+	var vars map[string]string
+	if inst != nil {
+		vars = inst.Variables
+	}
+	flowID, err := dep.ChooseExclusiveOutgoing(elementID, vars)
+	if err != nil {
+		return nil, err
+	}
+	typ := eventv1.Element_TYPE_EXCLUSIVE_GATEWAY
+	if t, typeErr := dep.TypeOf(elementID); typeErr == nil {
+		typ = t
+	}
+	for _, intent := range []eventv1.Element_Intent{
+		eventv1.Element_INTENT_COMPLETING,
+		eventv1.Element_INTENT_COMPLETED,
+	} {
+		el := &eventv1.Element{
+			Intent:  intent,
+			Type:    typ,
+			Id:      elementID,
+			TokenId: tokenID,
+		}
+		if intent == eventv1.Element_INTENT_COMPLETED {
+			el.Payload = &eventv1.Element_GatewayPayload{
+				GatewayPayload: &eventv1.GatewayPayload{TakenSequenceFlowId: flowID},
+			}
+		}
+		if err := emit(el); err != nil {
+			return nil, err
+		}
+	}
+	if x.intervention != nil {
+		x.intervention.mu.Lock()
+		x.intervention.decideFinalizeDepth++
+		x.intervention.mu.Unlock()
+		defer func() {
+			x.intervention.mu.Lock()
+			x.intervention.decideFinalizeDepth--
+			x.intervention.mu.Unlock()
+		}()
+	}
+	return x.leaveViaOutgoings(ctx, dep, inst, tokenID, elementID, flowID, emit)
 }
 
 // tryCompleteScope checks if the scope containing elementID can be completed.
