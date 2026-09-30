@@ -403,6 +403,7 @@ func TestC_3_0_export(t *testing.T) {
 											},
 										},
 									},
+									CancelActivity: true,
 									AttachedToRef: "Activity_0v5jdpu",
 								},
 								{
@@ -431,6 +432,7 @@ func TestC_3_0_export(t *testing.T) {
 											},
 										},
 									},
+									CancelActivity: true,
 									AttachedToRef: "Activity_0ymu39d",
 								},
 							},

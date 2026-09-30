@@ -28,14 +28,16 @@ import (
 	"github.com/sparrow-community/sparrow/processing/deploy"
 	eventlog "github.com/sparrow-community/sparrow/processing/log"
 	"github.com/sparrow-community/sparrow/processing/projection"
+	eventv1 "github.com/sparrow-community/sparrow/protocol/gen/go/event/v1"
 )
 
 // TestMIWGKernelFixtures deploys every bpmn/test MIWG fixture and, when the
 // root process is Supported, mints an instance and drives waits until the
-// instance completes or no further automatic progress is possible.
+// instance completes.
 //
 // Deploy failures that contain UNSUPPORTED_ELEMENT or INVALID_CONDITION are
 // intentional skips (Excluded / current kernel limits). Other deploy errors fail.
+// A successful Deploy that does not reach completed/terminated fails the test.
 func TestMIWGKernelFixtures(t *testing.T) {
 	dir := filepath.Join("..", "bpmn", "test")
 	entries, err := os.ReadDir(dir)
@@ -96,8 +98,14 @@ func TestMIWGKernelFixtures(t *testing.T) {
 				t.Fatalf("mint instance: %v", err)
 			}
 
-			outcome := driveMIWGInstance(t, ctx, eng, &now, instanceID)
+			outcome := driveMIWGInstance(t, ctx, eng, dep, &now, instanceID)
 			t.Logf("process=%s outcome=%s", compiled.Process.ID, outcome)
+			switch outcome {
+			case string(projection.StatusCompleted), string(projection.StatusTerminated):
+				// ok
+			default:
+				t.Fatalf("expected completed/terminated, got %s", outcome)
+			}
 		})
 	}
 }
@@ -174,7 +182,17 @@ func mintMIWGInstance(ctx context.Context, eng *processing.Engine, dep *deploy.D
 	return "", fmt.Errorf("INVALID_ARGUMENT: no CreateInstance entry and no mintable typed start")
 }
 
-func driveMIWGInstance(t *testing.T, ctx context.Context, eng *processing.Engine, now *time.Time, instanceID string) string {
+// miwgHappyVars seeds common decision variables so exclusive gateways with
+// author conditions can leave on the progressing branch.
+func miwgHappyVars() map[string]any {
+	return map[string]any{
+		"approved":           true,
+		"clarified":          "yes",
+		"Vacation Approval":  "Approved",
+	}
+}
+
+func driveMIWGInstance(t *testing.T, ctx context.Context, eng *processing.Engine, dep *deploy.Deployment, now *time.Time, instanceID string) string {
 	t.Helper()
 	const maxSteps = 250
 	prevFingerprint := ""
@@ -195,7 +213,7 @@ func driveMIWGInstance(t *testing.T, ctx context.Context, eng *processing.Engine
 
 		progressed := false
 
-		// Prefer job-backed waits: Activate then Complete.
+		// Prefer job-backed waits: Activate then Complete with happy-path vars.
 		jobTypes := map[string]struct{}{}
 		for _, tok := range inst.Tokens {
 			if tok.Status == projection.TokenWaiting && tok.JobType != "" && !tok.ScopeHost {
@@ -215,7 +233,7 @@ func driveMIWGInstance(t *testing.T, ctx context.Context, eng *processing.Engine
 				if job.ProcessInstanceID != instanceID {
 					continue
 				}
-				if err := eng.Complete(ctx, job.ProcessInstanceID, job.ElementID, job.TokenID, nil); err != nil {
+				if err := eng.Complete(ctx, job.ProcessInstanceID, job.ElementID, job.TokenID, miwgHappyVars()); err != nil {
 					t.Fatalf("Complete job %s/%s: %v", job.ElementID, job.TokenID, err)
 				}
 				progressed = true
@@ -226,32 +244,8 @@ func driveMIWGInstance(t *testing.T, ctx context.Context, eng *processing.Engine
 		}
 
 		inst, _ = eng.GetInstance(instanceID)
-		// Timer waits: advance clock past due and FireDue.
-		var due int64
-		for _, tok := range inst.Tokens {
-			if tok.Status != projection.TokenWaiting {
-				continue
-			}
-			if tok.DueUnixMs > 0 && (due == 0 || tok.DueUnixMs < due) {
-				due = tok.DueUnixMs
-			}
-			for _, bw := range tok.BoundaryWaits {
-				if bw.DueUnixMs > 0 && (due == 0 || bw.DueUnixMs < due) {
-					due = bw.DueUnixMs
-				}
-			}
-		}
-		if due > 0 {
-			*now = time.UnixMilli(due).Add(time.Second).UTC()
-			if err := eng.FireDue(ctx); err != nil {
-				t.Fatalf("FireDue: %v", err)
-			}
-			progressed = true
-			continue
-		}
-
-		inst, _ = eng.GetInstance(instanceID)
-		// Message / signal catches.
+		// Message / signal catches — prefer over timers so NI timer cycles do not
+		// starve a concurrent message receive (C.9.1).
 		for _, tok := range inst.Tokens {
 			if tok.Status != projection.TokenWaiting {
 				continue
@@ -306,19 +300,97 @@ func driveMIWGInstance(t *testing.T, ctx context.Context, eng *processing.Engine
 			continue
 		}
 
-		// Waiting activities (user / manual / abstract / receive without message name).
 		inst, _ = eng.GetInstance(instanceID)
-		el, tokID := waitingAt(inst)
+		// Timer waits: advance clock past due and FireDue.
+		var due int64
+		for _, tok := range inst.Tokens {
+			if tok.Status != projection.TokenWaiting {
+				continue
+			}
+			if tok.DueUnixMs > 0 && (due == 0 || tok.DueUnixMs < due) {
+				due = tok.DueUnixMs
+			}
+			for _, bw := range tok.BoundaryWaits {
+				if bw.DueUnixMs > 0 && (due == 0 || bw.DueUnixMs < due) {
+					due = bw.DueUnixMs
+				}
+			}
+		}
+		if due > 0 {
+			*now = time.UnixMilli(due).Add(time.Second).UTC()
+			if err := eng.FireDue(ctx); err != nil {
+				t.Fatalf("FireDue: %v", err)
+			}
+			progressed = true
+			continue
+		}
+
+		// Waiting activities (user / manual / abstract / opaque SP / receive).
+		// Never Complete gateway join waits — they advance when peer tokens arrive.
+		inst, _ = eng.GetInstance(instanceID)
+		el, tokID := miwgWaitingActivity(dep, inst)
 		if el == "" || tokID == "" {
 			return "active_no_wait"
 		}
-		if err := eng.Complete(ctx, instanceID, el, tokID, nil); err != nil {
-			// Gateway / join waits may not accept Complete — treat as stuck run.
+		if err := eng.Complete(ctx, instanceID, el, tokID, miwgHappyVars()); err != nil {
 			t.Logf("Complete %s blocked: %v", el, err)
 			return "active_stuck:" + el
 		}
 	}
 	return "max_steps"
+}
+
+func miwgWaitingActivity(dep *deploy.Deployment, inst *projection.Instance) (elementID, tokenID string) {
+	var hostElem, hostTok string
+	var candidates [][2]string
+	for _, tok := range inst.Tokens {
+		if tok.Status != projection.TokenWaiting {
+			continue
+		}
+		if tok.ScopeHost {
+			if hostTok == "" {
+				hostElem, hostTok = tok.ElementID, tok.ID
+			}
+			continue
+		}
+		if miwgIsGateway(dep, tok.ElementID) {
+			continue
+		}
+		candidates = append(candidates, [2]string{tok.ElementID, tok.ID})
+	}
+	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i][0] != candidates[j][0] {
+			return candidates[i][0] < candidates[j][0]
+		}
+		return candidates[i][1] < candidates[j][1]
+	})
+	if len(candidates) > 0 {
+		return candidates[0][0], candidates[0][1]
+	}
+	if hostElem != "" && !miwgIsGateway(dep, hostElem) {
+		return hostElem, hostTok
+	}
+	return "", ""
+}
+
+func miwgIsGateway(dep *deploy.Deployment, elementID string) bool {
+	if dep == nil {
+		return false
+	}
+	typ, err := dep.TypeOf(elementID)
+	if err != nil {
+		return false
+	}
+	switch typ {
+	case eventv1.Element_TYPE_EXCLUSIVE_GATEWAY,
+		eventv1.Element_TYPE_PARALLEL_GATEWAY,
+		eventv1.Element_TYPE_INCLUSIVE_GATEWAY,
+		eventv1.Element_TYPE_COMPLEX_GATEWAY,
+		eventv1.Element_TYPE_EVENT_BASED_GATEWAY:
+		return true
+	default:
+		return false
+	}
 }
 
 func miwgWaitFingerprint(inst *projection.Instance) string {

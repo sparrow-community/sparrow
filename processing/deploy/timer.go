@@ -145,7 +145,11 @@ func timerCatchFromDefs(id string, defs element.EventDefinitions) (timerCatch, e
 		return timerCatch{Date: at, Text: dateText}, nil
 	}
 	if durText == "" {
-		return timerCatch{}, fmt.Errorf("UNSUPPORTED_ELEMENT: %q needs timeDuration, timeDate, or timeCycle", id)
+		// Empty timerEventDefinition / empty time* child: MIWG and many vendor
+		// exports omit the expression. Default to immediate (PT0S) so Deploy
+		// accepts the timer shape; FireDue can then fire without inventing a
+		// non-zero wait.
+		durText = "PT0S"
 	}
 	dur, err := ParseISO8601Duration(durText)
 	if err != nil {

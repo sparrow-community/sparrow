@@ -324,7 +324,7 @@ func TestDeployRejectsNonTimerCatch(t *testing.T) {
       <incoming>Flow_1</incoming>
       <outgoing>Flow_2</outgoing>
       <timerEventDefinition id="TimerDef_1">
-        <timeCycle xsi:type="tFormalExpression">R/P1D</timeCycle>
+		<timeCycle xsi:type="tFormalExpression">R/P1M</timeCycle>
       </timerEventDefinition>
     </intermediateCatchEvent>
     <endEvent id="EndEvent_1">

@@ -545,6 +545,7 @@ func TestC_3_0_roundtrip(t *testing.T) {
 											},
 										},
 									},
+									CancelActivity: true,
 									AttachedToRef: "_6a34496f-8cf7-42e5-88a9-d1af98cc3cba",
 								},
 								{
@@ -575,6 +576,7 @@ func TestC_3_0_roundtrip(t *testing.T) {
 											},
 										},
 									},
+									CancelActivity: true,
 									AttachedToRef: "_d034722f-751d-4f37-a3d7-47993822e979",
 								},
 							},

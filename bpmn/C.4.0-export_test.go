@@ -358,7 +358,7 @@ func TestC_4_0_export(t *testing.T) {
 												Name: "Contract terms accepted ?",
 											},
 											Incoming: []string{"Flow_1kkgeei"},
-											Outgoing: []string{"Flow_1k91huu", "Flow_02hcma9"},
+											Outgoing: []string{"Flow_02hcma9", "Flow_1k91huu"},
 										},
 									},
 								},

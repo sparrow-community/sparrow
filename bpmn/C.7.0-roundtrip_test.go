@@ -521,6 +521,7 @@ func TestC_7_0_roundtrip(t *testing.T) {
 										},
 										GatewayDirection: "Diverging",
 									},
+									Default: "_1d201a22-d500-4412-a32a-2c7e24ad4d6b",
 								},
 							},
 							ParallelGatewaies: []element.ParallelGateway{

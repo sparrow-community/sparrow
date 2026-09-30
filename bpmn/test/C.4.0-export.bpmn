@@ -44,8 +44,8 @@
     </bpmn:userTask>
     <bpmn:exclusiveGateway id="Gateway_1nitinv" name="Contract terms accepted ?">
       <bpmn:incoming>Flow_1kkgeei</bpmn:incoming>
-      <bpmn:outgoing>Flow_1k91huu</bpmn:outgoing>
       <bpmn:outgoing>Flow_02hcma9</bpmn:outgoing>
+      <bpmn:outgoing>Flow_1k91huu</bpmn:outgoing>
     </bpmn:exclusiveGateway>
     <bpmn:userTask id="Activity_0gis8ag" name="Review terms of contract">
       <bpmn:incoming>Flow_1k91huu</bpmn:incoming>
