@@ -329,6 +329,7 @@ func TestC_8_0_export(t *testing.T) {
 											},
 										},
 									},
+									CancelActivity: true,
 									AttachedToRef: "Activity_0lrykpf",
 								},
 							},

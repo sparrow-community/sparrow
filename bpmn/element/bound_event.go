@@ -14,8 +14,30 @@
 
 package element
 
+import (
+	"encoding/xml"
+)
+
+// BoundaryEvent is a catch event attached to an activity.
+// BPMN XSD default for cancelActivity is true (interrupting); missing attr → true.
 type BoundaryEvent struct {
 	CatchEvent
 	AttachedToRef  string `xml:"attachedToRef,attr"`
-	CancelActivity bool   `xml:"cancelActivity,attr"`
+	CancelActivity bool   `xml:"-"`
+}
+
+func (b *BoundaryEvent) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	b.CancelActivity = true // XSD default
+	type alias BoundaryEvent
+	aux := struct {
+		*alias
+		CancelActivity *bool `xml:"cancelActivity,attr"`
+	}{alias: (*alias)(b)}
+	if err := d.DecodeElement(&aux, &start); err != nil {
+		return err
+	}
+	if aux.CancelActivity != nil {
+		b.CancelActivity = *aux.CancelActivity
+	}
+	return nil
 }

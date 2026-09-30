@@ -429,11 +429,11 @@ func (d *Deployment) indexCallActivities(fe *element.FlowElements, catalog map[s
 			if err != nil {
 				return err
 			}
-			if spec.CalledProcessID == d.Process.ID {
+			if !spec.Opaque && spec.CalledProcessID == d.Process.ID {
 				return fmt.Errorf("UNSUPPORTED_ELEMENT: callActivity %q cannot call the root process", ca.ID)
 			}
 			d.callActivities[spec.ID] = spec
-			if spec.ExternalCallee {
+			if spec.Opaque || spec.ExternalCallee {
 				continue
 			}
 			called := catalog[spec.CalledProcessID]
@@ -796,9 +796,62 @@ func (d *Deployment) SubProcessStartEventID(subProcessID string) (string, error)
 		return "", fmt.Errorf("NOT_FOUND: subProcess %q", subProcessID)
 	}
 	if len(sp.StartEvents) == 0 {
+		if isOpaqueSubProcessBody(&sp.FlowElements) {
+			return "", fmt.Errorf("NOT_FOUND: opaque subProcess %q has no startEvent", subProcessID)
+		}
 		return "", fmt.Errorf("no startEvent in subProcess %q", subProcessID)
 	}
 	return sp.StartEvents[0].ID, nil
+}
+
+// IsOpaqueSubProcess reports whether id is an empty/collapsed SubProcess with no
+// inner flow nodes. Such elements run as wait → Complete (opaque Activity).
+func (d *Deployment) IsOpaqueSubProcess(id string) bool {
+	sp := d.findSubProcess(&d.Process.FlowElements, id)
+	if sp == nil {
+		for _, called := range d.calledProcesses {
+			fe := called.FlowElements
+			if sp = d.findSubProcess(&fe, id); sp != nil {
+				break
+			}
+		}
+	}
+	if sp == nil || sp.TriggeredByEvent {
+		return false
+	}
+	return len(sp.StartEvents) == 0 && isOpaqueSubProcessBody(&sp.FlowElements)
+}
+
+// isOpaqueSubProcessBody is true when the SubProcess has no executable inner
+// flow nodes (modeling stub / collapsed empty body). Data objects alone do not
+// make the body executable.
+func isOpaqueSubProcessBody(fe *element.FlowElements) bool {
+	if fe == nil {
+		return true
+	}
+	return len(fe.StartEvents) == 0 &&
+		len(fe.EndEvents) == 0 &&
+		len(fe.Tasks) == 0 &&
+		len(fe.ManualTasks) == 0 &&
+		len(fe.UserTasks) == 0 &&
+		len(fe.ServiceTasks) == 0 &&
+		len(fe.SendTasks) == 0 &&
+		len(fe.ReceiveTasks) == 0 &&
+		len(fe.BusinessRuleTasks) == 0 &&
+		len(fe.ScriptTasks) == 0 &&
+		len(fe.ParallelGatewaies) == 0 &&
+		len(fe.ExclusiveGatewaies) == 0 &&
+		len(fe.InclusiveGatewaies) == 0 &&
+		len(fe.ComplexGatewaies) == 0 &&
+		len(fe.EventBasedGatewaies) == 0 &&
+		len(fe.SubProcesses) == 0 &&
+		len(fe.Transactions) == 0 &&
+		len(fe.AdHocSubProcesses) == 0 &&
+		len(fe.BoundaryEvents) == 0 &&
+		len(fe.CallActivities) == 0 &&
+		len(fe.IntermediateThrowEvents) == 0 &&
+		len(fe.IntermediateCatchEvents) == 0 &&
+		len(fe.ImplicitThrowEvents) == 0
 }
 
 func (d *Deployment) findSubProcess(fe *element.FlowElements, id string) *element.SubProcess {
@@ -1142,8 +1195,9 @@ func findActivityDefaultIn(fe *element.FlowElements, id string) string {
 }
 
 // ChooseConditionalOutgoing picks an outgoing flow: first matching non-default
-// condition, else default. If there are no conditions and no default, returns the
-// first outgoing (callers that need take-all should use ChooseOutgoingFlows).
+// condition, else default. If there are no conditions and no default, prefers a
+// non-back-edge outgoing when multiple exist (interchange stubs with unlabeled
+// Yes/No splits), else returns the first outgoing.
 func (d *Deployment) ChooseConditionalOutgoing(elementID string, vars map[string]string) (string, error) {
 	outs := d.Outgoing(elementID)
 	if len(outs) == 0 {
@@ -1161,7 +1215,19 @@ func (d *Deployment) ChooseConditionalOutgoing(elementID string, vars map[string
 			break
 		}
 	}
-	if !hasCondition && def == "" {
+	if !hasCondition {
+		if def != "" {
+			if _, err := d.SequenceFlow(def); err == nil {
+				return def, nil
+			}
+		}
+		// Unlabeled exclusive splits (no conditions, no default) are underspecified.
+		// Prefer a non-back-edge outgoing so interchange stubs (C.4 / C.7) progress.
+		if len(outs) > 1 && findExclusiveGatewayIn(&d.Process.FlowElements, elementID) != nil {
+			if id := preferAcyclicExclusiveOutgoing(d, elementID, outs); id != "" {
+				return id, nil
+			}
+		}
 		return outs[0], nil
 	}
 	for _, flowID := range outs {
@@ -1192,6 +1258,81 @@ func (d *Deployment) ChooseConditionalOutgoing(elementID string, vars map[string
 	return "", fmt.Errorf("NO_OUTGOING_FLOW: element %q", elementID)
 }
 
+// preferAcyclicExclusiveOutgoing returns the first outgoing whose target cannot
+// reach elementID again (not a revise/reject back-edge). When several progress
+// outs exist, prefers an affirmative flow name (Yes/Approved/…). Empty means
+// fall back to outs[0]. Used only when an exclusive split has neither
+// conditions nor default (BPMN-underspecified interchange stubs).
+func preferAcyclicExclusiveOutgoing(d *Deployment, elementID string, outs []string) string {
+	var progress []string
+	for _, flowID := range outs {
+		flow, err := d.SequenceFlow(flowID)
+		if err != nil {
+			continue
+		}
+		if canReachElement(d, flow.TargetRef, elementID, 64) {
+			continue
+		}
+		progress = append(progress, flowID)
+	}
+	if len(progress) == 0 {
+		return ""
+	}
+	for _, flowID := range progress {
+		flow, err := d.SequenceFlow(flowID)
+		if err != nil {
+			continue
+		}
+		if isAffirmativeFlowName(flow.Name) {
+			return flowID
+		}
+	}
+	return progress[0]
+}
+
+func isAffirmativeFlowName(name string) bool {
+	n := strings.ToLower(strings.TrimSpace(name))
+	switch n {
+	case "yes", "approved", "ok", "true", "accept", "accepted":
+		return true
+	default:
+		return false
+	}
+}
+
+// canReachElement reports whether a path of sequence flows exists from fromID to
+// toID within maxHops (cycle-safe via visited set).
+func canReachElement(d *Deployment, fromID, toID string, maxHops int) bool {
+	if fromID == "" || toID == "" || d == nil {
+		return false
+	}
+	if fromID == toID {
+		return true
+	}
+	visited := map[string]bool{fromID: true}
+	queue := []string{fromID}
+	for hops := 0; hops < maxHops && len(queue) > 0; hops++ {
+		cur := queue[0]
+		queue = queue[1:]
+		for _, flowID := range d.Outgoing(cur) {
+			flow, err := d.SequenceFlow(flowID)
+			if err != nil {
+				continue
+			}
+			next := flow.TargetRef
+			if next == toID {
+				return true
+			}
+			if next == "" || visited[next] {
+				continue
+			}
+			visited[next] = true
+			queue = append(queue, next)
+		}
+	}
+	return false
+}
+
 // ChooseOutgoingFlows selects outgoing sequence flows when leaving an element.
 // Multiple unconditional outgoings with no default are an implicit parallel split
 // (all flows). Otherwise selection is exclusive (one flow via ChooseConditionalOutgoing).
@@ -1214,6 +1355,9 @@ func (d *Deployment) ChooseOutgoingFlows(elementID string, vars map[string]strin
 	}
 	if !hasCondition && def == "" {
 		return append([]string{}, outs...), nil
+	}
+	if !hasCondition && def != "" {
+		return []string{def}, nil
 	}
 	one, err := d.ChooseConditionalOutgoing(elementID, vars)
 	if err != nil {
@@ -1406,7 +1550,12 @@ func validateScopesAt(fe *element.FlowElements, insideEmbedded, insideEventSubPr
 			continue
 		}
 		if len(sp.StartEvents) == 0 {
-			return fmt.Errorf("UNSUPPORTED_ELEMENT: subProcess %q must have a startEvent", sp.ID)
+			if !isOpaqueSubProcessBody(&sp.FlowElements) {
+				return fmt.Errorf("UNSUPPORTED_ELEMENT: subProcess %q must have a startEvent", sp.ID)
+			}
+			// Collapsed/empty SubProcess (no inner flow nodes): treated as opaque
+			// Activity (wait → Complete), not an enterable scope.
+			continue
 		}
 		if err := validateScopesAt(&sp.FlowElements, true, insideEventSubProcess, insideTransaction, errors, escalations); err != nil {
 			return err

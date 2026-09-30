@@ -16,6 +16,7 @@ package deploy
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/sparrow-community/sparrow/bpmn/element"
@@ -207,9 +208,10 @@ func conditionalStartText(e element.StartEvent) (string, error) {
 	if len(e.ConditionalEventDefinitions) != 1 {
 		return "", fmt.Errorf("UNSUPPORTED_ELEMENT: startEvent %q must have exactly one conditionalEventDefinition", e.ID)
 	}
-	text := expressionText(e.ConditionalEventDefinitions[0].Condition)
+	text := strings.TrimSpace(expressionText(e.ConditionalEventDefinitions[0].Condition))
 	if text == "" {
-		return "", fmt.Errorf("UNSUPPORTED_ELEMENT: startEvent %q conditional start needs a condition expression", e.ID)
+		// Empty condition stub (MIWG / incomplete export): always-true, like empty timer → PT0S.
+		return "true", nil
 	}
 	return text, nil
 }
@@ -219,9 +221,29 @@ func (d *Deployment) MessageStartIDs(name string) []string {
 	return append([]string(nil), d.messageStarts[name]...)
 }
 
+// MessageStartNames returns sorted process-level message start names.
+func (d *Deployment) MessageStartNames() []string {
+	out := make([]string, 0, len(d.messageStarts))
+	for name := range d.messageStarts {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
 // SignalStartIDs returns process-level signal start event ids for name.
 func (d *Deployment) SignalStartIDs(name string) []string {
 	return append([]string(nil), d.signalStarts[name]...)
+}
+
+// SignalStartNames returns sorted process-level signal start names.
+func (d *Deployment) SignalStartNames() []string {
+	out := make([]string, 0, len(d.signalStarts))
+	for name := range d.signalStarts {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // TimerStartIDs returns process-level timer start event ids.
