@@ -7,6 +7,11 @@
 #   - Package already exists on the registry (first version is a one-time
 #     interactive bootstrap — see docs in the Project store / wasm README)
 #
+# Dist-tags on every successful publish:
+#   - alpha  (via `npm publish --tag alpha`)
+#   - latest (via OIDC token exchange + registry dist-tags API; npm CLI
+#     `dist-tag` cannot use Trusted Publishing directly — npm/cli#8547)
+#
 # Trusted Publisher fields Jiaxing configures once on npmjs.com:
 #   Organization or user: sparrow-community
 #   Repository:           sparrow
@@ -17,11 +22,18 @@ name: publish-wasm
 
 on:
   workflow_dispatch:
+    inputs:
+      retag_only:
+        description: "Existing version to retag (alpha + latest). Empty = full publish."
+        required: false
+        type: string
+        default: ""
   push:
     branches: [main]
     paths:
+      # Workflow-only / .github/scripts edits do not auto-publish.
+      # Use workflow_dispatch after changing this file, or push a wasm/** change.
       - "wasm/**"
-      - ".github/workflows/publish-wasm.yml"
 
 concurrency:
   group: publish-wasm-${{ github.ref }}
@@ -38,10 +50,14 @@ jobs:
     defaults:
       run:
         working-directory: wasm
+    env:
+      # Empty on push; set on workflow_dispatch (may be "").
+      RETAG_ONLY: ${{ github.event_name == 'workflow_dispatch' && inputs.retag_only || '' }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-go@v5
+        if: ${{ env.RETAG_ONLY == '' }}
         with:
           go-version: "1.26.5"
           cache-dependency-path: |
@@ -56,6 +72,7 @@ jobs:
           registry-url: "https://registry.npmjs.org"
 
       - name: Require npm OIDC support (11.5.1+)
+        if: ${{ env.RETAG_ONLY == '' }}
         run: |
           NPM_VER="$(npm --version)"
           echo "npm version: $NPM_VER"
@@ -68,11 +85,38 @@ jobs:
           ' "$NPM_VER"
 
       - name: Bump alpha version (YYYY.M.D-alpha.N, UTC, no leading zeros)
+        if: ${{ env.RETAG_ONLY == '' }}
         run: ./scripts/bump-alpha-version.sh
 
       - name: Build WASM artifacts
+        if: ${{ env.RETAG_ONLY == '' }}
         run: ./build.sh
 
       - name: Publish to npm (OIDC, tag alpha)
+        if: ${{ env.RETAG_ONLY == '' }}
         # Do not set NODE_AUTH_TOKEN / NPM_TOKEN — that disables OIDC.
         run: npm publish --access public --tag alpha
+
+      - name: Resolve version for dist-tags
+        id: ver
+        run: |
+          if [ -n "$RETAG_ONLY" ]; then
+            VERSION="$RETAG_ONLY"
+          else
+            VERSION="$(node -p "require('./package.json').version")"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: $VERSION"
+
+      - name: Promote alpha + latest dist-tags (OIDC registry API)
+        # Publish already set `alpha`. Retag-only and post-publish both ensure
+        # `latest` (and `alpha` on retag-only) point at the resolved version.
+        working-directory: .
+        run: |
+          VERSION="${{ steps.ver.outputs.version }}"
+          PKG="@sparrow-community/wasm"
+          if [ -n "$RETAG_ONLY" ]; then
+            node .github/scripts/oidc-dist-tag.mjs "$PKG" "$VERSION" alpha
+          fi
+          node .github/scripts/oidc-dist-tag.mjs "$PKG" "$VERSION" latest
+          echo "dist-tags: alpha + latest → $PKG@$VERSION"
