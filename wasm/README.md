@@ -5,11 +5,13 @@ gateway; timers and job/script workers are scheduled by the JS page.
 
 ## npm package
 
-Published as **`@sparrow-community/wasm`** on [npmjs.com](https://www.npmjs.com/)
-under dist-tag **`alpha`**.
+Published as **`@sparrow-community/wasm`** on [npmjs.com](https://www.npmjs.com/).
+Every publish moves **`latest`** to that newest calver (and **`alpha`** when npm
+OIDC dist-tag is enabled for the package).
 
 ```bash
-npm install @sparrow-community/wasm@alpha
+npm install @sparrow-community/wasm        # latest
+npm install @sparrow-community/wasm@alpha  # same target when alpha is kept in sync
 ```
 
 ### Version scheme (alpha)
