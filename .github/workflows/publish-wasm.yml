@@ -7,10 +7,11 @@
 #   - Package already exists on the registry (first version is a one-time
 #     interactive bootstrap — see docs in the Project store / wasm README)
 #
-# Dist-tags on every successful publish:
-#   - alpha  (via `npm publish --tag alpha`)
-#   - latest (via OIDC token exchange + registry dist-tags API; npm CLI
-#     `dist-tag` cannot use Trusted Publishing directly — npm/cli#8547)
+# Dist-tags (Jiaxing policy — every publish):
+#   - latest — set by `npm publish --tag latest` (OIDC publish; always works)
+#   - alpha  — same version via OIDC registry dist-tags API after publish.
+#     If npm returns OIDC_DIST_TAG_DISABLED for this package, the step warns
+#     and the job still succeeds; owner CLI can sync alpha until npm enables it.
 #
 # Trusted Publisher fields Jiaxing configures once on npmjs.com:
 #   Organization or user: sparrow-community
@@ -24,7 +25,7 @@ on:
   workflow_dispatch:
     inputs:
       retag_only:
-        description: "Existing version to retag (alpha + latest). Empty = full publish."
+        description: "Existing version to retag (alpha + latest). Empty = full publish. Needs OIDC dist-tag enabled on the package."
         required: false
         type: string
         default: ""
@@ -45,7 +46,7 @@ permissions:
 
 jobs:
   publish:
-    name: build and publish alpha
+    name: build and publish
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -92,10 +93,11 @@ jobs:
         if: ${{ env.RETAG_ONLY == '' }}
         run: ./build.sh
 
-      - name: Publish to npm (OIDC, tag alpha)
+      - name: Publish to npm (OIDC, tag latest)
         if: ${{ env.RETAG_ONLY == '' }}
         # Do not set NODE_AUTH_TOKEN / NPM_TOKEN — that disables OIDC.
-        run: npm publish --access public --tag alpha
+        # Explicit --tag latest so prerelease calver still moves the latest dist-tag.
+        run: npm publish --access public --tag latest
 
       - name: Resolve version for dist-tags
         id: ver
@@ -108,15 +110,36 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Resolved version: $VERSION"
 
-      - name: Promote alpha + latest dist-tags (OIDC registry API)
-        # Publish already set `alpha`. Retag-only and post-publish both ensure
-        # `latest` (and `alpha` on retag-only) point at the resolved version.
+      - name: Promote alpha (+ latest on retag-only) via OIDC registry API
+        # Full publish already set `latest`. This step sets `alpha` to the same
+        # version. Retag-only sets both (no publish). Soft-fail when npm has not
+        # enabled OIDC dist-tag for this package (OIDC_DIST_TAG_DISABLED).
         working-directory: .
+        continue-on-error: true
         run: |
           VERSION="${{ steps.ver.outputs.version }}"
           PKG="@sparrow-community/wasm"
+          set +e
           if [ -n "$RETAG_ONLY" ]; then
-            node .github/scripts/oidc-dist-tag.mjs "$PKG" "$VERSION" alpha
+            node .github/scripts/oidc-dist-tag.mjs "$PKG" "$VERSION" latest
+            latest_rc=$?
+          else
+            latest_rc=0
           fi
-          node .github/scripts/oidc-dist-tag.mjs "$PKG" "$VERSION" latest
-          echo "dist-tags: alpha + latest → $PKG@$VERSION"
+          node .github/scripts/oidc-dist-tag.mjs "$PKG" "$VERSION" alpha
+          alpha_rc=$?
+          set -e
+          if [ "$latest_rc" -ne 0 ] || [ "$alpha_rc" -ne 0 ]; then
+            echo "::warning::OIDC dist-tag incomplete (latest_rc=$latest_rc alpha_rc=$alpha_rc)."
+            echo "If npm returned OIDC_DIST_TAG_DISABLED, sync with owner CLI:"
+            echo "  npm dist-tag add $PKG@$VERSION alpha"
+            if [ -n "$RETAG_ONLY" ]; then
+              echo "  npm dist-tag add $PKG@$VERSION latest"
+            fi
+            # Retag-only has no publish fallback — fail the job so it is visible.
+            if [ -n "$RETAG_ONLY" ]; then
+              exit 1
+            fi
+          else
+            echo "dist-tags ok: alpha (+ latest if retag) → $PKG@$VERSION"
+          fi
