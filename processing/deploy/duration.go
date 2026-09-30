@@ -1,3 +1,17 @@
+// Copyright 2025 The Sparrow community and contributors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package deploy
 
 import (
@@ -8,21 +22,76 @@ import (
 	"unicode"
 )
 
-// ParseISO8601Duration parses a BPMN timeDuration subset: PTnHnMnS.
-// Days, weeks, months, and years are not accepted.
+// ParseISO8601Duration parses a BPMN timeDuration subset:
+//
+//	PTnHnMnS
+//	P[nW][nD][TnHnMnS]
+//
+// Day and week components use fixed 24h units (no calendar/DST adjustment).
+// Months and years are rejected until calendar arithmetic is specified.
 func ParseISO8601Duration(s string) (time.Duration, error) {
 	s = strings.ToUpper(strings.TrimSpace(s))
-	if !strings.HasPrefix(s, "PT") {
-		return 0, fmt.Errorf("INVALID_CONDITION: duration %q must be ISO-8601 time (PTnHnMnS)", s)
+	if !strings.HasPrefix(s, "P") {
+		return 0, fmt.Errorf("INVALID_CONDITION: duration %q must be ISO-8601 (PnD / PTnHnMnS)", s)
 	}
-	rest := s[2:]
+	rest := s[1:]
 	if rest == "" {
-		return 0, fmt.Errorf("INVALID_CONDITION: duration %q has no time components", s)
+		return 0, fmt.Errorf("INVALID_CONDITION: duration %q has no components", s)
 	}
 
 	var total time.Duration
-	i := 0
 	saw := false
+
+	// Date part before optional T: nW and/or nD.
+	if !strings.HasPrefix(rest, "T") {
+		i := 0
+		for i < len(rest) && rest[i] != 'T' {
+			start := i
+			for i < len(rest) && (unicode.IsDigit(rune(rest[i])) || rest[i] == '.') {
+				i++
+			}
+			if i == start || i >= len(rest) || rest[i] == 'T' {
+				return 0, fmt.Errorf("INVALID_CONDITION: duration %q is not ISO-8601 (PnD / PTnHnMnS)", s)
+			}
+			n, err := strconv.ParseFloat(rest[start:i], 64)
+			if err != nil {
+				return 0, fmt.Errorf("INVALID_CONDITION: duration %q: %w", s, err)
+			}
+			unit := rest[i]
+			i++
+			switch unit {
+			case 'W':
+				total += time.Duration(n * float64(7*24*time.Hour))
+			case 'D':
+				total += time.Duration(n * float64(24*time.Hour))
+			case 'Y', 'M':
+				return 0, fmt.Errorf("INVALID_CONDITION: duration %q has unsupported calendar unit %q", s, string(unit))
+			default:
+				return 0, fmt.Errorf("INVALID_CONDITION: duration %q has unsupported unit %q", s, string(unit))
+			}
+			saw = true
+		}
+		rest = rest[i:]
+	}
+
+	if rest == "" {
+		if !saw {
+			return 0, fmt.Errorf("INVALID_CONDITION: duration %q has no components", s)
+		}
+		return total, nil
+	}
+	if !strings.HasPrefix(rest, "T") {
+		return 0, fmt.Errorf("INVALID_CONDITION: duration %q is not ISO-8601 (PnD / PTnHnMnS)", s)
+	}
+	rest = rest[1:]
+	if rest == "" {
+		if !saw {
+			return 0, fmt.Errorf("INVALID_CONDITION: duration %q has no time components", s)
+		}
+		return total, nil
+	}
+
+	i := 0
 	for i < len(rest) {
 		start := i
 		for i < len(rest) && (unicode.IsDigit(rune(rest[i])) || rest[i] == '.') {
@@ -52,7 +121,7 @@ func ParseISO8601Duration(s string) (time.Duration, error) {
 		saw = true
 	}
 	if !saw {
-		return 0, fmt.Errorf("INVALID_CONDITION: duration %q has no time components", s)
+		return 0, fmt.Errorf("INVALID_CONDITION: duration %q has no components", s)
 	}
 	return total, nil
 }
@@ -89,9 +158,9 @@ type cycleSpec struct {
 
 // ParseISO8601Cycle parses a BPMN timeCycle subset:
 //
-//	R[n]/PTnHnMnS
-//	R[n]/<timeDate>/PTnHnMnS
-//	R[n]/PTnHnMnS/<timeDate>
+//	R[n]/P…duration…
+//	R[n]/<timeDate>/P…duration…
+//	R[n]/P…duration…/<timeDate>
 //
 // Intermediate catch uses only the first due instant; it does not re-arm.
 func ParseISO8601Cycle(s string) (cycleSpec, error) {
@@ -161,7 +230,7 @@ func ParseISO8601Cycle(s string) (cycleSpec, error) {
 
 func isDurationPart(s string) bool {
 	u := strings.ToUpper(strings.TrimSpace(s))
-	return strings.HasPrefix(u, "PT")
+	return strings.HasPrefix(u, "P")
 }
 
 func (c cycleSpec) FirstDue(now time.Time) (time.Time, error) {
@@ -235,6 +304,17 @@ func formatISO8601Duration(d time.Duration) string {
 	}
 	if d < 0 {
 		d = -d
+	}
+	// Prefer day form when the duration is an exact multiple of 24h and ≥ 1 day.
+	if d%time.Hour == 0 {
+		hours := d / time.Hour
+		if hours >= 24 && hours%24 == 0 {
+			days := hours / 24
+			if days%7 == 0 && days >= 7 {
+				return "P" + strconv.FormatInt(int64(days/7), 10) + "W"
+			}
+			return "P" + strconv.FormatInt(int64(days), 10) + "D"
+		}
 	}
 	var b strings.Builder
 	b.WriteString("PT")

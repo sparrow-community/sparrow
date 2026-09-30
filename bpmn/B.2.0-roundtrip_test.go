@@ -186,6 +186,7 @@ func TestB_2_0_roundtrip(t *testing.T) {
 											},
 										},
 									},
+									CancelActivity: true,
 									AttachedToRef: "_7f4fe4ea-901f-4c74-bcd4-e933495712fd",
 								},
 							},
@@ -1458,6 +1459,7 @@ func TestB_2_0_roundtrip(t *testing.T) {
 											},
 										},
 									},
+									CancelActivity: true,
 									AttachedToRef: "_7e6ccf38-e740-4537-a439-a8e984d066de",
 								},
 								{
@@ -1483,6 +1485,7 @@ func TestB_2_0_roundtrip(t *testing.T) {
 											},
 										},
 									},
+									CancelActivity: true,
 									AttachedToRef: "_fa90f891-fc07-463a-97c9-2ee0812351e1",
 								},
 								{
@@ -1550,6 +1553,7 @@ func TestB_2_0_roundtrip(t *testing.T) {
 											},
 										},
 									},
+									CancelActivity: true,
 									AttachedToRef: "_137281ee-758e-4c36-8942-74c5d807e1b3",
 								},
 								{
@@ -1592,6 +1596,7 @@ func TestB_2_0_roundtrip(t *testing.T) {
 											},
 										},
 									},
+									CancelActivity: true,
 									AttachedToRef: "_d58753a7-d38b-49cd-914d-14e4cdaa4449",
 								},
 							},

@@ -12,6 +12,10 @@ type SubProcessHandler struct{}
 func (SubProcessHandler) Type() eventv1.Element_Type { return eventv1.Element_TYPE_SUB_PROCESS }
 
 func (SubProcessHandler) OnEnter(in EnterInput) (*Effect, error) {
+	if in.Deployment != nil && in.Deployment.IsOpaqueSubProcess(in.ElementID) {
+		// Empty collapsed SubProcess: no inner start — wait like an abstract Task.
+		return waitingTaskEnter(in, nil)
+	}
 	if spec, ok := in.Deployment.MultiInstanceSpec(in.ElementID); ok && !in.Deployment.IsEventSubProcess(in.ElementID) && !isMultiInstanceInner(in) {
 		total, err := spec.InstanceCount(in.Instance.Variables)
 		if err != nil {
@@ -80,6 +84,9 @@ func attachScopeBoundary(dep *deploy.Deployment, subProcessID string, now time.T
 }
 
 func (SubProcessHandler) OnComplete(in CompleteInput) (*Effect, error) {
+	if in.Deployment != nil && in.Deployment.IsOpaqueSubProcess(in.ElementID) {
+		return waitingTaskComplete(in)
+	}
 	effect := &Effect{
 		Records: []*eventv1.Element{
 			{Intent: eventv1.Element_INTENT_COMPLETING, Type: in.Type, Id: in.ElementID, TokenId: in.TokenID},

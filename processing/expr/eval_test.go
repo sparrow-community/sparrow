@@ -4,10 +4,12 @@ import "testing"
 
 func TestEval(t *testing.T) {
 	vars := map[string]string{
-		"approved": "true",
-		"flag":     "false",
-		"name":     `"alice"`,
-		"n":        "2",
+		"approved":          "true",
+		"flag":              "false",
+		"name":              `"alice"`,
+		"n":                 "2",
+		"Vacation Approval": `"Approved"`,
+		"clarified":         `"no"`,
 	}
 	cases := []struct {
 		in   string
@@ -31,6 +33,14 @@ func TestEval(t *testing.T) {
 		{"n > 1", true},
 		{"approved && !flag", true},
 		{"!approved == true", false},
+		{"bpmn:getDataObject('approved')", true},
+		{"not(bpmn:getDataObject('approved'))", false},
+		{"bpmn:getDataObject('name') = 'alice'", true},
+		{"bpmn:getDataObject('clarified') = 'yes'", false},
+		{"= approved", true},
+		{"= not(approved)", false},
+		{"Vacation Approval = 'Approved'", true},
+		{"Vacation Approval = 'Rejected'", false},
 	}
 	for _, tc := range cases {
 		got, err := Eval(tc.in, vars)

@@ -275,6 +275,7 @@ func TestA_3_0_export(t *testing.T) {
 											},
 										},
 									},
+									CancelActivity: true,
 									AttachedToRef: "Activity_1j4b29j",
 								},
 							},

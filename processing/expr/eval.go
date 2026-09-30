@@ -1,8 +1,23 @@
+// Copyright 2025 The Sparrow community and contributors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package expr
 
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/expr-lang/expr"
@@ -11,19 +26,35 @@ import (
 
 const notFn = "__sparrow_not"
 
+var (
+	reGetDataObject   = regexp.MustCompile(`(?i)bpmn:getDataObject\(\s*'([^']+)'\s*\)`)
+	reGetDataObjectDQ = regexp.MustCompile(`(?i)bpmn:getDataObject\(\s*"([^"]+)"\s*\)`)
+)
+
 // Eval evaluates a condition against instance variables (name → json_value).
 // BPMN `${...}` wrappers are stripped. Evaluation uses github.com/expr-lang/expr
 // so comparisons, boolean ops, and property access are available.
 // Single-quoted strings are accepted as in typical BPMN conditions.
 // Missing variables are treated as nil/false, so `!missing` is true.
+//
+// Interop sugar (Data Objects stay Excluded as ledger subjects — variables carry data):
+//   - bpmn:getDataObject('name') → process variable name
+//   - leading FEEL "=" expression marker stripped
+//   - FEEL "=" equality rewritten to "=="
+//   - FEEL not(x) available as an env function
 func Eval(text string, vars map[string]string) (bool, error) {
 	s := unwrap(text)
 	if s == "" {
 		return false, fmt.Errorf("empty expression")
 	}
+	s = rewriteInterop(s)
+	s, aliases := rewriteSpacedIdentifiers(s, vars)
 	s = normalizeSingleQuotes(s)
 
 	env := envFrom(vars)
+	for k, v := range aliases {
+		env[k] = v
+	}
 	program, err := expr.Compile(s,
 		expr.Env(env),
 		expr.AllowUndefinedVariables(),
@@ -46,9 +77,14 @@ func EvalJSON(text string, vars map[string]string) (string, error) {
 	if s == "" {
 		return "", fmt.Errorf("empty expression")
 	}
+	s = rewriteInterop(s)
+	s, aliases := rewriteSpacedIdentifiers(s, vars)
 	s = normalizeSingleQuotes(s)
 
 	env := envFrom(vars)
+	for k, v := range aliases {
+		env[k] = v
+	}
 	program, err := expr.Compile(s,
 		expr.Env(env),
 		expr.AllowUndefinedVariables(),
@@ -66,6 +102,93 @@ func EvalJSON(text string, vars map[string]string) (string, error) {
 		return "", fmt.Errorf("marshal %q: %w", text, err)
 	}
 	return string(b), nil
+}
+
+func rewriteInterop(s string) string {
+	s = strings.TrimSpace(s)
+	if strings.HasPrefix(s, "=") && !strings.HasPrefix(s, "==") {
+		s = strings.TrimSpace(s[1:])
+	}
+	s = reGetDataObject.ReplaceAllString(s, "$1")
+	s = reGetDataObjectDQ.ReplaceAllString(s, "$1")
+	return rewriteFeelEquality(s)
+}
+
+// rewriteSpacedIdentifiers turns `Vacation Approval == "x"` into a safe alias
+// when the multi-word name matches a process variable (or is introduced as nil).
+var reSpacedIdent = regexp.MustCompile(`\b([A-Za-z_][A-Za-z0-9_]*(?:[ \t]+[A-Za-z_][A-Za-z0-9_]*)+)\b`)
+
+func rewriteSpacedIdentifiers(s string, vars map[string]string) (string, map[string]any) {
+	aliases := map[string]any{}
+	out := reSpacedIdent.ReplaceAllStringFunc(s, func(name string) string {
+		alias := "__spaced_" + strings.ReplaceAll(name, " ", "_")
+		if raw, ok := vars[name]; ok {
+			var v any
+			if err := json.Unmarshal([]byte(raw), &v); err != nil {
+				aliases[alias] = raw
+			} else {
+				aliases[alias] = v
+			}
+		} else {
+			aliases[alias] = nil
+		}
+		return alias
+	})
+	return out, aliases
+}
+
+func rewriteFeelEquality(s string) string {
+	var b strings.Builder
+	b.Grow(len(s) + 8)
+	inSingle, inDouble := false, false
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if inSingle {
+			b.WriteByte(c)
+			if c == '\'' {
+				inSingle = false
+			}
+			continue
+		}
+		if inDouble {
+			b.WriteByte(c)
+			if c == '"' && (i == 0 || s[i-1] != '\\') {
+				inDouble = false
+			}
+			continue
+		}
+		switch c {
+		case '\'':
+			inSingle = true
+			b.WriteByte(c)
+		case '"':
+			inDouble = true
+			b.WriteByte(c)
+		case '!':
+			if i+1 < len(s) && s[i+1] == '=' {
+				b.WriteString("!=")
+				i++
+				continue
+			}
+			b.WriteByte(c)
+		case '<', '>':
+			b.WriteByte(c)
+			if i+1 < len(s) && s[i+1] == '=' {
+				b.WriteByte('=')
+				i++
+			}
+		case '=':
+			if i+1 < len(s) && s[i+1] == '=' {
+				b.WriteString("==")
+				i++
+				continue
+			}
+			b.WriteString("==")
+		default:
+			b.WriteByte(c)
+		}
+	}
+	return b.String()
 }
 
 type notPatcher struct{}
@@ -93,7 +216,6 @@ func unwrap(text string) string {
 	return s
 }
 
-// normalizeSingleQuotes turns 'alice' into "alice" without touching double-quoted spans.
 func normalizeSingleQuotes(s string) string {
 	var b strings.Builder
 	b.Grow(len(s))
@@ -133,9 +255,12 @@ func normalizeSingleQuotes(s string) string {
 }
 
 func envFrom(vars map[string]string) map[string]any {
-	out := map[string]any{notFn: sparrowNot}
+	out := map[string]any{
+		notFn: sparrowNot,
+		"not": sparrowNot,
+	}
 	for k, raw := range vars {
-		if k == notFn {
+		if k == notFn || k == "not" {
 			continue
 		}
 		var v any

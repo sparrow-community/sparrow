@@ -859,6 +859,18 @@ func syncLegacyBoundaryFields(tok *Token) {
 	if tok == nil {
 		return
 	}
+	// Preserve activity-level message/signal names (receive / catch) that are not
+	// mirrored in BoundaryWaits — timer re-arm must not wipe them.
+	activityMsg := tok.MessageName
+	activitySig := tok.SignalName
+	for _, w := range tok.BoundaryWaits {
+		if w.Kind == "message" && w.MessageName == activityMsg {
+			activityMsg = ""
+		}
+		if w.Kind == "signal" && w.SignalName == activitySig {
+			activitySig = ""
+		}
+	}
 	tok.DueUnixMs = 0
 	tok.TimerText = ""
 	tok.BoundaryID = ""
@@ -893,6 +905,12 @@ func syncLegacyBoundaryFields(tok *Token) {
 				tok.SignalBoundaryID = w.BoundaryID
 			}
 		}
+	}
+	if activityMsg != "" && tok.MessageName == "" {
+		tok.MessageName = activityMsg
+	}
+	if activitySig != "" && tok.SignalName == "" {
+		tok.SignalName = activitySig
 	}
 }
 

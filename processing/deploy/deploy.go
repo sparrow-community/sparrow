@@ -485,6 +485,9 @@ func validateProcess(proc *element.Process, messages []element.Message, signals 
 	if err := validateCatchAndThrow(&proc.FlowElements); err != nil {
 		return err
 	}
+	if err := validateSequenceFlowConditions(&proc.FlowElements); err != nil {
+		return err
+	}
 	type seenKey struct {
 		activity string
 		kind     string // timer|message|signal|compensate|error:CODE
@@ -796,9 +799,62 @@ func (d *Deployment) SubProcessStartEventID(subProcessID string) (string, error)
 		return "", fmt.Errorf("NOT_FOUND: subProcess %q", subProcessID)
 	}
 	if len(sp.StartEvents) == 0 {
+		if isOpaqueSubProcessBody(&sp.FlowElements) {
+			return "", fmt.Errorf("NOT_FOUND: opaque subProcess %q has no startEvent", subProcessID)
+		}
 		return "", fmt.Errorf("no startEvent in subProcess %q", subProcessID)
 	}
 	return sp.StartEvents[0].ID, nil
+}
+
+// IsOpaqueSubProcess reports whether id is an empty/collapsed SubProcess with no
+// inner flow nodes. Such elements run as wait → Complete (opaque Activity).
+func (d *Deployment) IsOpaqueSubProcess(id string) bool {
+	sp := d.findSubProcess(&d.Process.FlowElements, id)
+	if sp == nil {
+		for _, called := range d.calledProcesses {
+			fe := called.FlowElements
+			if sp = d.findSubProcess(&fe, id); sp != nil {
+				break
+			}
+		}
+	}
+	if sp == nil || sp.TriggeredByEvent {
+		return false
+	}
+	return len(sp.StartEvents) == 0 && isOpaqueSubProcessBody(&sp.FlowElements)
+}
+
+// isOpaqueSubProcessBody is true when the SubProcess has no executable inner
+// flow nodes (modeling stub / collapsed empty body). Data objects alone do not
+// make the body executable.
+func isOpaqueSubProcessBody(fe *element.FlowElements) bool {
+	if fe == nil {
+		return true
+	}
+	return len(fe.StartEvents) == 0 &&
+		len(fe.EndEvents) == 0 &&
+		len(fe.Tasks) == 0 &&
+		len(fe.ManualTasks) == 0 &&
+		len(fe.UserTasks) == 0 &&
+		len(fe.ServiceTasks) == 0 &&
+		len(fe.SendTasks) == 0 &&
+		len(fe.ReceiveTasks) == 0 &&
+		len(fe.BusinessRuleTasks) == 0 &&
+		len(fe.ScriptTasks) == 0 &&
+		len(fe.ParallelGatewaies) == 0 &&
+		len(fe.ExclusiveGatewaies) == 0 &&
+		len(fe.InclusiveGatewaies) == 0 &&
+		len(fe.ComplexGatewaies) == 0 &&
+		len(fe.EventBasedGatewaies) == 0 &&
+		len(fe.SubProcesses) == 0 &&
+		len(fe.Transactions) == 0 &&
+		len(fe.AdHocSubProcesses) == 0 &&
+		len(fe.BoundaryEvents) == 0 &&
+		len(fe.CallActivities) == 0 &&
+		len(fe.IntermediateThrowEvents) == 0 &&
+		len(fe.IntermediateCatchEvents) == 0 &&
+		len(fe.ImplicitThrowEvents) == 0
 }
 
 func (d *Deployment) findSubProcess(fe *element.FlowElements, id string) *element.SubProcess {
@@ -1067,6 +1123,44 @@ func ConditionText(f element.SequenceFlow) string {
 	}
 }
 
+// validateSequenceFlowConditions rejects FEEL constructs Sparrow does not evaluate
+// (quantifiers / satisfies). Narrow interop sugar lives in processing/expr.
+func validateSequenceFlowConditions(fe *element.FlowElements) error {
+	if fe == nil {
+		return nil
+	}
+	for _, f := range fe.SequenceFlows {
+		text := strings.TrimSpace(ConditionText(f))
+		if text == "" {
+			continue
+		}
+		lower := strings.ToLower(text)
+		if strings.Contains(lower, " satisfies ") ||
+			strings.Contains(lower, " some ") ||
+			strings.HasPrefix(lower, "some ") ||
+			strings.Contains(lower, " every ") ||
+			strings.HasPrefix(lower, "every ") {
+			return fmt.Errorf("INVALID_CONDITION: flow %s: FEEL quantifier expressions are not supported", f.ID)
+		}
+	}
+	for i := range fe.SubProcesses {
+		if err := validateSequenceFlowConditions(&fe.SubProcesses[i].FlowElements); err != nil {
+			return err
+		}
+	}
+	for i := range fe.Transactions {
+		if err := validateSequenceFlowConditions(&fe.Transactions[i].FlowElements); err != nil {
+			return err
+		}
+	}
+	for i := range fe.AdHocSubProcesses {
+		if err := validateSequenceFlowConditions(&fe.AdHocSubProcesses[i].FlowElements); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // DefaultOutgoing returns the BPMN default sequence flow id for an exclusive
 // gateway or activity, or empty if none.
 func (d *Deployment) DefaultOutgoing(elementID string) string {
@@ -1161,7 +1255,12 @@ func (d *Deployment) ChooseConditionalOutgoing(elementID string, vars map[string
 			break
 		}
 	}
-	if !hasCondition && def == "" {
+	if !hasCondition {
+		if def != "" {
+			if _, err := d.SequenceFlow(def); err == nil {
+				return def, nil
+			}
+		}
 		return outs[0], nil
 	}
 	for _, flowID := range outs {
@@ -1214,6 +1313,9 @@ func (d *Deployment) ChooseOutgoingFlows(elementID string, vars map[string]strin
 	}
 	if !hasCondition && def == "" {
 		return append([]string{}, outs...), nil
+	}
+	if !hasCondition && def != "" {
+		return []string{def}, nil
 	}
 	one, err := d.ChooseConditionalOutgoing(elementID, vars)
 	if err != nil {
@@ -1406,7 +1508,12 @@ func validateScopesAt(fe *element.FlowElements, insideEmbedded, insideEventSubPr
 			continue
 		}
 		if len(sp.StartEvents) == 0 {
-			return fmt.Errorf("UNSUPPORTED_ELEMENT: subProcess %q must have a startEvent", sp.ID)
+			if !isOpaqueSubProcessBody(&sp.FlowElements) {
+				return fmt.Errorf("UNSUPPORTED_ELEMENT: subProcess %q must have a startEvent", sp.ID)
+			}
+			// Collapsed/empty SubProcess (no inner flow nodes): treated as opaque
+			// Activity (wait → Complete), not an enterable scope.
+			continue
 		}
 		if err := validateScopesAt(&sp.FlowElements, true, insideEventSubProcess, insideTransaction, errors, escalations); err != nil {
 			return err
