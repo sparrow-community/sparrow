@@ -14,4 +14,6 @@
 
 package bpmn
 
-// test files srouce from https://github.com/bpmn-miwg/bpmn-miwg-test-suite/tree/master/bpmn.io%20(Camunda%20Modeler)%2011.5.0
+// MIWG fixtures under test/ are pinned in test/MIWG_UPSTREAM_SHA
+// (bpmn-miwg/bpmn-miwg-test-suite; Camunda Modeler 18.6.1 vendor folder + Reference C.10.0).
+// See README.md and the repository NOTICE.
