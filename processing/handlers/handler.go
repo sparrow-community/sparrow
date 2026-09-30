@@ -70,6 +70,10 @@ type Effect struct {
 	// AdHocInnerComplete names the Ad-Hoc SubProcess whose inner activity just
 	// completed; the executor re-evaluates the completion condition.
 	AdHocInnerComplete string
+	// DecideExclusive asks the executor to choose an exclusive outgoing after
+	// ACTIVATING/ACTIVATED records, emit COMPLETING/COMPLETED, then leave.
+	// Intervention may barrier between ACTIVATED and choose (PendingDecide).
+	DecideExclusive bool
 }
 
 // AdHocEnable tells the executor which inner activities of an Ad-Hoc SubProcess

@@ -118,19 +118,19 @@ func TestInterventionT2_StepPauseOnExclusiveGateway(t *testing.T) {
 	if !st.Paused || st.PauseElementID != "Gateway_1" {
 		t.Fatalf("want paused at Gateway_1, got %#v", st)
 	}
-	if st.Pending == nil || st.Pending.Kind != processing.PendingLeave {
-		t.Fatalf("want pending leave, got %#v", st.Pending)
-	}
-	if len(st.Pending.TakenFlowIDs) != 1 {
-		t.Fatalf("want one taken flow, got %#v", st.Pending.TakenFlowIDs)
+	if st.Pending == nil || st.Pending.Kind != processing.PendingDecide {
+		t.Fatalf("want pending decide, got %#v", st.Pending)
 	}
 
 	events, err := eng.ListEvents(ctx, instanceID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !sawElementIntent(events, eventv1.Element_TYPE_EXCLUSIVE_GATEWAY, "Gateway_1", eventv1.Element_INTENT_COMPLETED) {
-		t.Fatal("expected Gateway_1 COMPLETED")
+	if !sawElementIntent(events, eventv1.Element_TYPE_EXCLUSIVE_GATEWAY, "Gateway_1", eventv1.Element_INTENT_ACTIVATED) {
+		t.Fatal("expected Gateway_1 ACTIVATED")
+	}
+	if sawElementIntent(events, eventv1.Element_TYPE_EXCLUSIVE_GATEWAY, "Gateway_1", eventv1.Element_INTENT_COMPLETED) {
+		t.Fatal("must not COMPLETE gateway before decide resume")
 	}
 	if sawSequenceFlowTakenFrom(events, "Gateway_1") {
 		t.Fatal("must not take gateway outgoing before Continue")
@@ -464,6 +464,127 @@ func TestIntervention_RejectCompleteWhilePaused(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "instance paused") {
 		t.Fatalf("want instance paused, got %v", err)
 	}
+}
+
+// P1: breakpoint hit under Continuous policy.
+func TestInterventionP1_BreakpointHitAtGateway(t *testing.T) {
+	ctx := context.Background()
+	eng := processing.NewEngine(eventlog.NewMemory())
+	dep, err := eng.Deploy(ctx, readTestdata(t, "m1_simple.bpmn"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	instanceID, err := eng.CreateInstance(ctx, dep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := eng.EnableIntervention(ctx, processing.EnableInterventionRequest{
+		InstanceID: instanceID,
+		Policy:     processing.RunPolicyContinuous,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := eng.SetBreakpoints(ctx, processing.SetBreakpointsRequest{
+		InstanceID: instanceID,
+		ElementIDs: []string{"Gateway_1"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	inst := mustInstance(t, eng, instanceID)
+	elem, tok := waitingAt(inst)
+	if err := eng.Complete(ctx, instanceID, elem, tok, map[string]any{"approved": true}); err != nil {
+		t.Fatal(err)
+	}
+	st, err := eng.GetInterventionState(ctx, instanceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !st.Paused || st.PauseElementID != "Gateway_1" {
+		t.Fatalf("want BP pause at Gateway_1, got %#v", st)
+	}
+	if st.PauseReason != processing.PauseReasonBreakpoint {
+		t.Fatalf("want breakpoint reason, got %q", st.PauseReason)
+	}
+	if st.Pending == nil || st.Pending.Kind != processing.PendingDecide {
+		t.Fatalf("want pending decide, got %#v", st.Pending)
+	}
+}
+
+// P1: SetVariables then Continue re-decides exclusive gateway.
+func TestInterventionP1_GatewayRedecide(t *testing.T) {
+	ctx := context.Background()
+	eng, instanceID := setupPausedAtGateway(t)
+
+	resp, err := eng.SetVariables(ctx, processing.SetVariablesRequest{
+		InstanceID: instanceID,
+		Variables:  map[string]any{"approved": false},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.State.Pending == nil || resp.State.Pending.OutgoingFlowID != "Flow_gw_to_end_other" {
+		t.Fatalf("want tentative other flow, got %#v", resp.State.Pending)
+	}
+
+	cont, err := eng.Continue(ctx, processing.ContinueRequest{InstanceID: instanceID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cont.Paused {
+		t.Fatalf("continuous Continue should finish, state=%#v", cont.State)
+	}
+	inst := mustInstance(t, eng, instanceID)
+	if inst.Status != projection.StatusCompleted {
+		t.Fatalf("status=%s", inst.Status)
+	}
+	events, err := eng.ListEvents(ctx, instanceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sawSequenceFlowTaken(events, "Flow_gw_to_end_other") {
+		t.Fatal("expected Flow_gw_to_end_other taken after re-decide")
+	}
+	if sawSequenceFlowTaken(events, "Flow_gw_to_end_ok") {
+		t.Fatal("must not take default ok flow after approved=false")
+	}
+}
+
+func TestInterventionP1_RejectPublishWhilePaused(t *testing.T) {
+	ctx := context.Background()
+	eng, instanceID := setupPausedAtGateway(t)
+	_, err := eng.PublishMessage(ctx, processing.PublishMessageRequest{
+		Name:              "anything",
+		ProcessInstanceID: instanceID,
+	})
+	if err == nil || !strings.Contains(err.Error(), "instance paused") {
+		t.Fatalf("want instance paused, got %v", err)
+	}
+	_, err = eng.PublishSignal(ctx, processing.PublishSignalRequest{
+		Name:              "anything",
+		ProcessInstanceID: instanceID,
+	})
+	if err == nil || !strings.Contains(err.Error(), "instance paused") {
+		t.Fatalf("want instance paused on signal, got %v", err)
+	}
+}
+
+func sawSequenceFlowTaken(events []*eventv1.Event, flowID string) bool {
+	for _, ev := range events {
+		if ev.GetRecordType() != eventv1.Event_RECORD_TYPE_EVENT {
+			continue
+		}
+		el := ev.GetElement()
+		if el == nil || el.GetType() != eventv1.Element_TYPE_SEQUENCE_FLOW {
+			continue
+		}
+		if el.GetIntent() != eventv1.Element_INTENT_SEQUENCE_FLOW_TAKEN {
+			continue
+		}
+		if el.GetId() == flowID {
+			return true
+		}
+	}
+	return false
 }
 
 func setupPausedAtGateway(t *testing.T) (*processing.Engine, string) {
