@@ -133,3 +133,18 @@ func asAnyMap(v any) (map[string]any, error) {
 	}
 	return m, nil
 }
+
+func asStringSlice(v any) ([]string, error) {
+	if v == nil {
+		return nil, nil
+	}
+	arr, ok := v.([]any)
+	if !ok {
+		return nil, fmt.Errorf("expected array")
+	}
+	out := make([]string, 0, len(arr))
+	for _, item := range arr {
+		out = append(out, asString(item))
+	}
+	return out, nil
+}

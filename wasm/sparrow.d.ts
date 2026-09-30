@@ -99,6 +99,61 @@ export interface SparrowEngine {
   getInstance(instanceId: string): SparrowInstance;
   listInstanceIds(): string[];
   listEvents(instanceId: string): { events: unknown[] };
+
+  enableIntervention(req: {
+    instanceId: string;
+    policy?: "continuous" | "step" | "breakpoints" | "stepOver" | string;
+  }): { ok: boolean };
+  disableIntervention(): { ok: boolean };
+  setBreakpoints(req: {
+    instanceId?: string;
+    elementIds: string[];
+  }): { ok: boolean; elementIds: string[] };
+  /** Resume pending transit under continuous (honors breakpoints). */
+  continueIntervention(req: { instanceId: string }): {
+    ok: boolean;
+    paused: boolean;
+    state: SparrowInterventionState;
+  };
+  stepInto(req: { instanceId: string }): {
+    ok: boolean;
+    paused: boolean;
+    state: SparrowInterventionState;
+  };
+  stepOver(req: { instanceId: string }): {
+    ok: boolean;
+    paused: boolean;
+    state: SparrowInterventionState;
+  };
+  getInterventionState(instanceIdOrReq?: string | { instanceId?: string }): SparrowInterventionState;
+  setVariables(req: {
+    instanceId: string;
+    variables?: Record<string, unknown>;
+  }): { ok: boolean; state: SparrowInterventionState };
+}
+
+export interface SparrowPendingTransition {
+  kind: string;
+  fromElementId: string;
+  tokenId: string;
+  takenFlowIds?: string[];
+  nextElementIds?: string[];
+  outgoingFlowId?: string;
+  enterChildId?: string;
+  spawnChildToken?: boolean;
+  linkCatchIds?: string[];
+}
+
+export interface SparrowInterventionState {
+  enabled: boolean;
+  focusInstanceId: string;
+  policy: string;
+  breakpoints: string[];
+  paused: boolean;
+  pauseReason: string;
+  pauseElementId: string;
+  pauseTokenId: string;
+  pending?: SparrowPendingTransition;
 }
 
 export interface SparrowJob {

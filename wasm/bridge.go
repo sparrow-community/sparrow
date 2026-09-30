@@ -60,6 +60,14 @@ func (a *api) value() js.Value {
 	o.Set("getInstance", a.fn(a.getInstance))
 	o.Set("listInstanceIds", a.fn(a.listInstanceIds))
 	o.Set("listEvents", a.fn(a.listEvents))
+	o.Set("enableIntervention", a.fn(a.enableIntervention))
+	o.Set("disableIntervention", a.fn(a.disableIntervention))
+	o.Set("setBreakpoints", a.fn(a.setBreakpoints))
+	o.Set("continueIntervention", a.fn(a.continueIntervention))
+	o.Set("stepInto", a.fn(a.stepInto))
+	o.Set("stepOver", a.fn(a.stepOver))
+	o.Set("getInterventionState", a.fn(a.getInterventionState))
+	o.Set("setVariables", a.fn(a.setVariables))
 	return o
 }
 
@@ -392,4 +400,151 @@ func (a *api) listEvents(_ js.Value, args []js.Value) (any, error) {
 		return nil, err
 	}
 	return map[string]any{"events": arr}, nil
+}
+
+func (a *api) enableIntervention(_ js.Value, args []js.Value) (any, error) {
+	req, err := argObject(args, 0)
+	if err != nil {
+		return nil, err
+	}
+	_, err = a.eng.EnableIntervention(context.Background(), processing.EnableInterventionRequest{
+		InstanceID: asString(req["instanceId"]),
+		Policy:     processing.RunPolicy(asString(req["policy"])),
+	})
+	return map[string]any{"ok": err == nil}, err
+}
+
+func (a *api) disableIntervention(_ js.Value, _ []js.Value) (any, error) {
+	_, err := a.eng.DisableIntervention(context.Background(), processing.DisableInterventionRequest{})
+	return map[string]any{"ok": err == nil}, err
+}
+
+func (a *api) setBreakpoints(_ js.Value, args []js.Value) (any, error) {
+	req, err := argObject(args, 0)
+	if err != nil {
+		return nil, err
+	}
+	ids, err := asStringSlice(req["elementIds"])
+	if err != nil {
+		return nil, fmt.Errorf("INVALID_ARGUMENT: elementIds: %w", err)
+	}
+	resp, err := a.eng.SetBreakpoints(context.Background(), processing.SetBreakpointsRequest{
+		InstanceID: asString(req["instanceId"]),
+		ElementIDs: ids,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"ok": true, "elementIds": resp.ElementIDs}, nil
+}
+
+func (a *api) continueIntervention(_ js.Value, args []js.Value) (any, error) {
+	req, err := argObject(args, 0)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := a.eng.Continue(context.Background(), processing.ContinueRequest{
+		InstanceID: asString(req["instanceId"]),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"ok": true, "paused": resp.Paused, "state": interventionStateJSON(&resp.State)}, nil
+}
+
+func (a *api) stepInto(_ js.Value, args []js.Value) (any, error) {
+	req, err := argObject(args, 0)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := a.eng.StepInto(context.Background(), processing.StepIntoRequest{
+		InstanceID: asString(req["instanceId"]),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"ok": true, "paused": resp.Paused, "state": interventionStateJSON(&resp.State)}, nil
+}
+
+func (a *api) stepOver(_ js.Value, args []js.Value) (any, error) {
+	req, err := argObject(args, 0)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := a.eng.StepOver(context.Background(), processing.StepOverRequest{
+		InstanceID: asString(req["instanceId"]),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"ok": true, "paused": resp.Paused, "state": interventionStateJSON(&resp.State)}, nil
+}
+
+func (a *api) getInterventionState(_ js.Value, args []js.Value) (any, error) {
+	instanceID := ""
+	if len(args) > 0 && !args[0].IsUndefined() && !args[0].IsNull() {
+		if args[0].Type() == js.TypeString {
+			instanceID = args[0].String()
+		} else {
+			req, err := argObject(args, 0)
+			if err != nil {
+				return nil, err
+			}
+			instanceID = asString(req["instanceId"])
+		}
+	}
+	st, err := a.eng.GetInterventionState(context.Background(), instanceID)
+	if err != nil {
+		return nil, err
+	}
+	return interventionStateJSON(st), nil
+}
+
+func (a *api) setVariables(_ js.Value, args []js.Value) (any, error) {
+	req, err := argObject(args, 0)
+	if err != nil {
+		return nil, err
+	}
+	vars, err := asAnyMap(req["variables"])
+	if err != nil {
+		return nil, fmt.Errorf("INVALID_ARGUMENT: variables: %w", err)
+	}
+	resp, err := a.eng.SetVariables(context.Background(), processing.SetVariablesRequest{
+		InstanceID: asString(req["instanceId"]),
+		Variables:  vars,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"ok": true, "state": interventionStateJSON(&resp.State)}, nil
+}
+
+func interventionStateJSON(st *processing.InterventionState) map[string]any {
+	if st == nil {
+		return nil
+	}
+	out := map[string]any{
+		"enabled":         st.Enabled,
+		"focusInstanceId": st.FocusInstanceID,
+		"policy":          string(st.Policy),
+		"breakpoints":     st.Breakpoints,
+		"paused":          st.Paused,
+		"pauseReason":     string(st.PauseReason),
+		"pauseElementId":  st.PauseElementID,
+		"pauseTokenId":    st.PauseTokenID,
+	}
+	if st.Pending != nil {
+		out["pending"] = map[string]any{
+			"kind":            string(st.Pending.Kind),
+			"fromElementId":   st.Pending.FromElementID,
+			"tokenId":         st.Pending.TokenID,
+			"takenFlowIds":    st.Pending.TakenFlowIDs,
+			"nextElementIds":  st.Pending.NextElementIDs,
+			"outgoingFlowId":  st.Pending.OutgoingFlowID,
+			"enterChildId":    st.Pending.EnterChildID,
+			"spawnChildToken": st.Pending.SpawnChildToken,
+			"linkCatchIds":    st.Pending.LinkCatchIDs,
+		}
+	}
+	return out
 }
