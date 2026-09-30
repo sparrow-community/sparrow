@@ -30,9 +30,12 @@ import (
 type RunPolicy string
 
 const (
-	RunPolicyContinuous  RunPolicy = "continuous"  // only stop on Wait / end / error (and P1 breakpoints)
+	RunPolicyContinuous  RunPolicy = "continuous"  // only stop on Wait / end / error (and breakpoints)
 	RunPolicyStep        RunPolicy = "step"        // stop at every Enter-settled barrier
-	RunPolicyBreakpoints RunPolicy = "breakpoints" // P1: stop only on BP hit (and Wait)
+	RunPolicyBreakpoints RunPolicy = "breakpoints" // stop only on BP hit (and Wait)
+	// RunPolicyStepOver resumes pending transit then drains Enter-settled barriers
+	// until a natural Wait / end / error (ignores breakpoints for this drain).
+	RunPolicyStepOver RunPolicy = "stepOver"
 )
 
 // PauseReason explains why the session is barrier-paused.
@@ -235,6 +238,9 @@ func (c *interventionCtl) shouldBarrier(instanceID, elementID, tokenID, sourceCm
 	case RunPolicyStep:
 		c.armPauseLocked(pending, elementID, tokenID, PauseReasonStep, sourceCmdID)
 		return true
+	case RunPolicyStepOver:
+		// Drain to natural Wait / end; do not arm Enter-settled barriers.
+		return false
 	case RunPolicyBreakpoints, RunPolicyContinuous:
 		if _, hit := s.Breakpoints[elementID]; hit {
 			c.armPauseLocked(pending, elementID, tokenID, PauseReasonBreakpoint, sourceCmdID)
@@ -433,13 +439,23 @@ func (e *Engine) StepInto(ctx context.Context, req StepIntoRequest) (*StepIntoRe
 	return &StepIntoResponse{OK: resp.OK, Paused: resp.Paused, State: resp.State}, nil
 }
 
-// StepOver is Continue-equivalent in P0 (real stack-aware StepOver is P2).
+// StepOver resumes one pending transit then drains Enter-settled barriers until
+// a natural Wait / process end / error. Unlike Continue, breakpoints do not arm
+// during that drain. Call Activity child step-into remains a follow-up (focus
+// stays on the parent instance; Call enter is still a natural wait).
 func (e *Engine) StepOver(ctx context.Context, req StepOverRequest) (*StepOverResponse, error) {
-	resp, err := e.Continue(ctx, ContinueRequest{InstanceID: req.InstanceID})
+	resp, err := e.resumeIntervention(ctx, req.InstanceID, RunPolicyStepOver)
 	if err != nil {
 		return nil, err
 	}
-	return &StepOverResponse{OK: resp.OK, Paused: resp.Paused, State: resp.State}, nil
+	ctl := e.executor.intervention
+	ctl.mu.Lock()
+	if !ctl.session.Paused && ctl.session.Enabled && ctl.session.RunPolicy == RunPolicyStepOver {
+		ctl.session.RunPolicy = RunPolicyContinuous
+	}
+	st := ctl.snapshotLocked()
+	ctl.mu.Unlock()
+	return &StepOverResponse{OK: resp.OK, Paused: st.Paused, State: st}, nil
 }
 
 // SetVariablesRequest patches instance variables while barrier-paused (ledger COMMAND).
