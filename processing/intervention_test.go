@@ -568,6 +568,101 @@ func TestInterventionP1_RejectPublishWhilePaused(t *testing.T) {
 	}
 }
 
+// P2: StepOver drains past breakpoints to natural wait/end (unlike Continue).
+func TestInterventionP2_StepOverSkipsBreakpoints(t *testing.T) {
+	ctx := context.Background()
+	eng := processing.NewEngine(eventlog.NewMemory())
+	dep, err := eng.Deploy(ctx, readTestdata(t, "m1_simple.bpmn"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	instanceID, err := eng.CreateInstance(ctx, dep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := eng.EnableIntervention(ctx, processing.EnableInterventionRequest{
+		InstanceID: instanceID,
+		Policy:     processing.RunPolicyStep,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	inst := mustInstance(t, eng, instanceID)
+	elem, tok := waitingAt(inst)
+	if err := eng.Complete(ctx, instanceID, elem, tok, map[string]any{"approved": true}); err != nil {
+		t.Fatal(err)
+	}
+	st, err := eng.GetInterventionState(ctx, instanceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !st.Paused || st.PauseElementID != "UserTask_1" {
+		t.Fatalf("want first pause at UserTask_1 leave, got %#v", st)
+	}
+	if _, err := eng.SetBreakpoints(ctx, processing.SetBreakpointsRequest{
+		InstanceID: instanceID,
+		ElementIDs: []string{"Gateway_1"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Continue would re-pause on Gateway_1 BP; StepOver drains past it to completion.
+	resp, err := eng.StepOver(ctx, processing.StepOverRequest{InstanceID: instanceID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Paused {
+		t.Fatalf("StepOver must not stop on Gateway_1 BP, state=%#v", resp.State)
+	}
+	inst = mustInstance(t, eng, instanceID)
+	if inst.Status != projection.StatusCompleted {
+		t.Fatalf("status=%s want completed", inst.Status)
+	}
+	if resp.State.Policy != processing.RunPolicyContinuous {
+		t.Fatalf("policy after StepOver want continuous, got %q", resp.State.Policy)
+	}
+}
+
+// P2 contrast: Continue from the same point honors the Gateway_1 breakpoint.
+func TestInterventionP2_ContinueHonorsBreakpoint(t *testing.T) {
+	ctx := context.Background()
+	eng := processing.NewEngine(eventlog.NewMemory())
+	dep, err := eng.Deploy(ctx, readTestdata(t, "m1_simple.bpmn"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	instanceID, err := eng.CreateInstance(ctx, dep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := eng.EnableIntervention(ctx, processing.EnableInterventionRequest{
+		InstanceID: instanceID,
+		Policy:     processing.RunPolicyStep,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	inst := mustInstance(t, eng, instanceID)
+	elem, tok := waitingAt(inst)
+	if err := eng.Complete(ctx, instanceID, elem, tok, map[string]any{"approved": true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := eng.SetBreakpoints(ctx, processing.SetBreakpointsRequest{
+		InstanceID: instanceID,
+		ElementIDs: []string{"Gateway_1"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	resp, err := eng.Continue(ctx, processing.ContinueRequest{InstanceID: instanceID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !resp.Paused || resp.State.PauseElementID != "Gateway_1" {
+		t.Fatalf("Continue must hit Gateway_1 BP, got %#v", resp.State)
+	}
+	if resp.State.PauseReason != processing.PauseReasonBreakpoint {
+		t.Fatalf("want breakpoint reason, got %q", resp.State.PauseReason)
+	}
+}
+
 func sawSequenceFlowTaken(events []*eventv1.Event, flowID string) bool {
 	for _, ev := range events {
 		if ev.GetRecordType() != eventv1.Event_RECORD_TYPE_EVENT {
