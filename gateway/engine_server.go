@@ -205,7 +205,9 @@ func (s *EngineServer) DisableIntervention(ctx context.Context, req *enginev1.Di
 	if s.engine == nil {
 		return nil, status.Error(codes.FailedPrecondition, "engine is required")
 	}
-	_, err := s.engine.DisableIntervention(ctx, processing.DisableInterventionRequest{})
+	_, err := s.engine.DisableIntervention(ctx, processing.DisableInterventionRequest{
+		InstanceID: req.GetProcessInstanceId(),
+	})
 	if err != nil {
 		return nil, statusFromEngine(err)
 	}
@@ -288,31 +290,54 @@ func (s *EngineServer) SetVariables(ctx context.Context, req *enginev1.SetVariab
 	return &enginev1.SetVariablesResponse{Ok: true, State: interventionStateToProto(&resp.State)}, nil
 }
 
+func (s *EngineServer) Pause(ctx context.Context, req *enginev1.PauseRequest) (*enginev1.PauseResponse, error) {
+	if s.engine == nil {
+		return nil, status.Error(codes.FailedPrecondition, "engine is required")
+	}
+	resp, err := s.engine.Pause(ctx, processing.PauseRequest{InstanceID: req.GetProcessInstanceId()})
+	if err != nil {
+		return nil, statusFromEngine(err)
+	}
+	return &enginev1.PauseResponse{Ok: true, State: interventionStateToProto(&resp.State)}, nil
+}
+
+func (s *EngineServer) HostEffectAllowed(ctx context.Context, req *enginev1.HostEffectAllowedRequest) (*enginev1.HostEffectAllowedResponse, error) {
+	if s.engine == nil {
+		return nil, status.Error(codes.FailedPrecondition, "engine is required")
+	}
+	_ = ctx
+	allowed := s.engine.HostEffectAllowed(req.GetProcessInstanceId())
+	return &enginev1.HostEffectAllowedResponse{Allowed: allowed}, nil
+}
+
 func interventionStateToProto(st *processing.InterventionState) *enginev1.InterventionState {
 	if st == nil {
 		return nil
 	}
 	out := &enginev1.InterventionState{
-		Enabled:         st.Enabled,
-		FocusInstanceId: st.FocusInstanceID,
-		Policy:          string(st.Policy),
-		Breakpoints:     append([]string(nil), st.Breakpoints...),
-		Paused:          st.Paused,
-		PauseReason:     string(st.PauseReason),
-		PauseElementId:  st.PauseElementID,
-		PauseTokenId:    st.PauseTokenID,
+		Enabled:          st.Enabled,
+		FocusInstanceId:  st.FocusInstanceID,
+		Policy:           string(st.Policy),
+		Breakpoints:      append([]string(nil), st.Breakpoints...),
+		Paused:           st.Paused,
+		PauseReason:      string(st.PauseReason),
+		PauseElementId:   st.PauseElementID,
+		PauseTokenId:     st.PauseTokenID,
+		BlockHostEffects: st.BlockHostEffects,
 	}
 	if st.Pending != nil {
 		out.Pending = &enginev1.PendingTransition{
-			Kind:            string(st.Pending.Kind),
-			FromElementId:   st.Pending.FromElementID,
-			TokenId:         st.Pending.TokenID,
-			TakenFlowIds:    append([]string(nil), st.Pending.TakenFlowIDs...),
-			NextElementIds:  append([]string(nil), st.Pending.NextElementIDs...),
-			OutgoingFlowId:  st.Pending.OutgoingFlowID,
-			EnterChildId:    st.Pending.EnterChildID,
-			SpawnChildToken: st.Pending.SpawnChildToken,
-			LinkCatchIds:    append([]string(nil), st.Pending.LinkCatchIDs...),
+			Kind:               string(st.Pending.Kind),
+			FromElementId:      st.Pending.FromElementID,
+			TokenId:            st.Pending.TokenID,
+			TakenFlowIds:       append([]string(nil), st.Pending.TakenFlowIDs...),
+			NextElementIds:     append([]string(nil), st.Pending.NextElementIDs...),
+			OutgoingFlowId:     st.Pending.OutgoingFlowID,
+			EnterChildId:       st.Pending.EnterChildID,
+			SpawnChildToken:    st.Pending.SpawnChildToken,
+			LinkCatchIds:       append([]string(nil), st.Pending.LinkCatchIDs...),
+			DecideMode:         string(st.Pending.DecideMode),
+			TerminateJoinPeers: st.Pending.TerminateJoinPeers,
 		}
 	}
 	return out

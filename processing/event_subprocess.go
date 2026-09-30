@@ -126,6 +126,9 @@ func emitEventSubProcessStartDisarm(dep *deploy.Deployment, eventSubProcessEleme
 }
 
 func (e *Engine) triggerEventSubProcess(ctx context.Context, instanceID, eventSubProcessElementID string, vars map[string]any) error {
+	if err := e.errIfInstancePaused(instanceID); err != nil {
+		return err
+	}
 	e.mu.Lock()
 	inst := e.instances[instanceID]
 	lock := e.instMu[instanceID]

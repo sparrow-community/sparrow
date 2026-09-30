@@ -74,6 +74,15 @@ type Effect struct {
 	// ACTIVATING/ACTIVATED records, emit COMPLETING/COMPLETED, then leave.
 	// Intervention may barrier between ACTIVATED and choose (PendingDecide).
 	DecideExclusive bool
+	// DecideInclusive asks the executor to ChooseInclusiveOutgoing after ACTIVATED
+	// (split only). Resume may leave (1 flow) or fork (n flows).
+	DecideInclusive bool
+	// DecideComplex asks the executor to ChooseComplexOutgoing after ACTIVATED
+	// (split, or complex join after activation fires). Resume may leave or fork.
+	DecideComplex bool
+	// DecideTerminateJoinPeers ends other waiting join tokens when finalizing a
+	// complex/inclusive join decide (same semantics as TerminateJoinPeers).
+	DecideTerminateJoinPeers string
 }
 
 // AdHocEnable tells the executor which inner activities of an Ad-Hoc SubProcess

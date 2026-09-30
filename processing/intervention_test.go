@@ -791,3 +791,347 @@ func trailFingerprint(events []*eventv1.Event) string {
 	}
 	return b.String()
 }
+
+// K3: Inclusive gateway PendingDecide + SetVariables re-decide.
+func TestInterventionK3_InclusiveRedecide(t *testing.T) {
+	ctx := context.Background()
+	eng := processing.NewEngine(eventlog.NewMemory())
+	dep, err := eng.Deploy(ctx, readTestdata(t, "m2_inclusive_gateway.bpmn"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	instanceID, err := eng.CreateInstance(ctx, dep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := eng.EnableIntervention(ctx, processing.EnableInterventionRequest{
+		InstanceID: instanceID,
+		Policy:     processing.RunPolicyContinuous,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := eng.SetBreakpoints(ctx, processing.SetBreakpointsRequest{
+		InstanceID: instanceID,
+		ElementIDs: []string{"Split_1"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// New instance so CreateInstance burst hits Split_1 BP.
+	instanceID, err = eng.CreateInstance(ctx, dep, map[string]any{"path_a": "true"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := eng.GetInterventionState(ctx, instanceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !st.Paused || st.PauseElementID != "Split_1" {
+		t.Fatalf("want pause at Split_1, got %#v", st)
+	}
+	if st.Pending == nil || st.Pending.Kind != processing.PendingDecide || st.Pending.DecideMode != processing.DecideInclusive {
+		t.Fatalf("want inclusive decide, got %#v", st.Pending)
+	}
+
+	resp, err := eng.SetVariables(ctx, processing.SetVariablesRequest{
+		InstanceID: instanceID,
+		Variables:  map[string]any{"path_a": "false", "path_c": "true"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.State.Pending == nil || len(resp.State.Pending.TakenFlowIDs) == 0 {
+		t.Fatalf("want tentative flows after SetVariables, got %#v", resp.State.Pending)
+	}
+
+	cont, err := eng.Continue(ctx, processing.ContinueRequest{InstanceID: instanceID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cont.Paused {
+		t.Fatalf("continuous Continue should reach waits, state=%#v", cont.State)
+	}
+	inst := mustInstance(t, eng, instanceID)
+	waiting := allWaiting(inst)
+	if containsStr(waiting, "Task_A") {
+		t.Fatalf("path_a false must not wait at Task_A, waiting=%v", waiting)
+	}
+	if !containsStr(waiting, "Task_C") {
+		t.Fatalf("want Task_C waiting after re-decide, got %v", waiting)
+	}
+}
+
+// K3: Complex split PendingDecide.
+func TestInterventionK3_ComplexSplitDecide(t *testing.T) {
+	ctx := context.Background()
+	eng := processing.NewEngine(eventlog.NewMemory())
+	dep, err := eng.Deploy(ctx, readTestdata(t, "m34_complex_split.bpmn"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bootstrap, err := eng.CreateInstance(ctx, dep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := eng.EnableIntervention(ctx, processing.EnableInterventionRequest{
+		InstanceID: bootstrap,
+		Policy:     processing.RunPolicyContinuous,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := eng.SetBreakpoints(ctx, processing.SetBreakpointsRequest{
+		InstanceID: bootstrap,
+		ElementIDs: []string{"Gateway_split"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	instanceID, err := eng.CreateInstance(ctx, dep, map[string]any{"takeA": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := eng.GetInterventionState(ctx, instanceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !st.Paused || st.Pending == nil || st.Pending.Kind != processing.PendingDecide {
+		t.Fatalf("want complex decide pause, got %#v", st)
+	}
+	if st.Pending.DecideMode != processing.DecideComplex {
+		t.Fatalf("want complex mode, got %q", st.Pending.DecideMode)
+	}
+	if _, err := eng.Continue(ctx, processing.ContinueRequest{InstanceID: instanceID}); err != nil {
+		t.Fatal(err)
+	}
+	inst := mustInstance(t, eng, instanceID)
+	if !containsStr(allWaiting(inst), "Task_A") {
+		t.Fatalf("want Task_A waiting, tokens=%#v", inst.Tokens)
+	}
+}
+
+// K7: ThrowError / ResolveIncident rejected while barrier-paused.
+func TestInterventionK7_RejectThrowAndResolveWhilePaused(t *testing.T) {
+	ctx := context.Background()
+	eng, instanceID := setupPausedAtGateway(t)
+	err := eng.ThrowError(ctx, instanceID, "UserTask_1", "tok", "E")
+	if err == nil || !strings.Contains(err.Error(), "instance paused") {
+		t.Fatalf("want ThrowError paused, got %v", err)
+	}
+	err = eng.ResolveIncident(ctx, instanceID, "UserTask_1", "tok")
+	if err == nil || !strings.Contains(err.Error(), "instance paused") {
+		t.Fatalf("want ResolveIncident paused, got %v", err)
+	}
+	if eng.HostEffectAllowed(instanceID) {
+		t.Fatal("HostEffectAllowed must be false while paused")
+	}
+}
+
+// K1: Wait ACTIVATED breakpoint hit.
+func TestInterventionK1_WaitActivatedBreakpoint(t *testing.T) {
+	ctx := context.Background()
+	eng := processing.NewEngine(eventlog.NewMemory())
+	dep, err := eng.Deploy(ctx, readTestdata(t, "m1_simple.bpmn"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bootstrap, err := eng.CreateInstance(ctx, dep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := eng.EnableIntervention(ctx, processing.EnableInterventionRequest{
+		InstanceID: bootstrap,
+		Policy:     processing.RunPolicyContinuous,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := eng.SetBreakpoints(ctx, processing.SetBreakpointsRequest{
+		InstanceID: bootstrap,
+		ElementIDs: []string{"UserTask_1"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	instanceID, err := eng.CreateInstance(ctx, dep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := eng.GetInterventionState(ctx, instanceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !st.Paused || st.PauseElementID != "UserTask_1" || st.PauseReason != processing.PauseReasonBreakpoint {
+		t.Fatalf("want wait BP at UserTask_1, got %#v", st)
+	}
+	if st.Pending == nil || st.Pending.Kind != processing.PendingWait {
+		t.Fatalf("want PendingWait, got %#v", st.Pending)
+	}
+	if !st.BlockHostEffects {
+		t.Fatal("BlockHostEffects should be true")
+	}
+	// Complete rejected until Continue clears wait BP pause.
+	inst := mustInstance(t, eng, instanceID)
+	elem, tok := waitingAt(inst)
+	err = eng.Complete(ctx, instanceID, elem, tok, map[string]any{"approved": true})
+	if err == nil || !strings.Contains(err.Error(), "instance paused") {
+		t.Fatalf("want Complete rejected while wait-BP paused, got %v", err)
+	}
+	if _, err := eng.Continue(ctx, processing.ContinueRequest{InstanceID: instanceID}); err != nil {
+		t.Fatal(err)
+	}
+	st, err = eng.GetInterventionState(ctx, instanceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Paused {
+		t.Fatalf("after Continue wait BP, should not be paused: %#v", st)
+	}
+	if err := eng.Complete(ctx, instanceID, elem, tok, map[string]any{"approved": true}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// K2: Sequence-flow-edge barrier under Step.
+func TestInterventionK2_SequenceFlowEdgeBarrier(t *testing.T) {
+	ctx := context.Background()
+	eng := processing.NewEngine(eventlog.NewMemory())
+	dep, err := eng.Deploy(ctx, readTestdata(t, "m1_simple.bpmn"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	instanceID, err := eng.CreateInstance(ctx, dep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := eng.EnableIntervention(ctx, processing.EnableInterventionRequest{
+		InstanceID: instanceID,
+		Policy:     processing.RunPolicyStep,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	inst := mustInstance(t, eng, instanceID)
+	elem, tok := waitingAt(inst)
+	if err := eng.Complete(ctx, instanceID, elem, tok, map[string]any{"approved": true}); err != nil {
+		t.Fatal(err)
+	}
+	st, err := eng.GetInterventionState(ctx, instanceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !st.Paused || st.Pending == nil || st.Pending.Kind != processing.PendingLeave {
+		t.Fatalf("want leave pause at UserTask_1, got %#v", st)
+	}
+	if _, err := eng.StepInto(ctx, processing.StepIntoRequest{InstanceID: instanceID}); err != nil {
+		t.Fatal(err)
+	}
+	st, err = eng.GetInterventionState(ctx, instanceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !st.Paused || st.Pending == nil || st.Pending.Kind != processing.PendingEdge {
+		t.Fatalf("want edge barrier after leave, got %#v", st)
+	}
+	events, err := eng.ListEvents(ctx, instanceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sawSequenceFlowTakenFrom(events, "UserTask_1") {
+		t.Fatal("edge pause requires SEQUENCE_FLOW_TAKEN already emitted")
+	}
+	if sawElementIntent(events, eventv1.Element_TYPE_EXCLUSIVE_GATEWAY, "Gateway_1", eventv1.Element_INTENT_ACTIVATING) {
+		t.Fatal("must not enter gateway before edge Continue")
+	}
+}
+
+// K4+K5: StepInto Call Activity child enables multi-focus child session.
+func TestInterventionK4_CallActivityChildStepInto(t *testing.T) {
+	ctx := context.Background()
+	eng := processing.NewEngine(eventlog.NewMemory())
+	dep, err := eng.Deploy(ctx, readTestdata(t, "m4_call_activity.bpmn"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	parentID, err := eng.CreateInstance(ctx, dep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := eng.EnableIntervention(ctx, processing.EnableInterventionRequest{
+		InstanceID: parentID,
+		Policy:     processing.RunPolicyContinuous,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	parent := mustInstance(t, eng, parentID)
+	elem, _ := waitingAt(parent)
+	if elem != "CallActivity_1" {
+		t.Fatalf("want CallActivity_1 waiting, got %s", elem)
+	}
+	var childID string
+	for _, tok := range parent.Tokens {
+		if tok != nil && tok.CalledProcessInstanceID != "" {
+			childID = tok.CalledProcessInstanceID
+			break
+		}
+	}
+	if childID == "" {
+		t.Fatal("expected called child instance")
+	}
+	resp, err := eng.StepInto(ctx, processing.StepIntoRequest{InstanceID: parentID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.State.FocusInstanceID != childID {
+		t.Fatalf("want focus child %s, got %#v", childID, resp.State)
+	}
+	if !resp.State.Enabled || resp.State.Policy != processing.RunPolicyStep {
+		t.Fatalf("child session want enabled step, got %#v", resp.State)
+	}
+	// Parent session still exists and is not paused.
+	pst, err := eng.GetInterventionState(ctx, parentID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !pst.Enabled || pst.Paused {
+		t.Fatalf("parent session should remain enabled unpaused, got %#v", pst)
+	}
+	child := mustInstance(t, eng, childID)
+	celem, _ := waitingAt(child)
+	if celem != "Task_called" {
+		t.Fatalf("child want Task_called, got %s", celem)
+	}
+}
+
+// K8+K9: PauseReasonManual + HostEffectAllowed.
+func TestInterventionK9_ManualPause(t *testing.T) {
+	ctx := context.Background()
+	eng := processing.NewEngine(eventlog.NewMemory())
+	dep, err := eng.Deploy(ctx, readTestdata(t, "m1_simple.bpmn"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	instanceID, err := eng.CreateInstance(ctx, dep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := eng.EnableIntervention(ctx, processing.EnableInterventionRequest{
+		InstanceID: instanceID,
+		Policy:     processing.RunPolicyContinuous,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	resp, err := eng.Pause(ctx, processing.PauseRequest{InstanceID: instanceID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !resp.State.Paused || resp.State.PauseReason != processing.PauseReasonManual {
+		t.Fatalf("want manual pause, got %#v", resp.State)
+	}
+	if resp.State.Pending == nil || resp.State.Pending.Kind != processing.PendingWait {
+		t.Fatalf("want PendingWait, got %#v", resp.State.Pending)
+	}
+	if eng.HostEffectAllowed(instanceID) {
+		t.Fatal("host effects blocked while manually paused")
+	}
+	if _, err := eng.Continue(ctx, processing.ContinueRequest{InstanceID: instanceID}); err != nil {
+		t.Fatal(err)
+	}
+	if !eng.HostEffectAllowed(instanceID) {
+		t.Fatal("host effects allowed after Continue")
+	}
+}
