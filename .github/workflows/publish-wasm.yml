@@ -1,43 +1,39 @@
 # Publish @sparrow-community/wasm to npm via Trusted Publishing (OIDC).
 #
-# No NPM_TOKEN / NODE_AUTH_TOKEN. npm CLI exchanges a short-lived GitHub OIDC
-# token for publish credentials. Requires:
-#   - npm Trusted Publisher on the package (GitHub Actions → this workflow file)
-#   - Node 24+ / npm 11.5.1+ on the runner
-#   - Package already exists on the registry (first version is a one-time
-#     interactive bootstrap — see docs in the Project store / wasm README)
+# Primary trigger: push of an annotated or lightweight tag
+#   wasm-vYYYY.M.D-alpha.N
+# Example: wasm-v2026.10.5-alpha.1 → npm version 2026.10.5-alpha.1
 #
-# Dist-tags (Jiaxing policy — every publish):
-#   - latest — set by `npm publish --tag latest` (OIDC publish; always works)
-#   - alpha  — same version via OIDC registry dist-tags API after publish.
-#     If npm returns OIDC_DIST_TAG_DISABLED for this package, the step warns
-#     and the job still succeeds; owner CLI can sync alpha until npm enables it.
+# Emergency fallback: workflow_dispatch (bump+publish, or retag_only).
+# Path pushes to main/wasm/** do NOT publish (use a release tag).
 #
-# Trusted Publisher fields Jiaxing configures once on npmjs.com:
+# Dist-tags (every successful publish moves both):
+#   - latest — set by `npm publish --tag latest`
+#   - alpha  — same version via `npm dist-tag add` (OIDC)
+# Requires Trusted Publisher → Allowed actions: npm publish + Allow npm dist-tag.
+#
+# Trusted Publisher fields (npmjs.com → package → Trusted Publisher):
 #   Organization or user: sparrow-community
 #   Repository:           sparrow
 #   Workflow filename:    publish-wasm.yml
 #   Environment name:     (leave blank)
-#   Allowed actions:      npm publish
+#   Allowed actions:      npm publish + Allow npm dist-tag
 name: publish-wasm
 
 on:
+  push:
+    tags:
+      - "wasm-v*-*-alpha.*"
   workflow_dispatch:
     inputs:
       retag_only:
-        description: "Existing version to retag (alpha + latest). Empty = full publish. Needs OIDC dist-tag enabled on the package."
+        description: "Existing version to retag (alpha + latest). Empty = emergency full publish (bump). Prefer cutting a wasm-v* tag instead."
         required: false
         type: string
         default: ""
-  push:
-    branches: [main]
-    paths:
-      # Workflow-only / .github/scripts edits do not auto-publish.
-      # Use workflow_dispatch after changing this file, or push a wasm/** change.
-      - "wasm/**"
 
 concurrency:
-  group: publish-wasm-${{ github.ref }}
+  group: publish-wasm
   cancel-in-progress: false
 
 permissions:
@@ -52,8 +48,8 @@ jobs:
       run:
         working-directory: wasm
     env:
-      # Empty on push; set on workflow_dispatch (may be "").
       RETAG_ONLY: ${{ github.event_name == 'workflow_dispatch' && inputs.retag_only || '' }}
+      TAG_NAME: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -72,21 +68,61 @@ jobs:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
 
-      - name: Require npm OIDC support (11.5.1+)
-        if: ${{ env.RETAG_ONLY == '' }}
+      - name: Ensure npm supports OIDC publish + dist-tag (11.21+)
         run: |
+          # Dist-tag via Trusted Publishing needs npm ≥ 11.21 (npm docs).
+          npm install -g "npm@^11.21.0"
           NPM_VER="$(npm --version)"
           echo "npm version: $NPM_VER"
           node -e '
             const [a,b,c] = process.argv[1].split(".").map(Number);
-            if (a < 11 || (a === 11 && b < 5) || (a === 11 && b === 5 && c < 1)) {
-              console.error("npm " + process.argv[1] + " lacks OIDC trusted publishing (need 11.5.1+)");
+            if (a < 11 || (a === 11 && b < 21)) {
+              console.error("npm " + process.argv[1] + " lacks OIDC dist-tag (need 11.21+)");
               process.exit(1);
             }
           ' "$NPM_VER"
 
-      - name: Bump alpha version (YYYY.M.D-alpha.N, UTC, no leading zeros)
-        if: ${{ env.RETAG_ONLY == '' }}
+      - name: Set version from release tag
+        if: ${{ env.RETAG_ONLY == '' && env.TAG_NAME != '' }}
+        run: |
+          set -euo pipefail
+          TAG="$TAG_NAME"
+          case "$TAG" in
+            wasm-v*) VERSION="${TAG#wasm-v}" ;;
+            *)
+              echo "::error::Unexpected tag '$TAG' (want wasm-vYYYY.M.D-alpha.N)"
+              exit 1
+              ;;
+          esac
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-alpha\.[0-9]+$ ]]; then
+            echo "::error::Tag version '$VERSION' must match YYYY.M.D-alpha.N (no leading zeros in M/D)"
+            exit 1
+          fi
+          # Reject leading zeros in month/day (semver-invalid / policy).
+          node -e '
+            const v = process.argv[1];
+            const m = v.match(/^(\d+)\.(\d+)\.(\d+)-alpha\.(\d+)$/);
+            if (!m) process.exit(1);
+            const [, y, mo, d, n] = m;
+            if (String(Number(mo)) !== mo || String(Number(d)) !== d) {
+              console.error("leading zeros not allowed in month/day:", v);
+              process.exit(1);
+            }
+            if (Number(n) < 1) {
+              console.error("alpha.N must be >= 1:", v);
+              process.exit(1);
+            }
+          ' "$VERSION"
+          node -e '
+            const fs = require("fs");
+            const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+            pkg.version = process.argv[1];
+            fs.writeFileSync("package.json", JSON.stringify(pkg, null, 2) + "\n");
+          ' "$VERSION"
+          echo "tag $TAG → package.json version $VERSION"
+
+      - name: Bump alpha version (emergency workflow_dispatch only)
+        if: ${{ env.RETAG_ONLY == '' && env.TAG_NAME == '' }}
         run: ./scripts/bump-alpha-version.sh
 
       - name: Build WASM artifacts
@@ -110,36 +146,49 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Resolved version: $VERSION"
 
-      - name: Promote alpha (+ latest on retag-only) via OIDC registry API
-        # Full publish already set `latest`. This step sets `alpha` to the same
-        # version. Retag-only sets both (no publish). Soft-fail when npm has not
-        # enabled OIDC dist-tag for this package (OIDC_DIST_TAG_DISABLED).
+      - name: Promote alpha (+ latest on retag-only) to the same version
+        # Full publish already set `latest`. This step sets `alpha` to match.
+        # Retag-only sets both (no publish). Needs Trusted Publisher
+        # "Allow npm dist-tag". Soft-fail on full publish so a lagging alpha
+        # does not hide a successful publish; retag-only fails hard.
         working-directory: .
-        continue-on-error: true
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
         run: |
-          VERSION="${{ steps.ver.outputs.version }}"
+          set -euo pipefail
           PKG="@sparrow-community/wasm"
+          VERSION="${VERSION:?}"
+
+          promote() {
+            local tag="$1"
+            # Prefer native CLI (OIDC when Allow npm dist-tag is on).
+            if npm dist-tag add "$PKG@$VERSION" "$tag"; then
+              return 0
+            fi
+            echo "native npm dist-tag failed for $tag; trying OIDC helper…"
+            node .github/scripts/oidc-dist-tag.mjs "$PKG" "$VERSION" "$tag"
+          }
+
           set +e
           if [ -n "$RETAG_ONLY" ]; then
-            node .github/scripts/oidc-dist-tag.mjs "$PKG" "$VERSION" latest
+            promote latest
             latest_rc=$?
           else
             latest_rc=0
           fi
-          node .github/scripts/oidc-dist-tag.mjs "$PKG" "$VERSION" alpha
+          promote alpha
           alpha_rc=$?
           set -e
+
           if [ "$latest_rc" -ne 0 ] || [ "$alpha_rc" -ne 0 ]; then
-            echo "::warning::OIDC dist-tag incomplete (latest_rc=$latest_rc alpha_rc=$alpha_rc)."
-            echo "If npm returned OIDC_DIST_TAG_DISABLED, sync with owner CLI:"
+            echo "::warning::dist-tag incomplete (latest_rc=$latest_rc alpha_rc=$alpha_rc)."
+            echo "Enable Trusted Publisher → Allow npm dist-tag for publish-wasm.yml, then re-run"
+            echo "retag_only=$VERSION or owner CLI:"
             echo "  npm dist-tag add $PKG@$VERSION alpha"
             if [ -n "$RETAG_ONLY" ]; then
               echo "  npm dist-tag add $PKG@$VERSION latest"
-            fi
-            # Retag-only has no publish fallback — fail the job so it is visible.
-            if [ -n "$RETAG_ONLY" ]; then
               exit 1
             fi
-          else
-            echo "dist-tags ok: alpha (+ latest if retag) → $PKG@$VERSION"
+            exit 0
           fi
+          echo "dist-tags ok: alpha (+ latest if retag) → $PKG@$VERSION"

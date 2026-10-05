@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Compute the next alpha version for @sparrow-community/wasm and write it to package.json.
+# Compute the next alpha version for @sparrow-community/wasm.
 #
 # Scheme: YYYY.M.D-alpha.N  (UTC calendar date as major.minor.patch; prerelease alpha.N)
 #   - YYYY / M / D are UTC year, month, day with no leading zeros (node-semver valid)
 #   - N starts at 1 each UTC day and increments for each publish that day
-#   - CI publishes with dist-tag "latest" (package.json publishConfig.tag) and
-#     also promotes "alpha" to the same version when OIDC dist-tag is enabled
-#   - No leading "v" in package.json (git tags may use vYYYY.M.D-alpha.N separately)
+#   - CI publishes with dist-tag "latest" and promotes "alpha" to the same version
+#   - No leading "v" in package.json
+#   - Release git tags: wasm-vYYYY.M.D-alpha.N (primary publish trigger)
 #
 # Why not Jiaxing's display form v2026.09.28.1-alpha:
 #   - npm/package.json rejects or strips a leading "v"
@@ -14,10 +14,25 @@
 #   - four numeric segments before the prerelease is not MAJOR.MINOR.PATCH
 # Mapping: v2026.09.28.1-alpha → 2026.9.28-alpha.1
 #
+# Usage:
+#   ./scripts/bump-alpha-version.sh           # write next version into package.json
+#   ./scripts/bump-alpha-version.sh --print   # print next version only (for cutting tags)
+#   ./scripts/bump-alpha-version.sh --dry-run # alias for --print
+#
 # Queries the npm registry for already-published versions matching today's prefix.
 # If the package (or today's prefix) does not exist yet, N=1.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+
+PRINT_ONLY=false
+case "${1:-}" in
+  --print|--dry-run) PRINT_ONLY=true ;;
+  "") ;;
+  *)
+    echo "usage: $0 [--print|--dry-run]" >&2
+    exit 2
+    ;;
+esac
 
 PKG_NAME="$(node -p "require('./package.json').name")"
 YEAR="$(date -u +%Y)"
@@ -47,6 +62,11 @@ fi
 
 next_n=$((max_n + 1))
 VERSION="${PREFIX}${next_n}"
+
+if [ "$PRINT_ONLY" = true ]; then
+  echo "$VERSION"
+  exit 0
+fi
 
 node -e '
 const fs = require("fs");
