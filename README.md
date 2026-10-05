@@ -72,8 +72,9 @@ cd wasm && ./build.sh
 
 The JS host contract is [`wasm/README.md`](./wasm/README.md). The npm package
 is `@sparrow-community/wasm` (alpha versions `YYYY.M.D-alpha.N`, UTC). Publishes
-go through GitHub Actions Trusted Publishing (`.github/workflows/publish-wasm.yml`),
-not long-lived npm tokens.
+are tag-triggered (`wasm-vYYYY.M.D-alpha.N`) via GitHub Actions Trusted Publishing
+(`.github/workflows/publish-wasm.yml`), not long-lived npm tokens. Every publish
+moves both `latest` and `alpha`.
 
 ## License
 
