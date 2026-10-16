@@ -57,7 +57,7 @@ Sparrow 是**开发者优先、开源、可嵌入的内核**：记录业务流�
 
 | 优先级 | 增量 | 范围 |
 |--------|------|------|
-| P1 | 兼容基线 | 发布版本方案与 1.0 标准；公共面清单（Event 线格式、`engine.v1` / `job.v1`、`processing` 导出 API、`globalThis.sparrow` + `sparrow.d.ts`、REJECTION 码）；每个已发布版本的黄金 Event 日志在 CI 中回放；对上一发布版本执行 `buf breaking` |
+| P1 | 兼容基线 | **已交付** [`036`](./specs/036-compatibility-baseline/) / [`COMPATIBILITY.md`](./COMPATIBILITY.md)：版本方案与 1.0 标准；公共面清单；黄金 Event 日志在 CI 回放；对 bootstrap 快照执行 `buf breaking`（有协议 tag 后切换） |
 | P2 | 嵌入体验 | 最小 Go 嵌入入口；基于现有 `EventLog` / `deploy.Store` / `runtime.Store` 接口的持久化嵌入式存储；可在浏览器之外（Node、Deno）使用的 WASM 宿主 |
 | P3 | 开发者上手 | Go 与 JS 首个流程指南；公开 MIWG 一致性报告；对 AI 工具友好的文档与 REJECTION 信息。MCP 适配器放在独立的消费者仓库 |
 

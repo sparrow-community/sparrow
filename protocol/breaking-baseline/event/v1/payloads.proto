@@ -1,0 +1,125 @@
+syntax = "proto3";
+
+package event.v1;
+
+// Variable is a process variable snapshot or delta.
+// Values are JSON text for an intentionally simple M1 encoding.
+message Variable {
+  string name = 1;
+  string json_value = 2;
+}
+
+message ProcessPayload {
+  repeated Variable variables = 1;
+  // Parent process instance id when this PROCESS was started by a Call Activity.
+  // Empty on root instances.
+  string parent_process_instance_id = 2;
+  // Call Activity element id on the parent. Empty when unused.
+  string parent_element_id = 3;
+  // Parked host token id on the parent Call Activity. Empty when unused.
+  string parent_token_id = 4;
+}
+
+// Shared payload for BPMN event flow nodes (start/end/intermediate/boundary/…).
+message EventPayload {
+  // Due time for a timer catch (unix milliseconds). Set on ACTIVATED.
+  int64 due_unix_ms = 1;
+  // Original timer expression text (timeDuration or timeDate). Empty if unused.
+  string duration = 2;
+  // BPMN message name for a message catch or message throw. Empty when unused.
+  string message_name = 3;
+  // Variable deltas typically set on COMPLETING (e.g. PublishMessage payload).
+  repeated Variable variables = 4;
+  // BPMN signal name for a signal catch or signal throw. Empty when unused.
+  string signal_name = 5;
+  // Compensation handler element id. Set on BOUNDARY_EVENT ACTIVATED after the
+  // host activity COMPLETED (compensation subscription). Empty otherwise.
+  string compensation_handler_id = 6;
+  // BPMN error code on ERROR_THROWN (error end or propagated error). Empty for generic.
+  string error_code = 7;
+  // When true on ACTIVATED, the token stays waiting for an external Complete
+  // (e.g. compensate end awaiting handlers). Prefer this over treating all
+  // END_EVENT activations as waiting.
+  bool token_wait = 8;
+  // BPMN element id of the event sub-process (not a process instance id).
+  // Set on START_EVENT ACTIVATED/TERMINATED while the parent scope is open.
+  string event_sub_process_element_id = 9;
+  // BPMN escalation code on ESCALATION_THROWN. Empty for catch-all / generic.
+  string escalation_code = 10;
+}
+
+// Shared payload for BPMN activities (tasks, subProcess, callActivity, …).
+message ActivityPayload {
+  // Variable deltas typically set on COMPLETED (or COMMAND complete).
+  repeated Variable variables = 1;
+  // Worker subscription key for SERVICE_TASK (and similar job-backed activities).
+  // Set on ACTIVATED when a job is created; empty for user tasks.
+  string job_type = 2;
+  // Worker-reported reason on SERVICE_TASK FAILED. Empty for other intents.
+  string error_message = 3;
+  // Due time for an interrupting timer boundary attached to this activity (unix milliseconds).
+  // Set on ACTIVATED; zero if unused.
+  int64 due_unix_ms = 4;
+  // Original timer expression text for the attached interrupting timer. Empty if unused.
+  string duration = 5;
+  // BPMN id of a waiting boundary when it is the first armed catch (timer, message, or signal).
+  // Empty if unused.
+  string boundary_id = 6;
+  // BPMN message name when a message boundary is armed. Empty if unused.
+  string message_name = 7;
+  // BPMN id of the message boundary when another waiting boundary already occupies boundary_id.
+  // When only a message boundary exists, boundary_id carries it.
+  string message_boundary_id = 8;
+  // BPMN signal name when a signal boundary is armed. Empty if unused.
+  string signal_name = 9;
+  // BPMN id of the signal boundary when another waiting boundary already occupies boundary_id.
+  // When only a signal boundary exists, boundary_id carries it.
+  string signal_boundary_id = 10;
+  // Child process instance id for a Call Activity host while the called instance exists.
+  // Set on CALL_ACTIVITY ACTIVATED; may still appear on COMPLETED/TERMINATED for audit.
+  string called_process_instance_id = 11;
+  // Multi-instance inner iteration index (0-based). -1 on the loop host ACTIVATED record.
+  int32 loop_instance_index = 12;
+  // Total inner instances when the loop host ACTIVATED.
+  int32 loop_total_instances = 13;
+  // Completed inner count snapshot on loop host COMPLETED.
+  int32 loop_completed_instances = 14;
+  // True when the loop host ACTIVATED starts a sequential multi-instance.
+  bool loop_sequential = 15;
+  // Consecutive job failures since last ACTIVATED or INCIDENT_RESOLVED.
+  int32 job_fail_count = 16;
+  // When true on a FAILED command, open an incident after this fail regardless of count.
+  bool no_retry = 17;
+  // All armed waiting boundaries on this activity (timer/message/signal).
+  // Legacy singular boundary_id / message_* / signal_* still hold the first of each kind.
+  repeated WaitingBoundary waiting_boundaries = 18;
+}
+
+// One armed waiting boundary attached to an activity (or recorded on scope host ACTIVATED).
+message WaitingBoundary {
+  // BPMN boundary event id.
+  string boundary_id = 1;
+  // "timer", "message", or "signal".
+  string kind = 2;
+  // Timer due (unix ms); zero when unused.
+  int64 due_unix_ms = 3;
+  // Timer expression text; empty when unused.
+  string duration = 4;
+  // Message name when kind is message.
+  string message_name = 5;
+  // Signal name when kind is signal.
+  string signal_name = 6;
+}
+
+message GatewayPayload {
+  // For exclusive/inclusive decisions: the chosen outgoing sequence flow id.
+  string taken_sequence_flow_id = 1;
+}
+
+message SequenceFlowPayload {
+  string source_id = 1;
+  string target_id = 2;
+}
+
+// Shared payload for data object / data store flow elements.
+message DataPayload {}
