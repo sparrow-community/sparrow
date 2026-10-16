@@ -57,7 +57,7 @@ Kernel-shape increments (Direction):
 
 | Priority | Increment | Scope |
 |----------|-----------|-------|
-| P1 | Compatibility baseline | Release versioning scheme and 1.0 criteria; inventory of public surfaces (Event wire, `engine.v1` / `job.v1`, exported `processing` API, `globalThis.sparrow` + `sparrow.d.ts`, REJECTION codes); golden Event logs per published release replayed in CI; `buf breaking` against the last release |
+| P1 | Compatibility baseline | **Shipped** [`036`](./specs/036-compatibility-baseline/) / [`COMPATIBILITY.md`](./COMPATIBILITY.md): versioning stance + 1.0 criteria; public-surface inventory; golden Event-log replay in CI; `buf breaking` against bootstrap snapshot (switch to a protocol tag when one exists) |
 | P2 | Embedding experience | Minimal Go embedding entry; a durable embedded store behind the existing `EventLog` / `deploy.Store` / `runtime.Store` interfaces; WASM host usable outside browsers (Node, Deno) |
 | P3 | Developer onboarding | Go and JS first-process guides; published MIWG conformance report; AI-tool-friendly docs and REJECTION messages. MCP adapter lives in a separate consumer repo |
 

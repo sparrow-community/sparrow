@@ -49,3 +49,19 @@ jobs:
           cd wasm
           ./build.sh
           npm pack --dry-run
+
+  # Principle VII / COMPATIBILITY.md: FILE-category proto breaks fail CI.
+  # Bootstrap against protocol/breaking-baseline until a protocol release tag exists.
+  proto-breaking:
+    name: buf breaking
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: bufbuild/buf-action@v1
+        with:
+          setup_only: true
+
+      - name: buf breaking against bootstrap baseline
+        working-directory: protocol/proto
+        run: buf breaking --against ../breaking-baseline
