@@ -10,12 +10,19 @@ Sparrow is a BPMN **execution and fact kernel**: it accepts a versioned process 
 - **Event = behavior; Element = subject.** The ledger is a fact stream about process behavior, not a second copy of the diagram.
 - Combinations with runtime token or side-effect semantics are either **Supported** (real BPMN semantics) or **Excluded** (explicit non-goal). Unsupported **executable** work that is required for control-flow is rejected at Deploy (`UNSUPPORTED_ELEMENT` / related codes). Documentary, decorative, and non-operational constructs (Lanes, Data Objects / Data Stores as diagram labels, modeling stubs without an evaluable payload) MUST NOT block Deploy or normal token passage—they stay off the ledger (no empty Element intents). Silence for those is not a coverage claim; Excluded rows still name intentional non-goals. Silence is not exclusion for combinations that carry token or side-effect semantics.
 - The ledger records behavior only. Documentary or non-subject constructs stay on the definition; they do not receive empty Element intents.
+- **Facts outlive releases.** An Event log written by any published release Recovers on every later release; Event wire, accepted definitions, and public APIs evolve additively. Breaking changes need an upgrade path and a constitution-reviewed justification (Principle VII).
 
 **Scope choice** (deliberate, not derived from the axioms alone): OMG BPMN 2.0 **executable process** subset—FlowElements and event definitions that carry runtime token behavior—not Collaboration, Choreography, or the full meta-model. **Engineering choice**: single-node; one fact stream and one lock per instance.
 
 ## Purpose
 
 Process work needs a durable, shared contract across people, time, and short-lived planners (humans or agents): a versioned definition, faithful execution, and an auditable trail. Sparrow exists so that contract cannot be silently mutated outside COMMAND → EVENT.
+
+## Direction
+
+Sparrow is a **developer-first, open-source, embeddable kernel**: the ledger of what a business process committed to and what actually happened—including decisions made by AI workers and agents. Adoption grows bottom-up (Go library, npm WASM host, gRPC gateway) through stability, embeddability, and documentation, not through a product suite. Products for specific roles (migration workbenches, task inboxes, audit timelines, AI entry points) are consumers built by the ecosystem; they do not shape the kernel.
+
+**Backward compatibility is the core promise.** Developers embed Sparrow and keep its facts for years; an upgrade that cannot read an existing log, or silently changes what an accepted definition means, breaks that promise. Compatibility outranks new features.
 
 ## Completeness
 
@@ -44,7 +51,15 @@ Shipped: M1–M4c, specs [`001`](./specs/001-engine-completeness/)–[`035`](./s
 
 Open executable-process gaps. Priority guides sequencing; a feature plan may reorder for dependencies. Each row is one specify increment unless a plan bundles tightly related cells.
 
-No open executable-process element gaps. The next increment is chosen when a new gap is identified; candidates are recorded here before work starts.
+No open executable-process element gaps. The next element increment is chosen when a new gap is identified; candidates are recorded here before work starts.
+
+Kernel-shape increments (Direction):
+
+| Priority | Increment | Scope |
+|----------|-----------|-------|
+| P1 | Compatibility baseline | Release versioning scheme and 1.0 criteria; inventory of public surfaces (Event wire, `engine.v1` / `job.v1`, exported `processing` API, `globalThis.sparrow` + `sparrow.d.ts`, REJECTION codes); golden Event logs per published release replayed in CI; `buf breaking` against the last release |
+| P2 | Embedding experience | Minimal Go embedding entry; a durable embedded store behind the existing `EventLog` / `deploy.Store` / `runtime.Store` interfaces; WASM host usable outside browsers (Node, Deno) |
+| P3 | Developer onboarding | Go and JS first-process guides; published MIWG conformance report; AI-tool-friendly docs and REJECTION messages. MCP adapter lives in a separate consumer repo |
 
 ## Excluded
 
