@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // Promote an npm dist-tag using GitHub Actions OIDC → npm registry token exchange.
 //
-// `npm dist-tag` cannot authenticate via Trusted Publishing OIDC directly
-// (npm/cli#8547). This mirrors the Nuxt release workaround: exchange the
-// Actions id-token for a short-lived npm token, then PUT the dist-tags API.
+// Preferred path (npm ≥ 11.21 + Trusted Publisher "Allow npm dist-tag"):
+//   npm dist-tag add <pkg>@<version> <tag>
+// This helper is the fallback when the native CLI cannot use OIDC yet.
 //
 // Usage:
 //   node .github/scripts/oidc-dist-tag.mjs <package> <version> <tag>

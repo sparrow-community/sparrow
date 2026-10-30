@@ -8,8 +8,9 @@ Sparrow is a BPMN **execution and fact kernel**: it accepts a versioned process 
 
 - Effective definition and instance state change only through accepted **COMMAND**s; every accepted behavior is an append-only **EVENT**. Projections are disposable and rebuildable by replay (**Recover**).
 - **Event = behavior; Element = subject.** The ledger is a fact stream about process behavior, not a second copy of the diagram.
-- Combinations with runtime token or side-effect semantics are either **Supported** (real BPMN semantics) or **Excluded** (explicit non-goal). Unsupported work is rejected at Deploy. Silence is not exclusion.
+- Combinations with runtime token or side-effect semantics are either **Supported** (real BPMN semantics) or **Excluded** (explicit non-goal). Unsupported **executable** work that is required for control-flow is rejected at Deploy (`UNSUPPORTED_ELEMENT` / related codes). Documentary, decorative, and non-operational constructs (Lanes, Data Objects / Data Stores as diagram labels, modeling stubs without an evaluable payload) MUST NOT block Deploy or normal token passage—they stay off the ledger (no empty Element intents). Silence for those is not a coverage claim; Excluded rows still name intentional non-goals. Silence is not exclusion for combinations that carry token or side-effect semantics.
 - The ledger records behavior only. Documentary or non-subject constructs stay on the definition; they do not receive empty Element intents.
+- **Facts outlive releases.** An Event log written by any published release Recovers on every later release; Event wire, accepted definitions, and public APIs evolve additively. Breaking changes need an upgrade path and a constitution-reviewed justification (Principle VII).
 
 **Scope choice** (deliberate, not derived from the axioms alone): OMG BPMN 2.0 **executable process** subset—FlowElements and event definitions that carry runtime token behavior—not Collaboration, Choreography, or the full meta-model. **Engineering choice**: single-node; one fact stream and one lock per instance.
 
@@ -17,11 +18,17 @@ Sparrow is a BPMN **execution and fact kernel**: it accepts a versioned process 
 
 Process work needs a durable, shared contract across people, time, and short-lived planners (humans or agents): a versioned definition, faithful execution, and an auditable trail. Sparrow exists so that contract cannot be silently mutated outside COMMAND → EVENT.
 
+## Direction
+
+Sparrow is a **developer-first, open-source, embeddable kernel**: the ledger of what a business process committed to and what actually happened—including decisions made by AI workers and agents. Adoption grows bottom-up (Go library, npm WASM host, gRPC gateway) through stability, embeddability, and documentation, not through a product suite. Products for specific roles (migration workbenches, task inboxes, audit timelines, AI entry points) are consumers built by the ecosystem; they do not shape the kernel.
+
+**Backward compatibility is the core promise.** Developers embed Sparrow and keep its facts for years; an upgrade that cannot read an existing log, or silently changes what an accepted definition means, breaks that promise. Compatibility outranks new features.
+
 ## Completeness
 
 Faithful interpretation of the declared language is one axis (coverage + semantics). Kernel shape is another.
 
-1. **Coverage** — Every executable-process FlowElement and event-definition combination is either Supported or Excluded. Unsupported combinations are rejected at deploy.
+1. **Coverage** — Every executable-process FlowElement and event-definition combination is either Supported or Excluded. Unsupported **executable** combinations required for control-flow are rejected at deploy. Decorative / descriptive / non-operational constructs MUST NOT fail Deploy solely because they are unsupported as ledger subjects.
 2. **Semantics** — Each Supported combination implements the BPMN runtime semantics required for that combination (token movement, waits, throws, joins, scopes, boundaries, multi-instance, compensation, and related rules). Deploy acceptance alone is insufficient.
 3. **Kernel boundary** — The engine stays a ledger-backed execution kernel (COMMAND → EVENT, Recover, jobs, messages, timers, incidents). Modeler, operations console, cluster replication, and choreography/collaboration runtime are consumer or non-goals—not engine duties. Product features such as overlaying Events onto a deployment diagram belong in consumers; they must not invent ledger subjects or empty intents.
 
@@ -36,7 +43,7 @@ Work proceeds `/speckit-specify` → plan → tasks → implement (`.cursor/skil
 
 ## Supported
 
-Process lifecycle; process-level none start and typed starts (message, timer, signal, conditional — CreateInstance for none start, instantiate exclusive/parallel event-based gateway entries, and instantiate receive task; typed mint via PublishMessage / PublishSignal / FireDue / EvaluateConditionalStarts); User Task; Service Task + Job; Manual / abstract Task (wait → Complete); Receive / Send (including instantiate receive as process entry); Business Rule / Script Task (job-backed); exclusive / parallel / inclusive / complex / event-based gateways (catch, including instantiate entries and receive-task targets); SubProcess; Transaction SubProcess and cancel (##Compensate; Cancel End → compensate → Cancel Boundary); Ad-Hoc SubProcess (flat inner activities, `ordering` Parallel / Sequential, `completionCondition`, `cancelRemainingInstances`); Call Activity (child instance, IO mapping with name copy / transformation / assignment, cross-deployment, boundary and compensation parity, multi-instance; called process requires none start, instantiate event-based gateway, or instantiate receive); Event Sub-Process (including nested, compensation event sub-process, and conditional start via EvaluateConditions); intermediate and boundary catches/throws for timer, message, signal, error, escalation (including standalone intermediate escalation catch), compensate, conditional (multiple same-kind boundaries); link throw/catch; conditional sequence flows on activities and gateways; parallel fan-out from activities and start events with multiple unconditional outgoings; terminate end; message end; signal end; compensation into an unfinished embedded SubProcess or unfinished Call Activity child instance; multi-instance on User Task, Service Task, Manual / abstract Task / Receive / Send / Business Rule / Script, SubProcess, Call Activity (including `complexBehaviorDefinition` and none/one behavior event refs for signal/message); `standardLoopCharacteristics` on waiting tasks (testBefore / loopCondition / loopMaximum); incident open / resolve / retry; coexisting process revisions.
+Process lifecycle; process-level none start and typed starts (message, timer, signal, conditional — CreateInstance for none start, instantiate exclusive/parallel event-based gateway entries, and instantiate receive task; typed mint via PublishMessage / PublishSignal / FireDue / EvaluateConditionalStarts); User Task; Service Task + Job; Manual / abstract Task (wait → Complete); Receive / Send (including instantiate receive as process entry); Business Rule / Script Task (job-backed); exclusive / parallel / inclusive / complex / event-based gateways (catch, including instantiate entries and receive-task targets); SubProcess (including empty/collapsed SubProcess with no inner flow nodes as opaque Activity wait → Complete); Transaction SubProcess and cancel (##Compensate; Cancel End → compensate → Cancel Boundary); Ad-Hoc SubProcess (flat inner activities, `ordering` Parallel / Sequential, `completionCondition`, `cancelRemainingInstances`); Call Activity (child instance, IO mapping with name copy / transformation / assignment, cross-deployment, boundary and compensation parity, multi-instance; called process requires none start, instantiate event-based gateway, or instantiate receive; missing `calledElement` runs as opaque Activity wait → Complete); Event Sub-Process (including nested, compensation event sub-process, and conditional start via EvaluateConditions); intermediate and boundary catches/throws for timer (ISO-8601 `PTnHnMnS` and day/week `PnD` / `PnW` / cycles; empty timer expression defaults to `PT0S`), message, signal, error (boundary `cancelActivity` XSD default true), escalation (including standalone intermediate escalation catch), compensate, conditional (empty condition expression defaults to `true`; multiple same-kind boundaries); link throw/catch; conditional sequence flows on activities and gateways (interop: `bpmn:getDataObject('name')` → process variable; FEEL `=` / spaced names; FEEL `some`/`every` … `satisfies`); parallel fan-out from activities and start events with multiple unconditional outgoings; terminate end; message end; signal end; compensation into an unfinished embedded SubProcess or unfinished Call Activity child instance; multi-instance on User Task, Service Task, Manual / abstract Task / Receive / Send / Business Rule / Script, SubProcess, Call Activity (including `complexBehaviorDefinition` and none/one behavior event refs for signal/message); `standardLoopCharacteristics` on waiting tasks (testBefore / loopCondition / loopMaximum); incident open / resolve / retry; coexisting process revisions.
 
 Shipped: M1–M4c, specs [`001`](./specs/001-engine-completeness/)–[`035`](./specs/035-get-deployment/). Every Supported combination above has an end-to-end and a Recover test ([`034`](./specs/034-recover-coverage/) closed the last coverage gaps).
 
@@ -44,7 +51,15 @@ Shipped: M1–M4c, specs [`001`](./specs/001-engine-completeness/)–[`035`](./s
 
 Open executable-process gaps. Priority guides sequencing; a feature plan may reorder for dependencies. Each row is one specify increment unless a plan bundles tightly related cells.
 
-No open executable-process element gaps. The next increment is chosen when a new gap is identified; candidates are recorded here before work starts.
+No open executable-process element gaps. The next element increment is chosen when a new gap is identified; candidates are recorded here before work starts.
+
+Kernel-shape increments (Direction):
+
+| Priority | Increment | Scope |
+|----------|-----------|-------|
+| P1 | Compatibility baseline | **Shipped** [`036`](./specs/036-compatibility-baseline/) / [`COMPATIBILITY.md`](./COMPATIBILITY.md): versioning stance + 1.0 criteria; public-surface inventory; golden Event-log replay in CI; `buf breaking` against bootstrap snapshot (switch to a protocol tag when one exists) |
+| P2 | Embedding experience | Minimal Go embedding entry; a durable embedded store behind the existing `EventLog` / `deploy.Store` / `runtime.Store` interfaces; WASM host usable outside browsers (Node, Deno) |
+| P3 | Developer onboarding | Go and JS first-process guides; published MIWG conformance report; AI-tool-friendly docs and REJECTION messages. MCP adapter lives in a separate consumer repo |
 
 ## Excluded
 
@@ -53,8 +68,8 @@ Non-goals. Moving an item out of Excluded requires an AGENTS (both language edit
 | Topic | Rationale |
 |-------|-----------|
 | Collaboration, message flow, and choreography execution | Outside single-process execution; a sequence flow into a choreography or otherwise unmodeled flow element is rejected at Deploy |
-| Lane runtime semantics | Documentation and grouping only |
-| Data Object / Data Store as ledger or token subjects | Process variables and IO mappings carry executable data |
+| Lane runtime semantics | Documentation and grouping only — present in definitions, never ledger subjects; do not block Deploy |
+| Data Object / Data Store as ledger or token subjects | Process variables and IO mappings carry executable data; diagram Data Objects do not block Deploy |
 | Modeler, operations console, product-suite UI | Separate consumers of the engine |
 | Cluster and multi-node replication | Single-node design |
 | In-engine DMN evaluation | Business Rule Task is job-backed |

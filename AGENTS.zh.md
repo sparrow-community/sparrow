@@ -8,8 +8,9 @@ Sparrow 是 BPMN **执行与事实内核**：接受版本化的流程定义、�
 
 - 有效定义与实例状态只能通过被接受的 **COMMAND** 改变；每一条被接受的行为都是追加写的 **EVENT**。投影可丢弃，必须能通过回放（**Recover**）重建。
 - **Event = 行为；Element = 主体。** 账本是关于过程行为的事实流，不是图的第二份拷贝。
-- 具有运行时 token 或副作用语义的组合要么是 **Supported**（真实 BPMN 语义），要么是 **Excluded**（显式非目标）。不支持的工作在 Deploy 时拒绝。沉默不等于排除。
+- 具有运行时 token 或副作用语义的组合要么是 **Supported**（真实 BPMN 语义），要么是 **Excluded**（显式非目标）。不支持的、对控制流真正必需的**可执行**工作在 Deploy 时拒绝（`UNSUPPORTED_ELEMENT` 及相关码）。文档性、装饰性与非操作性构造（Lane、作为图标注的 Data Object / Data Store、无可求值载荷的建模占位）**不得**仅因此阻断 Deploy 或正常 token 通行——它们留在定义上、不上账本（无空 Element intent）。对这些构造的沉默不是覆盖声明；Excluded 行仍点名有意非目标。对带 token / 副作用语义的组合，沉默不等于排除。
 - 账本只记录行为。文档性或非主体构造留在定义上；它们不接收空的 Element intent。
+- **事实比版本活得久。** 任一已发布版本写下的 Event 日志，在之后每一个版本上都能 Recover；Event 线格式、已接受的定义与公共 API 只做增量演进。破坏性变更须提供升级路径，并经 constitution 审查给出理由（原则 VII）。
 
 **范围选择**（有意为之，并非单由公理推出）：OMG BPMN 2.0 **可执行过程**子集——带有运行时 token 行为的 FlowElement 与事件定义——不含 Collaboration、Choreography 或完整元模型。**工程选择**：单机；每实例一条事实流、一把锁。
 
@@ -17,11 +18,17 @@ Sparrow 是 BPMN **执行与事实内核**：接受版本化的流程定义、�
 
 过程工作需要跨人、跨时间、跨短命规划者（人或 agent）共享的持久契约：版本化定义、忠实执行、可审计轨迹。Sparrow 存在的意义，是使该契约无法在 COMMAND → EVENT 之外被静默改写。
 
+## Direction（方向）
+
+Sparrow 是**开发者优先、开源、可嵌入的内核**：记录业务流程承诺了什么、实际发生了什么的账本——包括 AI worker 与 agent 做出的决定。采用自下而上增长（Go 库、npm WASM 宿主、gRPC gateway），靠稳定性、可嵌入性与文档，而不是产品套件。面向特定角色的产品（迁移工作台、任务收件箱、审计时间线、AI 入口）是生态构建的消费者；它们不塑造内核。
+
+**向后兼容是核心承诺。** 开发者嵌入 Sparrow 并长年保存其事实；升级后读不了既有日志，或悄悄改变已接受定义的含义，就违背了这一承诺。兼容性优先于新功能。
+
 ## Completeness（完备性）
 
 对已声明语言的忠实解释是一条轴（覆盖 + 语义）。内核形态是另一条轴。
 
-1. **Coverage（覆盖）** — 每一个可执行过程的 FlowElement 与事件定义组合要么是 Supported，要么是 Excluded。不支持的组合在 deploy 时拒绝。
+1. **Coverage（覆盖）** — 每一个可执行过程的 FlowElement 与事件定义组合要么是 Supported，要么是 Excluded。对控制流真正必需的不支持**可执行**组合在 deploy 时拒绝。装饰 / 描述 / 非操作性构造不得仅因「不作为账本主体支持」而 Deploy 失败。
 2. **Semantics（语义）** — 每一个 Supported 组合实现该组合所需的 BPMN 运行时语义（token 移动、等待、抛出、汇合、作用域、边界、多实例、补偿及相关规则）。仅 Deploy 接受不足以称为完备。
 3. **Kernel boundary（内核边界）** — 引擎保持为账本支撑的执行内核（COMMAND → EVENT、Recover、jobs、messages、timers、incidents）。建模器、运维控制台、集群复制、编排/协作运行时属于消费者或非目标——不是引擎职责。将 Event 叠加到部署图上渲染等产品能力属于消费者；它们不得发明账本主体或空 intent。
 
@@ -36,7 +43,7 @@ Sparrow 是 BPMN **执行与事实内核**：接受版本化的流程定义、�
 
 ## Supported（已支持）
 
-过程生命周期；过程级 none 开始与类型化开始（message、timer、signal、conditional — none 开始用 CreateInstance；instantiate 的排他/并行基于事件的网关入口与 instantiate receive task；类型化铸造经 PublishMessage / PublishSignal / FireDue / EvaluateConditionalStarts）；User Task；Service Task + Job；Manual / 抽象 Task（等待 → Complete）；Receive / Send（含作为过程入口的 instantiate receive）；Business Rule / Script Task（job 支撑）；排他 / 并行 / 包容 / 复杂 / 基于事件的网关（catch，含 instantiate 入口与 receive-task 目标）；SubProcess；Transaction SubProcess 与 cancel（##Compensate；Cancel End → 补偿 → Cancel Boundary）；Ad-Hoc SubProcess（扁平内部活动，`ordering` Parallel / Sequential，`completionCondition`，`cancelRemainingInstances`）；Call Activity（子实例，IO 映射含按名拷贝 / 变换 / 赋值，跨部署，边界与补偿对等，多实例；被调过程需要 none 开始、instantiate 基于事件的网关或 instantiate receive）；Event Sub-Process（含嵌套、补偿事件子过程，以及经 EvaluateConditions 的条件开始）；timer、message、signal、error、escalation（含独立中间 escalation catch）、compensate、conditional 的中间与边界 catch/throw（同种多边界）；link throw/catch；活动与网关上的条件顺序流；活动与开始事件多条无条件出向的并行扇出；terminate end；message end；signal end；对未完成嵌入式 SubProcess 或未完成 Call Activity 子实例的补偿；User Task、Service Task、Manual / 抽象 Task / Receive / Send / Business Rule / Script、SubProcess、Call Activity 上的多实例（含 `complexBehaviorDefinition` 与 signal/message 的 none/one behavior event refs）；等待类任务上的 `standardLoopCharacteristics`（testBefore / loopCondition / loopMaximum）；incident 打开 / 解决 / 重试；共存的过程修订版。
+过程生命周期；过程级 none 开始与类型化开始（message、timer、signal、conditional — none 开始用 CreateInstance；instantiate 的排他/并行基于事件的网关入口与 instantiate receive task；类型化铸造经 PublishMessage / PublishSignal / FireDue / EvaluateConditionalStarts）；User Task；Service Task + Job；Manual / 抽象 Task（等待 → Complete）；Receive / Send（含作为过程入口的 instantiate receive）；Business Rule / Script Task（job 支撑）；排他 / 并行 / 包容 / 复杂 / 基于事件的网关（catch，含 instantiate 入口与 receive-task 目标）；SubProcess（含无内部流节点的空/折叠 SubProcess，按不透明 Activity 等待 → Complete）；Transaction SubProcess 与 cancel（##Compensate；Cancel End → 补偿 → Cancel Boundary）；Ad-Hoc SubProcess（扁平内部活动，`ordering` Parallel / Sequential，`completionCondition`，`cancelRemainingInstances`）；Call Activity（子实例，IO 映射含按名拷贝 / 变换 / 赋值，跨部署，边界与补偿对等，多实例；被调过程需要 none 开始、instantiate 基于事件的网关或 instantiate receive；缺少 `calledElement` 时按不透明 Activity 等待 → Complete）；Event Sub-Process（含嵌套、补偿事件子过程，以及经 EvaluateConditions 的条件开始）；timer（ISO-8601 `PTnHnMnS` 与日/周 `PnD` / `PnW` / 周期；空 timer 表达式默认 `PT0S`）、message、signal、error（边界 `cancelActivity` XSD 默认 true）、escalation（含独立中间 escalation catch）、compensate、conditional（空条件表达式默认 `true`；同种多边界）的中间与边界 catch/throw；link throw/catch；活动与网关上的条件顺序流（互操作：`bpmn:getDataObject('name')` → 过程变量；FEEL `=` / 带空格名；FEEL `some`/`every` … `satisfies`）；活动与开始事件多条无条件出向的并行扇出；terminate end；message end；signal end；对未完成嵌入式 SubProcess 或未完成 Call Activity 子实例的补偿；User Task、Service Task、Manual / 抽象 Task / Receive / Send / Business Rule / Script、SubProcess、Call Activity 上的多实例（含 `complexBehaviorDefinition` 与 signal/message 的 none/one behavior event refs）；等待类任务上的 `standardLoopCharacteristics`（testBefore / loopCondition / loopMaximum）；incident 打开 / 解决 / 重试；共存的过程修订版。
 
 已交付：M1–M4c，规格 [`001`](./specs/001-engine-completeness/)–[`035`](./specs/035-get-deployment/)。上列每一个 Supported 组合都有端到端与 Recover 测试（[`034`](./specs/034-recover-coverage/) 闭合了最后的覆盖缺口）。
 
@@ -44,7 +51,15 @@ Sparrow 是 BPMN **执行与事实内核**：接受版本化的流程定义、�
 
 尚未覆盖的可执行过程缺口。优先级指导排序；特性计划可因依赖重排。除非计划捆绑紧密相关的格子，否则每一行是一次 specify 增量。
 
-当前无未覆盖的可执行过程元素缺口。下一步在识别出新缺口时选定；候选在开工前记入此处。
+当前无未覆盖的可执行过程元素缺口。下一次元素增量在识别出新缺口时选定；候选在开工前记入此处。
+
+内核形态增量（见 Direction）：
+
+| 优先级 | 增量 | 范围 |
+|--------|------|------|
+| P1 | 兼容基线 | **已交付** [`036`](./specs/036-compatibility-baseline/) / [`COMPATIBILITY.md`](./COMPATIBILITY.md)：版本方案与 1.0 标准；公共面清单；黄金 Event 日志在 CI 回放；对 bootstrap 快照执行 `buf breaking`（有协议 tag 后切换） |
+| P2 | 嵌入体验 | 最小 Go 嵌入入口；基于现有 `EventLog` / `deploy.Store` / `runtime.Store` 接口的持久化嵌入式存储；可在浏览器之外（Node、Deno）使用的 WASM 宿主 |
+| P3 | 开发者上手 | Go 与 JS 首个流程指南；公开 MIWG 一致性报告；对 AI 工具友好的文档与 REJECTION 信息。MCP 适配器放在独立的消费者仓库 |
 
 ## Excluded（排除）
 
@@ -53,8 +68,8 @@ Sparrow 是 BPMN **执行与事实内核**：接受版本化的流程定义、�
 | 主题 | 理由 |
 |------|------|
 | Collaboration、message flow 与 choreography 执行 | 超出单过程执行；进入 choreography 或其他未建模 flow element 的顺序流在 Deploy 时拒绝 |
-| Lane 运行时语义 | 仅文档与分组 |
-| Data Object / Data Store 作为账本或 token 主体 | 可执行数据由过程变量与 IO 映射承载 |
+| Lane 运行时语义 | 仅文档与分组 — 留在定义上、不上账本；不阻断 Deploy |
+| Data Object / Data Store 作为账本或 token 主体 | 可执行数据由过程变量与 IO 映射承载；图上的 Data Object 不阻断 Deploy |
 | 建模器、运维控制台、产品套件 UI | 引擎的独立消费者 |
 | 集群与多节点复制 | 单机设计 |
 | 引擎内 DMN 求值 | Business Rule Task 由 job 支撑 |

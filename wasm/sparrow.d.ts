@@ -104,7 +104,7 @@ export interface SparrowEngine {
     instanceId: string;
     policy?: "continuous" | "step" | "breakpoints" | "stepOver" | string;
   }): { ok: boolean };
-  disableIntervention(): { ok: boolean };
+  disableIntervention(instanceIdOrReq?: string | { instanceId?: string }): { ok: boolean };
   setBreakpoints(req: {
     instanceId?: string;
     elementIds: string[];
@@ -125,6 +125,10 @@ export interface SparrowEngine {
     paused: boolean;
     state: SparrowInterventionState;
   };
+  /** Arms PauseReasonManual (immediate on wait, else next barrier). */
+  pause(req: { instanceId: string }): { ok: boolean; state: SparrowInterventionState };
+  /** Host FireDue/Activate gate; false while barrier-paused. */
+  hostEffectAllowed(instanceIdOrReq: string | { instanceId: string }): { allowed: boolean };
   getInterventionState(instanceIdOrReq?: string | { instanceId?: string }): SparrowInterventionState;
   setVariables(req: {
     instanceId: string;
@@ -142,6 +146,8 @@ export interface SparrowPendingTransition {
   enterChildId?: string;
   spawnChildToken?: boolean;
   linkCatchIds?: string[];
+  decideMode?: string;
+  terminateJoinPeers?: string;
 }
 
 export interface SparrowInterventionState {
@@ -154,6 +160,7 @@ export interface SparrowInterventionState {
   pauseElementId: string;
   pauseTokenId: string;
   pending?: SparrowPendingTransition;
+  blockHostEffects?: boolean;
 }
 
 export interface SparrowJob {

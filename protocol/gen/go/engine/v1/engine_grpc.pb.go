@@ -37,6 +37,8 @@ const (
 	EngineService_StepOver_FullMethodName             = "/engine.v1.EngineService/StepOver"
 	EngineService_GetInterventionState_FullMethodName = "/engine.v1.EngineService/GetInterventionState"
 	EngineService_SetVariables_FullMethodName         = "/engine.v1.EngineService/SetVariables"
+	EngineService_Pause_FullMethodName                = "/engine.v1.EngineService/Pause"
+	EngineService_HostEffectAllowed_FullMethodName    = "/engine.v1.EngineService/HostEffectAllowed"
 )
 
 // EngineServiceClient is the client API for EngineService service.
@@ -82,6 +84,10 @@ type EngineServiceClient interface {
 	GetInterventionState(ctx context.Context, in *GetInterventionStateRequest, opts ...grpc.CallOption) (*GetInterventionStateResponse, error)
 	// SetVariables patches variables while barrier-paused (ledger PROCESS variable EVENT).
 	SetVariables(ctx context.Context, in *SetVariablesRequest, opts ...grpc.CallOption) (*SetVariablesResponse, error)
+	// Pause arms PauseReasonManual (immediate on wait, else next barrier).
+	Pause(ctx context.Context, in *PauseRequest, opts ...grpc.CallOption) (*PauseResponse, error)
+	// HostEffectAllowed reports whether FireDue/Activate may proceed for the instance.
+	HostEffectAllowed(ctx context.Context, in *HostEffectAllowedRequest, opts ...grpc.CallOption) (*HostEffectAllowedResponse, error)
 }
 
 type engineServiceClient struct {
@@ -272,6 +278,26 @@ func (c *engineServiceClient) SetVariables(ctx context.Context, in *SetVariables
 	return out, nil
 }
 
+func (c *engineServiceClient) Pause(ctx context.Context, in *PauseRequest, opts ...grpc.CallOption) (*PauseResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PauseResponse)
+	err := c.cc.Invoke(ctx, EngineService_Pause_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *engineServiceClient) HostEffectAllowed(ctx context.Context, in *HostEffectAllowedRequest, opts ...grpc.CallOption) (*HostEffectAllowedResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(HostEffectAllowedResponse)
+	err := c.cc.Invoke(ctx, EngineService_HostEffectAllowed_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // EngineServiceServer is the server API for EngineService service.
 // All implementations must embed UnimplementedEngineServiceServer
 // for forward compatibility.
@@ -315,6 +341,10 @@ type EngineServiceServer interface {
 	GetInterventionState(context.Context, *GetInterventionStateRequest) (*GetInterventionStateResponse, error)
 	// SetVariables patches variables while barrier-paused (ledger PROCESS variable EVENT).
 	SetVariables(context.Context, *SetVariablesRequest) (*SetVariablesResponse, error)
+	// Pause arms PauseReasonManual (immediate on wait, else next barrier).
+	Pause(context.Context, *PauseRequest) (*PauseResponse, error)
+	// HostEffectAllowed reports whether FireDue/Activate may proceed for the instance.
+	HostEffectAllowed(context.Context, *HostEffectAllowedRequest) (*HostEffectAllowedResponse, error)
 	mustEmbedUnimplementedEngineServiceServer()
 }
 
@@ -378,6 +408,12 @@ func (UnimplementedEngineServiceServer) GetInterventionState(context.Context, *G
 }
 func (UnimplementedEngineServiceServer) SetVariables(context.Context, *SetVariablesRequest) (*SetVariablesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SetVariables not implemented")
+}
+func (UnimplementedEngineServiceServer) Pause(context.Context, *PauseRequest) (*PauseResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Pause not implemented")
+}
+func (UnimplementedEngineServiceServer) HostEffectAllowed(context.Context, *HostEffectAllowedRequest) (*HostEffectAllowedResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method HostEffectAllowed not implemented")
 }
 func (UnimplementedEngineServiceServer) mustEmbedUnimplementedEngineServiceServer() {}
 func (UnimplementedEngineServiceServer) testEmbeddedByValue()                       {}
@@ -724,6 +760,42 @@ func _EngineService_SetVariables_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _EngineService_Pause_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PauseRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EngineServiceServer).Pause(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EngineService_Pause_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EngineServiceServer).Pause(ctx, req.(*PauseRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _EngineService_HostEffectAllowed_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(HostEffectAllowedRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EngineServiceServer).HostEffectAllowed(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EngineService_HostEffectAllowed_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EngineServiceServer).HostEffectAllowed(ctx, req.(*HostEffectAllowedRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // EngineService_ServiceDesc is the grpc.ServiceDesc for EngineService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -802,6 +874,14 @@ var EngineService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SetVariables",
 			Handler:    _EngineService_SetVariables_Handler,
+		},
+		{
+			MethodName: "Pause",
+			Handler:    _EngineService_Pause_Handler,
+		},
+		{
+			MethodName: "HostEffectAllowed",
+			Handler:    _EngineService_HostEffectAllowed_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

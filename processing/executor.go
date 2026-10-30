@@ -121,16 +121,24 @@ func (x *Executor) Enter(
 			pubs = append(pubs, more...)
 			return pubs, err
 		}
-		if effect.DecideExclusive {
+		if effect.DecideExclusive || effect.DecideInclusive || effect.DecideComplex {
+			mode := DecideExclusive
+			if effect.DecideInclusive {
+				mode = DecideInclusive
+			} else if effect.DecideComplex {
+				mode = DecideComplex
+			}
 			pending := &PendingTransition{
-				Kind:          PendingDecide,
-				FromElementID: elementID,
-				TokenID:       tokenID,
+				Kind:             PendingDecide,
+				FromElementID:    elementID,
+				TokenID:          tokenID,
+				DecideMode:       mode,
+				TerminateJoinPeers: effect.DecideTerminateJoinPeers,
 			}
 			if x.tryBarrier(inst, elementID, tokenID, pending) {
 				return pubs, nil
 			}
-			more, err := x.finalizeExclusiveDecide(ctx, dep, inst, tokenID, elementID, emit)
+			more, err := x.finalizeGatewayDecide(ctx, dep, inst, tokenID, elementID, mode, effect.DecideTerminateJoinPeers, emit)
 			pubs = append(pubs, more...)
 			return pubs, err
 		}
@@ -218,6 +226,15 @@ func (x *Executor) Enter(
 				more, err := x.startTransactionCancel(ctx, dep, inst, tokenID, elementID, emit)
 				pubs = append(pubs, more...)
 				return pubs, err
+			}
+			// K1: optional breakpoint hit when a wait settles (ACTIVATED).
+			pending := &PendingTransition{
+				Kind:          PendingWait,
+				FromElementID: elementID,
+				TokenID:       tokenID,
+			}
+			if x.tryBarrierWait(inst, elementID, tokenID, pending) {
+				return pubs, nil
 			}
 			return pubs, nil
 		}
@@ -514,11 +531,7 @@ func (x *Executor) leaveViaOutgoings(
 		if x.tryBarrier(inst, fromElementID, tokenID, pending) {
 			return nil, nil
 		}
-		next, err := x.takeOutgoing(dep, inst, tokenID, fromElementID, preferredFlowID, emit)
-		if err != nil {
-			return nil, err
-		}
-		return x.Enter(ctx, dep, inst, tokenID, next, emit)
+		return x.takeOutgoingThenEnter(ctx, dep, inst, tokenID, fromElementID, preferredFlowID, emit)
 	}
 	var vars map[string]string
 	if inst != nil {
@@ -545,9 +558,33 @@ func (x *Executor) leaveViaOutgoings(
 	if x.tryBarrier(inst, fromElementID, tokenID, pending) {
 		return nil, nil
 	}
-	next, err := x.takeOutgoing(dep, inst, tokenID, fromElementID, flows[0], emit)
+	return x.takeOutgoingThenEnter(ctx, dep, inst, tokenID, fromElementID, flows[0], emit)
+}
+
+// takeOutgoingThenEnter emits SEQUENCE_FLOW_TAKEN, may barrier on the edge (K2),
+// then Enter the target.
+func (x *Executor) takeOutgoingThenEnter(
+	ctx context.Context,
+	dep *deploy.Deployment,
+	inst *projection.Instance,
+	tokenID, fromElementID, flowID string,
+	emit Emitter,
+) ([]handlers.Publication, error) {
+	next, err := x.takeOutgoing(dep, inst, tokenID, fromElementID, flowID, emit)
 	if err != nil {
 		return nil, err
+	}
+	edge := &PendingTransition{
+		Kind:           PendingEdge,
+		FromElementID:  fromElementID,
+		TokenID:        tokenID,
+		TakenFlowIDs:   []string{flowID},
+		NextElementIDs: []string{next},
+		OutgoingFlowID: flowID,
+	}
+	// Pause element for BP matching is the sequence flow id (edge stop).
+	if x.tryBarrier(inst, flowID, tokenID, edge) {
+		return nil, nil
 	}
 	return x.Enter(ctx, dep, inst, tokenID, next, emit)
 }
@@ -617,6 +654,18 @@ func (x *Executor) tryBarrier(inst *projection.Instance, elementID, tokenID stri
 	return x.intervention.shouldBarrier(instanceID, elementID, tokenID, x.activeSourceCmdID, pending)
 }
 
+// tryBarrierWait arms only on breakpoint hit at wait ACTIVATED (not Step policy).
+func (x *Executor) tryBarrierWait(inst *projection.Instance, elementID, tokenID string, pending *PendingTransition) bool {
+	if x == nil || x.intervention == nil || pending == nil {
+		return false
+	}
+	instanceID := x.activeInstanceID
+	if instanceID == "" && inst != nil {
+		instanceID = inst.ID
+	}
+	return x.intervention.shouldBarrierWait(instanceID, elementID, tokenID, x.activeSourceCmdID, pending)
+}
+
 func (x *Executor) resumePending(
 	ctx context.Context,
 	dep *deploy.Deployment,
@@ -629,13 +678,29 @@ func (x *Executor) resumePending(
 	}
 	switch pending.Kind {
 	case PendingDecide:
-		return x.finalizeExclusiveDecide(ctx, dep, inst, pending.TokenID, pending.FromElementID, emit)
+		mode := pending.DecideMode
+		if mode == "" {
+			mode = DecideExclusive
+		}
+		return x.finalizeGatewayDecide(ctx, dep, inst, pending.TokenID, pending.FromElementID, mode, pending.TerminateJoinPeers, emit)
 	case PendingLeave:
 		flowID := pending.OutgoingFlowID
 		if flowID == "" && len(pending.TakenFlowIDs) > 0 {
 			flowID = pending.TakenFlowIDs[0]
 		}
 		return x.leaveViaOutgoings(ctx, dep, inst, pending.TokenID, pending.FromElementID, flowID, emit)
+	case PendingEdge:
+		next := ""
+		if len(pending.NextElementIDs) > 0 {
+			next = pending.NextElementIDs[0]
+		}
+		if next == "" {
+			return nil, fmt.Errorf("INVALID_STATE: edge pending missing next element")
+		}
+		return x.Enter(ctx, dep, inst, pending.TokenID, next, emit)
+	case PendingWait:
+		// Wait BP / manual pause: resume clears pause only; token stays waiting.
+		return nil, nil
 	case PendingFork:
 		return x.forkOutgoings(ctx, dep, inst, pending.TokenID, pending.FromElementID, pending.TakenFlowIDs, emit)
 	case PendingEnterChild:
@@ -677,23 +742,42 @@ func (x *Executor) resumePending(
 	}
 }
 
-// finalizeExclusiveDecide chooses the exclusive outgoing with current variables,
-// emits COMPLETING/COMPLETED, then leaves. Leave barriers are suppressed in this
-// burst so StepInto from PendingDecide does not double-stop on the same gateway.
-func (x *Executor) finalizeExclusiveDecide(
+// finalizeGatewayDecide chooses outgoings with current variables, emits
+// COMPLETING/COMPLETED, then leaves or forks. Leave barriers are suppressed in
+// this burst so StepInto from PendingDecide does not double-stop on the gateway;
+// sequence-flow-edge barriers (K2) still apply after SEQUENCE_FLOW_TAKEN.
+func (x *Executor) finalizeGatewayDecide(
 	ctx context.Context,
 	dep *deploy.Deployment,
 	inst *projection.Instance,
 	tokenID, elementID string,
+	mode DecideMode,
+	terminateJoinPeers string,
 	emit Emitter,
 ) ([]handlers.Publication, error) {
 	var vars map[string]string
 	if inst != nil {
 		vars = inst.Variables
 	}
-	flowID, err := dep.ChooseExclusiveOutgoing(elementID, vars)
+	var flows []string
+	var err error
+	switch mode {
+	case DecideInclusive:
+		flows, err = dep.ChooseInclusiveOutgoing(elementID, vars)
+	case DecideComplex:
+		flows, err = dep.ChooseComplexOutgoing(elementID, vars)
+	default:
+		var flowID string
+		flowID, err = dep.ChooseExclusiveOutgoing(elementID, vars)
+		if err == nil {
+			flows = []string{flowID}
+		}
+	}
 	if err != nil {
 		return nil, err
+	}
+	if len(flows) == 0 {
+		return nil, fmt.Errorf("NO_OUTGOING_FLOW: gateway %q", elementID)
 	}
 	typ := eventv1.Element_TYPE_EXCLUSIVE_GATEWAY
 	if t, typeErr := dep.TypeOf(elementID); typeErr == nil {
@@ -709,12 +793,17 @@ func (x *Executor) finalizeExclusiveDecide(
 			Id:      elementID,
 			TokenId: tokenID,
 		}
-		if intent == eventv1.Element_INTENT_COMPLETED {
+		if intent == eventv1.Element_INTENT_COMPLETED && mode == DecideExclusive {
 			el.Payload = &eventv1.Element_GatewayPayload{
-				GatewayPayload: &eventv1.GatewayPayload{TakenSequenceFlowId: flowID},
+				GatewayPayload: &eventv1.GatewayPayload{TakenSequenceFlowId: flows[0]},
 			}
 		}
 		if err := emit(el); err != nil {
+			return nil, err
+		}
+	}
+	if terminateJoinPeers != "" {
+		if err := x.terminateJoinPeers(dep, inst, tokenID, terminateJoinPeers, emit); err != nil {
 			return nil, err
 		}
 	}
@@ -728,7 +817,10 @@ func (x *Executor) finalizeExclusiveDecide(
 			x.intervention.mu.Unlock()
 		}()
 	}
-	return x.leaveViaOutgoings(ctx, dep, inst, tokenID, elementID, flowID, emit)
+	if len(flows) == 1 {
+		return x.leaveViaOutgoings(ctx, dep, inst, tokenID, elementID, flows[0], emit)
+	}
+	return x.forkOutgoings(ctx, dep, inst, tokenID, elementID, flows, emit)
 }
 
 // tryCompleteScope checks if the scope containing elementID can be completed.

@@ -593,6 +593,7 @@ func TestC_6_0_export(t *testing.T) {
 											},
 										},
 									},
+									CancelActivity: true,
 									AttachedToRef: "Activity_1bidfcm",
 								},
 								{
@@ -621,6 +622,7 @@ func TestC_6_0_export(t *testing.T) {
 											},
 										},
 									},
+									CancelActivity: true,
 									AttachedToRef: "Activity_0p5xveb",
 								},
 								{
@@ -649,6 +651,7 @@ func TestC_6_0_export(t *testing.T) {
 											},
 										},
 									},
+									CancelActivity: true,
 									AttachedToRef: "Activity_039ic8d",
 								},
 							},
@@ -969,6 +972,7 @@ func TestC_6_0_export(t *testing.T) {
 														},
 													},
 												},
+												CancelActivity: true,
 												AttachedToRef: "Activity_13sg203",
 											},
 											{
@@ -997,6 +1001,7 @@ func TestC_6_0_export(t *testing.T) {
 														},
 													},
 												},
+												CancelActivity: true,
 												AttachedToRef: "Activity_0qz49yv",
 											},
 										},

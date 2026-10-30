@@ -499,6 +499,7 @@ func TestC_8_0_roundtrip(t *testing.T) {
 											},
 										},
 									},
+									CancelActivity: true,
 									AttachedToRef: "_2b960d84-feb1-46a9-a1a1-c300dd996b99",
 								},
 							},

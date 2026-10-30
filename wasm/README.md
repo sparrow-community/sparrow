@@ -5,11 +5,12 @@ gateway; timers and job/script workers are scheduled by the JS page.
 
 ## npm package
 
-Published as **`@sparrow-community/wasm`** on [npmjs.com](https://www.npmjs.com/)
-under dist-tag **`alpha`**.
+Published as **`@sparrow-community/wasm`** on [npmjs.com](https://www.npmjs.com/).
+Every publish moves both **`latest`** and **`alpha`** to that newest calver.
 
 ```bash
-npm install @sparrow-community/wasm@alpha
+npm install @sparrow-community/wasm        # latest
+npm install @sparrow-community/wasm@alpha  # same version (policy)
 ```
 
 ### Version scheme (alpha)
@@ -18,18 +19,28 @@ npm install @sparrow-community/wasm@alpha
 
 - `YYYY` / `M` / `D` — UTC year, month, day **without leading zeros** (node-semver)
 - `N` — starts at **1** each UTC day; increments for each publish that day
-- No leading `v` in `package.json` (optional git tags may use `vYYYY.M.D-alpha.N`)
-- Committed `package.json` keeps placeholder `0.0.0-dev`; CI runs
-  `scripts/bump-alpha-version.sh` before publish
+- No leading `v` in `package.json`
+- Release git tag (primary CI trigger): **`wasm-vYYYY.M.D-alpha.N`**
+- Committed `package.json` keeps placeholder `0.0.0-dev`; the tag (or emergency
+  dispatch) sets the version before publish
 
 Display intent `v2026.09.28.1-alpha` is not npm-valid (leading `v`, leading zeros,
 four numeric segments). Mapped form: `2026.9.28-alpha.1`.
 
+### Cut a release
+
+```bash
+# On Origin main (after the code you want is landed):
+VERSION="$(cd wasm && ./scripts/bump-alpha-version.sh --print)"
+git tag "wasm-v${VERSION}"
+git push origin "wasm-v${VERSION}"
+# Mirror sync pushes the tag to GitHub → publish-wasm runs (OIDC).
+```
+
 Releases run from GitHub Actions (`.github/workflows/publish-wasm.yml`) via npm
-**Trusted Publishing** (OIDC). No long-lived npm tokens in the repo or Actions
-secrets. The first-ever package version must be bootstrapped interactively once
-(npm cannot attach a Trusted Publisher until the package exists); after that,
-Actions publishes without tokens.
+**Trusted Publishing** (OIDC). Enable **Allow npm dist-tag** on the Trusted
+Publisher so CI can move `alpha` with `latest`. No long-lived npm publish tokens.
+`workflow_dispatch` remains an emergency fallback only.
 
 Package contents (after `npm install`):
 

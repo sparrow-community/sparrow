@@ -43,8 +43,8 @@ type PauseReason string
 
 const (
 	PauseReasonStep       PauseReason = "step"
-	PauseReasonBreakpoint PauseReason = "breakpoint" // P1
-	PauseReasonManual     PauseReason = "manual"     // optional; not required for P0
+	PauseReasonBreakpoint PauseReason = "breakpoint"
+	PauseReasonManual     PauseReason = "manual"
 )
 
 // PendingKind classifies the transit held at an Enter-settled barrier.
@@ -55,25 +55,41 @@ const (
 	PendingFork       PendingKind = "fork"
 	PendingEnterChild PendingKind = "enterChild"
 	PendingLink       PendingKind = "link"
-	// PendingDecide: exclusive gateway ACTIVATED; choose on resume.
+	// PendingDecide: gateway ACTIVATED; choose on resume.
 	PendingDecide PendingKind = "decide"
+	// PendingEdge: SEQUENCE_FLOW_TAKEN already emitted; Enter target on resume.
+	PendingEdge PendingKind = "edge"
+	// PendingWait: wait ACTIVATED BP / manual pause; resume clears pause only.
+	PendingWait PendingKind = "wait"
+)
+
+// DecideMode selects which choose function PendingDecide / finalize uses.
+type DecideMode string
+
+const (
+	DecideExclusive DecideMode = "exclusive"
+	DecideInclusive DecideMode = "inclusive"
+	DecideComplex   DecideMode = "complex"
 )
 
 // PendingTransition is ephemeral resume work; never written to the EventLog.
 type PendingTransition struct {
-	Kind            PendingKind
-	FromElementID   string
-	TokenID         string
-	TakenFlowIDs    []string
-	NextElementIDs  []string
-	OutgoingFlowID  string
-	EnterChildID    string
-	SpawnChildToken bool
-	LinkCatchIDs    []string
+	Kind               PendingKind
+	FromElementID      string
+	TokenID            string
+	TakenFlowIDs       []string
+	NextElementIDs     []string
+	OutgoingFlowID     string
+	EnterChildID       string
+	SpawnChildToken    bool
+	LinkCatchIDs       []string
+	DecideMode         DecideMode
+	TerminateJoinPeers string
 }
 
 // InterventionSession is the opt-in control plane for pause/step/continue.
-// It is not ledger state; Recover ignores it.
+// It is not ledger state; Recover ignores it. One session per process instance
+// (multi-focus map on the Engine).
 type InterventionSession struct {
 	Enabled         bool
 	FocusInstanceID string
@@ -84,6 +100,8 @@ type InterventionSession struct {
 	PauseReason    PauseReason
 	PauseElementID string
 	PauseTokenID   string
+	// PauseRequested arms the next Enter-settled barrier even under continuous.
+	PauseRequested bool
 
 	// SourceCmdID is the interrupted business COMMAND id; resume EVENTs reuse it.
 	SourceCmdID string
@@ -104,6 +122,8 @@ type InterventionState struct {
 	PauseElementID  string
 	PauseTokenID    string
 	Pending         *PendingTransition
+	// BlockHostEffects is true while barrier-paused (FireDue/Activate should skip).
+	BlockHostEffects bool
 }
 
 type EnableInterventionRequest struct {
@@ -115,7 +135,10 @@ type EnableInterventionResponse struct {
 	OK bool
 }
 
-type DisableInterventionRequest struct{}
+type DisableInterventionRequest struct {
+	// InstanceID clears one session; empty clears all sessions.
+	InstanceID string
+}
 
 type DisableInterventionResponse struct {
 	OK bool
@@ -161,22 +184,53 @@ type StepOverResponse struct {
 	State  InterventionState
 }
 
-// interventionCtl holds the session and fork-suppress depth for the executor.
+type PauseRequest struct {
+	InstanceID string
+}
+
+type PauseResponse struct {
+	OK    bool
+	State InterventionState
+}
+
+// interventionCtl holds per-instance sessions and fork-suppress depth for the executor.
 type interventionCtl struct {
-	mu                   sync.Mutex
-	session              InterventionSession
-	forkSuppressDepth    int
-	decideFinalizeDepth  int // suppress leave barrier while finalizing PendingDecide
+	mu                sync.Mutex
+	sessions          map[string]*InterventionSession
+	primaryID         string // last Enable / CreateInstance rebind; empty GetInterventionState
+	forkSuppressDepth int
+	decideFinalizeDepth int // suppress leave/fork barrier while finalizing PendingDecide
 }
 
-func (c *interventionCtl) snapshot() InterventionState {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.snapshotLocked()
+func (c *interventionCtl) ensureMapLocked() {
+	if c.sessions == nil {
+		c.sessions = make(map[string]*InterventionSession)
+	}
 }
 
-func (c *interventionCtl) snapshotLocked() InterventionState {
-	s := c.session
+func (c *interventionCtl) sessionLocked(instanceID string) *InterventionSession {
+	c.ensureMapLocked()
+	return c.sessions[instanceID]
+}
+
+func (c *interventionCtl) getOrCreateLocked(instanceID string) *InterventionSession {
+	c.ensureMapLocked()
+	s := c.sessions[instanceID]
+	if s == nil {
+		s = &InterventionSession{
+			FocusInstanceID: instanceID,
+			Breakpoints:     make(map[string]struct{}),
+			RunPolicy:       RunPolicyContinuous,
+		}
+		c.sessions[instanceID] = s
+	}
+	return s
+}
+
+func snapshotSession(s *InterventionSession) InterventionState {
+	if s == nil {
+		return InterventionState{}
+	}
 	bps := make([]string, 0, len(s.Breakpoints))
 	for id := range s.Breakpoints {
 		bps = append(bps, id)
@@ -191,20 +245,38 @@ func (c *interventionCtl) snapshotLocked() InterventionState {
 		pending.LinkCatchIDs = append([]string(nil), s.Pending.LinkCatchIDs...)
 	}
 	return InterventionState{
-		Enabled:         s.Enabled,
-		FocusInstanceID: s.FocusInstanceID,
-		Policy:          s.RunPolicy,
-		Breakpoints:     bps,
-		Paused:          s.Paused,
-		PauseReason:     s.PauseReason,
-		PauseElementID:  s.PauseElementID,
-		PauseTokenID:    s.PauseTokenID,
-		Pending:         pending,
+		Enabled:          s.Enabled,
+		FocusInstanceID:  s.FocusInstanceID,
+		Policy:           s.RunPolicy,
+		Breakpoints:      bps,
+		Paused:           s.Paused,
+		PauseReason:      s.PauseReason,
+		PauseElementID:   s.PauseElementID,
+		PauseTokenID:     s.PauseTokenID,
+		Pending:          pending,
+		BlockHostEffects: s.Enabled && s.Paused,
 	}
 }
 
+func (c *interventionCtl) snapshot(instanceID string) InterventionState {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.snapshotLocked(instanceID)
+}
+
+func (c *interventionCtl) snapshotLocked(instanceID string) InterventionState {
+	if instanceID == "" {
+		instanceID = c.primaryID
+	}
+	if instanceID == "" {
+		return InterventionState{}
+	}
+	return snapshotSession(c.sessionLocked(instanceID))
+}
+
 func (c *interventionCtl) clearToDefaultLocked() {
-	c.session = InterventionSession{}
+	c.sessions = nil
+	c.primaryID = ""
 	c.forkSuppressDepth = 0
 	c.decideFinalizeDepth = 0
 }
@@ -213,37 +285,45 @@ func barrierKey(p *PendingTransition) string {
 	if p == nil {
 		return ""
 	}
-	return p.TokenID + "|" + p.FromElementID + "|" + string(p.Kind)
+	return p.TokenID + "|" + p.FromElementID + "|" + string(p.Kind) + "|" + p.OutgoingFlowID
 }
 
 func (c *interventionCtl) shouldBarrier(instanceID, elementID, tokenID, sourceCmdID string, pending *PendingTransition) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	s := &c.session
-	if !s.Enabled || s.Paused {
+	s := c.sessionLocked(instanceID)
+	if s == nil || !s.Enabled || s.Paused {
 		return false
 	}
-	if s.FocusInstanceID != "" && s.FocusInstanceID != instanceID {
+	if c.forkSuppressDepth > 0 {
 		return false
 	}
-	if c.forkSuppressDepth > 0 || c.decideFinalizeDepth > 0 {
-		return false
+	// decideFinalize suppresses leave/fork on the same gateway, not edge/wait/decide.
+	if c.decideFinalizeDepth > 0 && pending != nil {
+		switch pending.Kind {
+		case PendingLeave, PendingFork:
+			return false
+		}
 	}
 	key := barrierKey(pending)
 	if s.SuppressKey != "" && s.SuppressKey == key {
 		s.SuppressKey = ""
 		return false
 	}
+	if s.PauseRequested {
+		s.PauseRequested = false
+		c.armPauseLocked(s, pending, elementID, tokenID, PauseReasonManual, sourceCmdID)
+		return true
+	}
 	switch s.RunPolicy {
 	case RunPolicyStep:
-		c.armPauseLocked(pending, elementID, tokenID, PauseReasonStep, sourceCmdID)
+		c.armPauseLocked(s, pending, elementID, tokenID, PauseReasonStep, sourceCmdID)
 		return true
 	case RunPolicyStepOver:
-		// Drain to natural Wait / end; do not arm Enter-settled barriers.
 		return false
 	case RunPolicyBreakpoints, RunPolicyContinuous:
 		if _, hit := s.Breakpoints[elementID]; hit {
-			c.armPauseLocked(pending, elementID, tokenID, PauseReasonBreakpoint, sourceCmdID)
+			c.armPauseLocked(s, pending, elementID, tokenID, PauseReasonBreakpoint, sourceCmdID)
 			return true
 		}
 		return false
@@ -252,8 +332,42 @@ func (c *interventionCtl) shouldBarrier(instanceID, elementID, tokenID, sourceCm
 	}
 }
 
-func (c *interventionCtl) armPauseLocked(pending *PendingTransition, elementID, tokenID string, reason PauseReason, sourceCmdID string) {
-	s := &c.session
+// shouldBarrierWait arms only on breakpoint hit (or manual PauseRequested) at wait settle.
+func (c *interventionCtl) shouldBarrierWait(instanceID, elementID, tokenID, sourceCmdID string, pending *PendingTransition) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	s := c.sessionLocked(instanceID)
+	if s == nil || !s.Enabled || s.Paused {
+		return false
+	}
+	if c.forkSuppressDepth > 0 {
+		return false
+	}
+	key := barrierKey(pending)
+	if s.SuppressKey != "" && s.SuppressKey == key {
+		s.SuppressKey = ""
+		return false
+	}
+	if s.PauseRequested {
+		s.PauseRequested = false
+		c.armPauseLocked(s, pending, elementID, tokenID, PauseReasonManual, sourceCmdID)
+		return true
+	}
+	switch s.RunPolicy {
+	case RunPolicyStepOver:
+		return false
+	case RunPolicyBreakpoints, RunPolicyContinuous, RunPolicyStep:
+		if _, hit := s.Breakpoints[elementID]; hit {
+			c.armPauseLocked(s, pending, elementID, tokenID, PauseReasonBreakpoint, sourceCmdID)
+			return true
+		}
+		return false
+	default:
+		return false
+	}
+}
+
+func (c *interventionCtl) armPauseLocked(s *InterventionSession, pending *PendingTransition, elementID, tokenID string, reason PauseReason, sourceCmdID string) {
 	s.Paused = true
 	s.PauseReason = reason
 	s.PauseElementID = elementID
@@ -273,24 +387,69 @@ func (c *interventionCtl) armPauseLocked(pending *PendingTransition, elementID, 
 func (c *interventionCtl) isPausedFocus(instanceID string) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.session.Enabled && c.session.Paused && c.session.FocusInstanceID == instanceID
+	s := c.sessionLocked(instanceID)
+	return s != nil && s.Enabled && s.Paused
 }
 
-func (c *interventionCtl) stashPubs(pubs []handlers.Publication) {
+func (c *interventionCtl) stashPubs(instanceID string, pubs []handlers.Publication) {
 	if len(pubs) == 0 {
 		return
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.session.DeferredPubs = append(c.session.DeferredPubs, pubs...)
+	s := c.getOrCreateLocked(instanceID)
+	s.DeferredPubs = append(s.DeferredPubs, pubs...)
 }
 
-func (c *interventionCtl) takeDeferredPubs() []handlers.Publication {
+func (c *interventionCtl) takeDeferredPubs(instanceID string) []handlers.Publication {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	pubs := c.session.DeferredPubs
-	c.session.DeferredPubs = nil
+	s := c.sessionLocked(instanceID)
+	if s == nil {
+		return nil
+	}
+	pubs := s.DeferredPubs
+	s.DeferredPubs = nil
 	return pubs
+}
+
+// bindNewInstance copies an enabled template session onto a newly created instance
+// so CreateInstance bursts honor Step/Continuous (T5 fork barrier).
+func (c *interventionCtl) bindNewInstance(instanceID string) {
+	if instanceID == "" {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.ensureMapLocked()
+	var template *InterventionSession
+	if c.primaryID != "" {
+		if s := c.sessions[c.primaryID]; s != nil && s.Enabled && !s.Paused {
+			template = s
+		}
+	}
+	if template == nil {
+		for _, s := range c.sessions {
+			if s != nil && s.Enabled && !s.Paused {
+				template = s
+				break
+			}
+		}
+	}
+	if template == nil {
+		return
+	}
+	bps := make(map[string]struct{}, len(template.Breakpoints))
+	for id := range template.Breakpoints {
+		bps[id] = struct{}{}
+	}
+	c.sessions[instanceID] = &InterventionSession{
+		Enabled:         true,
+		FocusInstanceID: instanceID,
+		Breakpoints:     bps,
+		RunPolicy:       template.RunPolicy,
+	}
+	c.primaryID = instanceID
 }
 
 func (e *Engine) errIfInstancePaused(instanceID string) error {
@@ -303,16 +462,22 @@ func (e *Engine) errIfInstancePaused(instanceID string) error {
 	return nil
 }
 
+// HostEffectAllowed reports whether the host may FireDue / Activate for instanceID.
+// False while the instance is barrier-paused (K8).
+func (e *Engine) HostEffectAllowed(instanceID string) bool {
+	return e.errIfInstancePaused(instanceID) == nil
+}
+
 // afterUnlockedCommand flushes publications unless the focused instance is mid-barrier-pause.
 func (e *Engine) afterUnlockedCommand(ctx context.Context, instanceID string, pubs []handlers.Publication) error {
 	ctl := e.executor.intervention
 	if ctl != nil && ctl.isPausedFocus(instanceID) {
-		ctl.stashPubs(pubs)
+		ctl.stashPubs(instanceID, pubs)
 		return nil
 	}
 	var all []handlers.Publication
 	if ctl != nil {
-		all = append(all, ctl.takeDeferredPubs()...)
+		all = append(all, ctl.takeDeferredPubs(instanceID)...)
 	}
 	all = append(all, pubs...)
 	if err := e.flushPublications(ctx, all); err != nil {
@@ -348,35 +513,48 @@ func (e *Engine) EnableIntervention(_ context.Context, req EnableInterventionReq
 	ctl := e.executor.intervention
 	ctl.mu.Lock()
 	defer ctl.mu.Unlock()
-	if ctl.session.Paused && ctl.session.FocusInstanceID != "" && ctl.session.FocusInstanceID != instanceID {
-		return nil, fmt.Errorf("INVALID_STATE: intervene continue or discard")
+	s := ctl.getOrCreateLocked(instanceID)
+	if !s.Paused {
+		s.Pending = nil
+		s.PauseReason = ""
+		s.PauseElementID = ""
+		s.PauseTokenID = ""
+		s.SuppressKey = ""
+		s.DeferredPubs = nil
+		s.PauseRequested = false
 	}
-	if !ctl.session.Paused {
-		ctl.session.Pending = nil
-		ctl.session.PauseReason = ""
-		ctl.session.PauseElementID = ""
-		ctl.session.PauseTokenID = ""
-		ctl.session.SuppressKey = ""
-		ctl.session.DeferredPubs = nil
+	s.Enabled = true
+	s.FocusInstanceID = instanceID
+	s.RunPolicy = policy
+	if s.Breakpoints == nil {
+		s.Breakpoints = make(map[string]struct{})
 	}
-	ctl.session.Enabled = true
-	ctl.session.FocusInstanceID = instanceID
-	ctl.session.RunPolicy = policy
-	if ctl.session.Breakpoints == nil {
-		ctl.session.Breakpoints = make(map[string]struct{})
-	}
+	ctl.primaryID = instanceID
 	return &EnableInterventionResponse{OK: true}, nil
 }
 
-func (e *Engine) DisableIntervention(_ context.Context, _ DisableInterventionRequest) (*DisableInterventionResponse, error) {
+func (e *Engine) DisableIntervention(_ context.Context, req DisableInterventionRequest) (*DisableInterventionResponse, error) {
 	if e == nil || e.executor == nil || e.executor.intervention == nil {
 		return nil, fmt.Errorf("INVALID_STATE: engine not ready")
 	}
 	ctl := e.executor.intervention
 	ctl.mu.Lock()
 	defer ctl.mu.Unlock()
-	if ctl.session.Paused && ctl.session.Pending != nil {
-		return nil, fmt.Errorf("INVALID_STATE: intervene continue or discard")
+	if req.InstanceID != "" {
+		s := ctl.sessionLocked(req.InstanceID)
+		if s != nil && s.Paused && s.Pending != nil {
+			return nil, fmt.Errorf("INVALID_STATE: intervene continue or discard")
+		}
+		delete(ctl.sessions, req.InstanceID)
+		if ctl.primaryID == req.InstanceID {
+			ctl.primaryID = ""
+		}
+		return &DisableInterventionResponse{OK: true}, nil
+	}
+	for _, s := range ctl.sessions {
+		if s != nil && s.Paused && s.Pending != nil {
+			return nil, fmt.Errorf("INVALID_STATE: intervene continue or discard")
+		}
 	}
 	ctl.clearToDefaultLocked()
 	return &DisableInterventionResponse{OK: true}, nil
@@ -389,14 +567,14 @@ func (e *Engine) SetBreakpoints(_ context.Context, req SetBreakpointsRequest) (*
 	ctl := e.executor.intervention
 	ctl.mu.Lock()
 	defer ctl.mu.Unlock()
-	if req.InstanceID != "" {
-		if ctl.session.FocusInstanceID != "" && ctl.session.FocusInstanceID != req.InstanceID {
-			return nil, fmt.Errorf("INVALID_ARGUMENT: instance_id does not match focus")
-		}
-		if ctl.session.FocusInstanceID == "" {
-			ctl.session.FocusInstanceID = req.InstanceID
-		}
+	instanceID := req.InstanceID
+	if instanceID == "" {
+		instanceID = ctl.primaryID
 	}
+	if instanceID == "" {
+		return nil, fmt.Errorf("INVALID_ARGUMENT: instance_id is required")
+	}
+	s := ctl.getOrCreateLocked(instanceID)
 	bps := make(map[string]struct{}, len(req.ElementIDs))
 	out := make([]string, 0, len(req.ElementIDs))
 	seen := make(map[string]struct{}, len(req.ElementIDs))
@@ -412,7 +590,7 @@ func (e *Engine) SetBreakpoints(_ context.Context, req SetBreakpointsRequest) (*
 		out = append(out, id)
 	}
 	sort.Strings(out)
-	ctl.session.Breakpoints = bps
+	s.Breakpoints = bps
 	return &SetBreakpointsResponse{OK: true, ElementIDs: out}, nil
 }
 
@@ -420,7 +598,7 @@ func (e *Engine) GetInterventionState(_ context.Context, instanceID string) (*In
 	if e == nil || e.executor == nil || e.executor.intervention == nil {
 		return nil, fmt.Errorf("INVALID_STATE: engine not ready")
 	}
-	st := e.executor.intervention.snapshot()
+	st := e.executor.intervention.snapshot(instanceID)
 	if instanceID != "" && st.FocusInstanceID != "" && st.FocusInstanceID != instanceID {
 		return nil, fmt.Errorf("INVALID_ARGUMENT: instance_id does not match focus")
 	}
@@ -432,6 +610,13 @@ func (e *Engine) Continue(ctx context.Context, req ContinueRequest) (*ContinueRe
 }
 
 func (e *Engine) StepInto(ctx context.Context, req StepIntoRequest) (*StepIntoResponse, error) {
+	// Call Activity child step-into when parent waits on Call (not barrier-paused).
+	if resp, handled, err := e.tryStepIntoCallChild(ctx, req.InstanceID); handled {
+		if err != nil {
+			return nil, err
+		}
+		return resp, nil
+	}
 	resp, err := e.resumeIntervention(ctx, req.InstanceID, RunPolicyStep)
 	if err != nil {
 		return nil, err
@@ -441,8 +626,7 @@ func (e *Engine) StepInto(ctx context.Context, req StepIntoRequest) (*StepIntoRe
 
 // StepOver resumes one pending transit then drains Enter-settled barriers until
 // a natural Wait / process end / error. Unlike Continue, breakpoints do not arm
-// during that drain. Call Activity child step-into remains a follow-up (focus
-// stays on the parent instance; Call enter is still a natural wait).
+// during that drain.
 func (e *Engine) StepOver(ctx context.Context, req StepOverRequest) (*StepOverResponse, error) {
 	resp, err := e.resumeIntervention(ctx, req.InstanceID, RunPolicyStepOver)
 	if err != nil {
@@ -450,12 +634,75 @@ func (e *Engine) StepOver(ctx context.Context, req StepOverRequest) (*StepOverRe
 	}
 	ctl := e.executor.intervention
 	ctl.mu.Lock()
-	if !ctl.session.Paused && ctl.session.Enabled && ctl.session.RunPolicy == RunPolicyStepOver {
-		ctl.session.RunPolicy = RunPolicyContinuous
+	s := ctl.sessionLocked(req.InstanceID)
+	if req.InstanceID == "" {
+		s = ctl.sessionLocked(ctl.primaryID)
 	}
-	st := ctl.snapshotLocked()
+	if s != nil && !s.Paused && s.Enabled && s.RunPolicy == RunPolicyStepOver {
+		s.RunPolicy = RunPolicyContinuous
+	}
+	st := snapshotSession(s)
 	ctl.mu.Unlock()
 	return &StepOverResponse{OK: resp.OK, Paused: st.Paused, State: st}, nil
+}
+
+// Pause arms PauseReasonManual: if already at a wait, pause immediately; otherwise
+// request pause at the next Enter-settled barrier (K9).
+func (e *Engine) Pause(ctx context.Context, req PauseRequest) (*PauseResponse, error) {
+	if e == nil || e.executor == nil || e.executor.intervention == nil {
+		return nil, fmt.Errorf("INVALID_STATE: engine not ready")
+	}
+	instanceID := req.InstanceID
+	if instanceID == "" {
+		return nil, fmt.Errorf("INVALID_ARGUMENT: instance_id is required")
+	}
+	e.mu.Lock()
+	inst := e.instances[instanceID]
+	e.mu.Unlock()
+	if inst == nil {
+		return nil, fmt.Errorf("NOT_FOUND: instance %q", instanceID)
+	}
+
+	ctl := e.executor.intervention
+	ctl.mu.Lock()
+	s := ctl.getOrCreateLocked(instanceID)
+	if !s.Enabled {
+		s.Enabled = true
+		if s.RunPolicy == "" {
+			s.RunPolicy = RunPolicyContinuous
+		}
+	}
+	ctl.primaryID = instanceID
+	if s.Paused {
+		st := snapshotSession(s)
+		ctl.mu.Unlock()
+		return &PauseResponse{OK: true, State: st}, nil
+	}
+
+	// Prefer immediate pause on a waiting token when present.
+	var waitElem, waitTok string
+	for tid, tok := range inst.Tokens {
+		if tok != nil && tok.Status == projection.TokenWaiting {
+			waitElem = tok.ElementID
+			waitTok = tid
+			break
+		}
+	}
+	if waitTok != "" {
+		pending := &PendingTransition{
+			Kind:          PendingWait,
+			FromElementID: waitElem,
+			TokenID:       waitTok,
+		}
+		ctl.armPauseLocked(s, pending, waitElem, waitTok, PauseReasonManual, "")
+		st := snapshotSession(s)
+		ctl.mu.Unlock()
+		return &PauseResponse{OK: true, State: st}, nil
+	}
+	s.PauseRequested = true
+	st := snapshotSession(s)
+	ctl.mu.Unlock()
+	return &PauseResponse{OK: true, State: st}, nil
 }
 
 // SetVariablesRequest patches instance variables while barrier-paused (ledger COMMAND).
@@ -471,7 +718,7 @@ type SetVariablesResponse struct {
 
 // SetVariables merges variables onto the focused paused instance via a PROCESS
 // ACTIVATED EVENT (variable payload only). When paused at PendingDecide, updates
-// Pending.TakenFlowIDs with a tentative exclusive choose for observers.
+// Pending.TakenFlowIDs with a tentative choose for observers.
 func (e *Engine) SetVariables(ctx context.Context, req SetVariablesRequest) (*SetVariablesResponse, error) {
 	if e == nil || e.executor == nil || e.executor.intervention == nil {
 		return nil, fmt.Errorf("INVALID_STATE: engine not ready")
@@ -541,17 +788,52 @@ func (e *Engine) SetVariables(ctx context.Context, req SetVariablesRequest) (*Se
 
 	ctl := e.executor.intervention
 	ctl.mu.Lock()
-	if dep != nil && ctl.session.Pending != nil && ctl.session.Pending.Kind == PendingDecide {
-		if flowID, chooseErr := dep.ChooseExclusiveOutgoing(ctl.session.Pending.FromElementID, inst.Variables); chooseErr == nil {
-			taken, next, _ := copyFlowTargets(dep, []string{flowID})
-			ctl.session.Pending.TakenFlowIDs = taken
-			ctl.session.Pending.NextElementIDs = next
-			ctl.session.Pending.OutgoingFlowID = flowID
-		}
+	s := ctl.sessionLocked(instanceID)
+	if dep != nil && s != nil && s.Pending != nil && s.Pending.Kind == PendingDecide {
+		updatePendingDecidePreview(dep, inst, s.Pending)
 	}
-	st := ctl.snapshotLocked()
+	st := snapshotSession(s)
 	ctl.mu.Unlock()
 	return &SetVariablesResponse{OK: true, State: st}, nil
+}
+
+func updatePendingDecidePreview(dep *deploy.Deployment, inst *projection.Instance, pending *PendingTransition) {
+	var vars map[string]string
+	if inst != nil {
+		vars = inst.Variables
+	}
+	mode := pending.DecideMode
+	if mode == "" {
+		mode = DecideExclusive
+	}
+	var flows []string
+	var err error
+	switch mode {
+	case DecideInclusive:
+		flows, err = dep.ChooseInclusiveOutgoing(pending.FromElementID, vars)
+	case DecideComplex:
+		flows, err = dep.ChooseComplexOutgoing(pending.FromElementID, vars)
+	default:
+		var flowID string
+		flowID, err = dep.ChooseExclusiveOutgoing(pending.FromElementID, vars)
+		if err == nil {
+			flows = []string{flowID}
+		}
+	}
+	if err != nil || len(flows) == 0 {
+		return
+	}
+	taken, next, copyErr := copyFlowTargets(dep, flows)
+	if copyErr != nil {
+		return
+	}
+	pending.TakenFlowIDs = taken
+	pending.NextElementIDs = next
+	if len(flows) == 1 {
+		pending.OutgoingFlowID = flows[0]
+	} else {
+		pending.OutgoingFlowID = ""
+	}
 }
 
 func (e *Engine) resumeIntervention(ctx context.Context, instanceID string, afterPolicy RunPolicy) (*ContinueResponse, error) {
@@ -560,18 +842,13 @@ func (e *Engine) resumeIntervention(ctx context.Context, instanceID string, afte
 	}
 	ctl := e.executor.intervention
 	ctl.mu.Lock()
-	s := &ctl.session
-	if !s.Enabled || !s.Paused || s.Pending == nil {
+	if instanceID == "" {
+		instanceID = ctl.primaryID
+	}
+	s := ctl.sessionLocked(instanceID)
+	if s == nil || !s.Enabled || !s.Paused || s.Pending == nil {
 		ctl.mu.Unlock()
 		return nil, fmt.Errorf("INVALID_STATE: not paused")
-	}
-	focus := s.FocusInstanceID
-	if instanceID == "" {
-		instanceID = focus
-	}
-	if instanceID != focus {
-		ctl.mu.Unlock()
-		return nil, fmt.Errorf("INVALID_ARGUMENT: instance_id does not match focus")
 	}
 	pending := *s.Pending
 	pending.TakenFlowIDs = append([]string(nil), s.Pending.TakenFlowIDs...)
@@ -585,6 +862,7 @@ func (e *Engine) resumeIntervention(ctx context.Context, instanceID string, afte
 	s.PauseElementID = ""
 	s.PauseTokenID = ""
 	s.Pending = nil
+	ctl.primaryID = instanceID
 	ctl.mu.Unlock()
 
 	e.mu.Lock()
@@ -612,8 +890,85 @@ func (e *Engine) resumeIntervention(ctx context.Context, instanceID string, afte
 	if err := e.afterUnlockedCommand(ctx, instanceID, pubs); err != nil {
 		return nil, err
 	}
-	st := ctl.snapshot()
+	st := ctl.snapshot(instanceID)
 	return &ContinueResponse{OK: true, Paused: st.Paused, State: st}, nil
+}
+
+// tryStepIntoCallChild enables intervention on a Call Activity child instance
+// when the parent is waiting on the Call (multi-focus K4/K5).
+func (e *Engine) tryStepIntoCallChild(ctx context.Context, instanceID string) (*StepIntoResponse, bool, error) {
+	if e == nil || e.executor == nil || e.executor.intervention == nil {
+		return nil, false, nil
+	}
+	ctl := e.executor.intervention
+	ctl.mu.Lock()
+	if instanceID == "" {
+		instanceID = ctl.primaryID
+	}
+	s := ctl.sessionLocked(instanceID)
+	if s == nil || !s.Enabled || s.Paused {
+		ctl.mu.Unlock()
+		return nil, false, nil
+	}
+	policy := s.RunPolicy
+	bps := make(map[string]struct{}, len(s.Breakpoints))
+	for id := range s.Breakpoints {
+		bps[id] = struct{}{}
+	}
+	ctl.mu.Unlock()
+
+	e.mu.Lock()
+	inst := e.instances[instanceID]
+	var dep *deploy.Deployment
+	if inst != nil {
+		dep = e.deployments[inst.DeploymentID]
+	}
+	e.mu.Unlock()
+	if inst == nil || dep == nil {
+		return nil, false, nil
+	}
+
+	var childID, callElem, hostTok string
+	for tid, tok := range inst.Tokens {
+		if tok == nil || tok.Status != projection.TokenWaiting || tok.CalledProcessInstanceID == "" {
+			continue
+		}
+		typ, err := dep.TypeOf(tok.ElementID)
+		if err != nil || typ != eventv1.Element_TYPE_CALL_ACTIVITY {
+			continue
+		}
+		childID = tok.CalledProcessInstanceID
+		callElem = tok.ElementID
+		hostTok = tid
+		break
+	}
+	if childID == "" {
+		return nil, false, nil
+	}
+	e.mu.Lock()
+	child := e.instances[childID]
+	e.mu.Unlock()
+	if child == nil {
+		return nil, false, fmt.Errorf("NOT_FOUND: child instance %q", childID)
+	}
+
+	childPolicy := RunPolicyStep
+	if policy == RunPolicyStep || policy == RunPolicyBreakpoints || policy == RunPolicyContinuous {
+		childPolicy = RunPolicyStep
+	}
+	ctl.mu.Lock()
+	cs := ctl.getOrCreateLocked(childID)
+	cs.Enabled = true
+	cs.FocusInstanceID = childID
+	cs.RunPolicy = childPolicy
+	cs.Breakpoints = bps
+	ctl.primaryID = childID
+	st := snapshotSession(cs)
+	ctl.mu.Unlock()
+	_ = callElem
+	_ = hostTok
+	_ = ctx
+	return &StepIntoResponse{OK: true, Paused: st.Paused, State: st}, true, nil
 }
 
 func copyFlowTargets(dep *deploy.Deployment, flows []string) ([]string, []string, error) {

@@ -9,7 +9,18 @@ Thanks for helping with Sparrow. This repository is the BPMN **execution and fac
 | Public source of truth for readers | [github.com/sparrow-community/sparrow](https://github.com/sparrow-community/sparrow) |
 | Primary maintainer workspace | Cursor Origin remotes under the `slowrookie` account (this checkout’s `origin`) |
 
-Maintainers develop in Cursor with `origin` as the working remote, then mirror accepted `main` to the `github` remote (`sparrow-community/sparrow`). Do not treat a personal fork of Origin as the public project home.
+Maintainers develop in Cursor with `origin` as the working remote. GitHub
+(`sparrow-community/sparrow`) is the public mirror for readers, Actions, and npm
+Trusted Publishing. Do not treat a personal fork of Origin as the public project home.
+
+**Automatic mirror:** `.github/workflows/mirror-from-origin.yml` (schedule +
+manual) fetches Origin `main`/tags and pushes to GitHub. Requires Actions secrets
+`ORIGIN_GIT_TOKEN` (read Origin) and `GH_MIRROR_TOKEN` (GitHub PAT with `repo` +
+`workflow` so mirrored tags can trigger `publish-wasm`). Until secrets exist the
+workflow no-ops with a warning.
+
+**WASM npm release:** push tag `wasm-vYYYY.M.D-alpha.N` on Origin; after mirror,
+`publish-wasm` builds and publishes. See [`wasm/README.md`](./wasm/README.md).
 
 Sibling playground: [sparrow-playground](https://github.com/sparrow-community/sparrow-playground).
 

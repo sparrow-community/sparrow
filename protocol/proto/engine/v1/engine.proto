@@ -220,7 +220,7 @@ message ListEventsResponse {
 
 // PendingTransition is resume work held at an Enter-settled barrier.
 message PendingTransition {
-  // leave | fork | enterChild | link | decide
+  // leave | fork | enterChild | link | decide | edge | wait
   string kind = 1;
   string from_element_id = 2;
   string token_id = 3;
@@ -230,6 +230,9 @@ message PendingTransition {
   string enter_child_id = 7;
   bool spawn_child_token = 8;
   repeated string link_catch_ids = 9;
+  // exclusive | inclusive | complex (PendingDecide)
+  string decide_mode = 10;
+  string terminate_join_peers = 11;
 }
 
 // InterventionState is the read model for GetInterventionState.
@@ -245,6 +248,8 @@ message InterventionState {
   string pause_element_id = 7;
   string pause_token_id = 8;
   PendingTransition pending = 9;
+  // True while barrier-paused; hosts should skip FireDue/Activate for this instance.
+  bool block_host_effects = 10;
 }
 
 message EnableInterventionRequest {
@@ -257,7 +262,10 @@ message EnableInterventionResponse {
   bool ok = 1;
 }
 
-message DisableInterventionRequest {}
+message DisableInterventionRequest {
+  // Optional: clear one instance session; empty clears all.
+  string process_instance_id = 1;
+}
 
 message DisableInterventionResponse {
   bool ok = 1;
@@ -301,6 +309,23 @@ message StepOverResponse {
   bool ok = 1;
   bool paused = 2;
   InterventionState state = 3;
+}
+
+message PauseRequest {
+  string process_instance_id = 1;
+}
+
+message PauseResponse {
+  bool ok = 1;
+  InterventionState state = 2;
+}
+
+message HostEffectAllowedRequest {
+  string process_instance_id = 1;
+}
+
+message HostEffectAllowedResponse {
+  bool allowed = 1;
 }
 
 message GetInterventionStateRequest {
@@ -362,4 +387,8 @@ service EngineService {
   rpc GetInterventionState(GetInterventionStateRequest) returns (GetInterventionStateResponse);
   // SetVariables patches variables while barrier-paused (ledger PROCESS variable EVENT).
   rpc SetVariables(SetVariablesRequest) returns (SetVariablesResponse);
+  // Pause arms PauseReasonManual (immediate on wait, else next barrier).
+  rpc Pause(PauseRequest) returns (PauseResponse);
+  // HostEffectAllowed reports whether FireDue/Activate may proceed for the instance.
+  rpc HostEffectAllowed(HostEffectAllowedRequest) returns (HostEffectAllowedResponse);
 }

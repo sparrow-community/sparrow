@@ -32,24 +32,23 @@ func (ComplexGatewayHandler) OnEnter(in EnterInput) (*Effect, error) {
 }
 
 func complexSplit(in EnterInput) (*Effect, error) {
-	var vars map[string]string
-	if in.Instance != nil {
-		vars = in.Instance.Variables
-	}
-	flows, err := in.Deployment.ChooseComplexOutgoing(in.ElementID, vars)
-	if err != nil {
-		return nil, err
-	}
-	if len(flows) == 1 {
-		return &Effect{
-			Records:        InstantLifecycle(in.Type, in.ElementID, in.TokenID, nil),
-			TakeOutgoing:   true,
-			OutgoingFlowID: flows[0],
-		}, nil
-	}
+	// Two-phase Instant: ACTIVATING/ACTIVATED first; executor finalizes choose.
 	return &Effect{
-		Records: InstantLifecycle(in.Type, in.ElementID, in.TokenID, nil),
-		Fork:    flows,
+		Records: []*eventv1.Element{
+			{
+				Intent:  eventv1.Element_INTENT_ACTIVATING,
+				Type:    in.Type,
+				Id:      in.ElementID,
+				TokenId: in.TokenID,
+			},
+			{
+				Intent:  eventv1.Element_INTENT_ACTIVATED,
+				Type:    in.Type,
+				Id:      in.ElementID,
+				TokenId: in.TokenID,
+			},
+		},
+		DecideComplex: true,
 	}, nil
 }
 
@@ -70,33 +69,16 @@ func complexJoinEnter(in EnterInput, incoming, outgoing []string) (*Effect, erro
 	if !fire {
 		return &Effect{Records: records, Wait: true}, nil
 	}
-	records = append(records,
-		&eventv1.Element{Intent: eventv1.Element_INTENT_COMPLETING, Type: in.Type, Id: in.ElementID, TokenId: in.TokenID},
-		&eventv1.Element{Intent: eventv1.Element_INTENT_COMPLETED, Type: in.Type, Id: in.ElementID, TokenId: in.TokenID},
-	)
-	effect := &Effect{
-		Records:            records,
-		TerminateJoinPeers: in.ElementID,
-	}
 	if len(outgoing) == 0 {
 		return nil, fmt.Errorf("NO_OUTGOING_FLOW: complex gateway %q", in.ElementID)
 	}
-	if len(outgoing) == 1 {
-		effect.TakeOutgoing = true
-		effect.OutgoingFlowID = outgoing[0]
-		return effect, nil
-	}
-	flows, err := in.Deployment.ChooseComplexOutgoing(in.ElementID, vars)
-	if err != nil {
-		return nil, err
-	}
-	if len(flows) == 1 {
-		effect.TakeOutgoing = true
-		effect.OutgoingFlowID = flows[0]
-		return effect, nil
-	}
-	effect.Fork = flows
-	return effect, nil
+	// Activation fired: barrier/decide before COMPLETING so complex join outgoings
+	// can be re-decided (same trail as InstantLifecycle when intervention is off).
+	return &Effect{
+		Records:                  records,
+		DecideComplex:            true,
+		DecideTerminateJoinPeers: in.ElementID,
+	}, nil
 }
 
 func (ComplexGatewayHandler) OnComplete(CompleteInput) (*Effect, error) {

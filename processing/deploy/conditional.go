@@ -32,9 +32,11 @@ func conditionalCatchFromDefs(id string, defs element.EventDefinitions) (string,
 	if other > 0 {
 		return "", fmt.Errorf("UNSUPPORTED_ELEMENT: %q is not a conditional catch", id)
 	}
-	text := expressionText(defs.ConditionalEventDefinitions[0].Condition)
+	text := strings.TrimSpace(expressionText(defs.ConditionalEventDefinitions[0].Condition))
 	if text == "" {
-		return "", fmt.Errorf("UNSUPPORTED_ELEMENT: %q conditional catch needs a condition expression", id)
+		// Empty condition stub (common in MIWG interchange): treat as always-true,
+		// parallel to empty timer expression → PT0S.
+		return "true", nil
 	}
 	return text, nil
 }
