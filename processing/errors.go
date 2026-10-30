@@ -13,6 +13,9 @@ import (
 // ThrowError records ERROR_THROWN on a waiting activity and propagates the error
 // to a matching boundary or terminates the instance when unhandled.
 func (e *Engine) ThrowError(ctx context.Context, instanceID, elementID, tokenID, errorCode string) error {
+	if err := e.errIfInstancePaused(instanceID); err != nil {
+		return err
+	}
 	e.mu.Lock()
 	inst := e.instances[instanceID]
 	lock := e.instMu[instanceID]

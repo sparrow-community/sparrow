@@ -4,11 +4,11 @@ Sparrow is a single-node [BPMN 2.0](https://www.omg.org/spec/BPMN/2.0/) executio
 
 This repository is the kernel: BPMN XML model, protobuf contract, execution engine, gRPC gateway, and an in-memory WebAssembly host. Agents, diagram overlays, and operations tools are consumers of that contract. They are not part of this tree.
 
-**Early public preview (alpha).** Behavior covered by the test suite is real, and the wire contract is still moving. Protobuf package names such as `engine.v1`, `event.v1`, and `job.v1` are not a compatibility freeze. RPC shapes, event payloads, and module paths can still change before a stable release.
+**Early public preview (alpha).** Behavior covered by the test suite is real. Public surfaces (Event wire, gRPC, Go embed API, WASM host, REJECTION codes) are already compatibility-bound under constitution Principle VII: changes must be additive, or ship with an upgrade path. There is no `v1.0` tag yet—see [`COMPATIBILITY.md`](./COMPATIBILITY.md) for the inventory, versioning stance, and 1.0 criteria.
 
 Public repository: [github.com/sparrow-community/sparrow](https://github.com/sparrow-community/sparrow). Browser demo: [sparrow-playground](https://github.com/sparrow-community/sparrow-playground). How to contribute: [`CONTRIBUTING.md`](./CONTRIBUTING.md).
 
-The supported executable-process subset, and the combinations this kernel refuses, are the agent contract in [`AGENTS.md`](./AGENTS.md) (Chinese: [`AGENTS.zh.md`](./AGENTS.zh.md)). Runtime notes live in [`processing/README.md`](./processing/README.md).
+The supported executable-process subset, and the combinations this kernel refuses, are the agent contract in [`AGENTS.md`](./AGENTS.md) (Chinese: [`AGENTS.zh.md`](./AGENTS.zh.md)). Runtime notes live in [`processing/README.md`](./processing/README.md). Compatibility: [`COMPATIBILITY.md`](./COMPATIBILITY.md).
 
 ## Requirements
 
@@ -71,9 +71,10 @@ cd wasm && ./build.sh
 ```
 
 The JS host contract is [`wasm/README.md`](./wasm/README.md). The npm package
-is `@sparrow-community/wasm` (alpha versions `0.0.0-alpha.YYYYMMDD.N`). Publishes
-go through GitHub Actions Trusted Publishing (`.github/workflows/publish-wasm.yml`),
-not long-lived npm tokens.
+is `@sparrow-community/wasm` (alpha versions `YYYY.M.D-alpha.N`, UTC). Publishes
+are tag-triggered (`wasm-vYYYY.M.D-alpha.N`) via GitHub Actions Trusted Publishing
+(`.github/workflows/publish-wasm.yml`), not long-lived npm tokens. Every publish
+moves both `latest` and `alpha`.
 
 ## License
 

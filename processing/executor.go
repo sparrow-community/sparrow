@@ -19,13 +19,19 @@ type Emitter func(el *eventv1.Element) error
 type Executor struct {
 	Handlers *handlers.Registry
 	Now      func() time.Time
+
+	// intervention is the Engine control plane (nil-safe / default-off).
+	intervention *interventionCtl
+	// activeSourceCmdID / activeInstanceID are set by Engine for the in-flight COMMAND.
+	activeSourceCmdID string
+	activeInstanceID  string
 }
 
 func NewExecutor(reg *handlers.Registry) *Executor {
 	if reg == nil {
 		reg = handlers.DefaultRegistry()
 	}
-	return &Executor{Handlers: reg}
+	return &Executor{Handlers: reg, intervention: &interventionCtl{}}
 }
 
 func (x *Executor) now() time.Time {
@@ -115,7 +121,39 @@ func (x *Executor) Enter(
 			pubs = append(pubs, more...)
 			return pubs, err
 		}
+		if effect.DecideExclusive || effect.DecideInclusive || effect.DecideComplex {
+			mode := DecideExclusive
+			if effect.DecideInclusive {
+				mode = DecideInclusive
+			} else if effect.DecideComplex {
+				mode = DecideComplex
+			}
+			pending := &PendingTransition{
+				Kind:             PendingDecide,
+				FromElementID:    elementID,
+				TokenID:          tokenID,
+				DecideMode:       mode,
+				TerminateJoinPeers: effect.DecideTerminateJoinPeers,
+			}
+			if x.tryBarrier(inst, elementID, tokenID, pending) {
+				return pubs, nil
+			}
+			more, err := x.finalizeGatewayDecide(ctx, dep, inst, tokenID, elementID, mode, effect.DecideTerminateJoinPeers, emit)
+			pubs = append(pubs, more...)
+			return pubs, err
+		}
 		if effect.EnterChild != "" {
+			pending := &PendingTransition{
+				Kind:            PendingEnterChild,
+				FromElementID:   elementID,
+				TokenID:         tokenID,
+				EnterChildID:    effect.EnterChild,
+				SpawnChildToken: effect.SpawnChildToken,
+				NextElementIDs:  []string{effect.EnterChild},
+			}
+			if x.tryBarrier(inst, elementID, tokenID, pending) {
+				return pubs, nil
+			}
 			childTokenID := tokenID
 			if effect.SpawnChildToken {
 				var err error
@@ -139,11 +177,28 @@ func (x *Executor) Enter(
 			}
 		}
 		if len(effect.Fork) > 0 {
+			pending, err := pendingFork(dep, tokenID, elementID, effect.Fork)
+			if err != nil {
+				return pubs, err
+			}
+			if x.tryBarrier(inst, elementID, tokenID, pending) {
+				return pubs, nil
+			}
 			more, err := x.forkOutgoings(ctx, dep, inst, tokenID, elementID, effect.Fork, emit)
 			pubs = append(pubs, more...)
 			return pubs, err
 		}
 		if len(effect.LinkContinue) > 0 {
+			pending := &PendingTransition{
+				Kind:           PendingLink,
+				FromElementID:  elementID,
+				TokenID:        tokenID,
+				LinkCatchIDs:   append([]string(nil), effect.LinkContinue...),
+				NextElementIDs: append([]string(nil), effect.LinkContinue...),
+			}
+			if x.tryBarrier(inst, elementID, tokenID, pending) {
+				return pubs, nil
+			}
 			for i, catchID := range effect.LinkContinue {
 				tid := tokenID
 				if i > 0 {
@@ -171,6 +226,15 @@ func (x *Executor) Enter(
 				more, err := x.startTransactionCancel(ctx, dep, inst, tokenID, elementID, emit)
 				pubs = append(pubs, more...)
 				return pubs, err
+			}
+			// K1: optional breakpoint hit when a wait settles (ACTIVATED).
+			pending := &PendingTransition{
+				Kind:          PendingWait,
+				FromElementID: elementID,
+				TokenID:       tokenID,
+			}
+			if x.tryBarrierWait(inst, elementID, tokenID, pending) {
+				return pubs, nil
 			}
 			return pubs, nil
 		}
@@ -460,11 +524,14 @@ func (x *Executor) leaveViaOutgoings(
 	emit Emitter,
 ) ([]handlers.Publication, error) {
 	if preferredFlowID != "" {
-		next, err := x.takeOutgoing(dep, inst, tokenID, fromElementID, preferredFlowID, emit)
+		pending, err := pendingLeave(dep, tokenID, fromElementID, preferredFlowID)
 		if err != nil {
 			return nil, err
 		}
-		return x.Enter(ctx, dep, inst, tokenID, next, emit)
+		if x.tryBarrier(inst, fromElementID, tokenID, pending) {
+			return nil, nil
+		}
+		return x.takeOutgoingThenEnter(ctx, dep, inst, tokenID, fromElementID, preferredFlowID, emit)
 	}
 	var vars map[string]string
 	if inst != nil {
@@ -475,11 +542,49 @@ func (x *Executor) leaveViaOutgoings(
 		return nil, err
 	}
 	if len(flows) > 1 {
+		pending, err := pendingFork(dep, tokenID, fromElementID, flows)
+		if err != nil {
+			return nil, err
+		}
+		if x.tryBarrier(inst, fromElementID, tokenID, pending) {
+			return nil, nil
+		}
 		return x.forkOutgoings(ctx, dep, inst, tokenID, fromElementID, flows, emit)
 	}
-	next, err := x.takeOutgoing(dep, inst, tokenID, fromElementID, flows[0], emit)
+	pending, err := pendingLeave(dep, tokenID, fromElementID, flows[0])
 	if err != nil {
 		return nil, err
+	}
+	if x.tryBarrier(inst, fromElementID, tokenID, pending) {
+		return nil, nil
+	}
+	return x.takeOutgoingThenEnter(ctx, dep, inst, tokenID, fromElementID, flows[0], emit)
+}
+
+// takeOutgoingThenEnter emits SEQUENCE_FLOW_TAKEN, may barrier on the edge (K2),
+// then Enter the target.
+func (x *Executor) takeOutgoingThenEnter(
+	ctx context.Context,
+	dep *deploy.Deployment,
+	inst *projection.Instance,
+	tokenID, fromElementID, flowID string,
+	emit Emitter,
+) ([]handlers.Publication, error) {
+	next, err := x.takeOutgoing(dep, inst, tokenID, fromElementID, flowID, emit)
+	if err != nil {
+		return nil, err
+	}
+	edge := &PendingTransition{
+		Kind:           PendingEdge,
+		FromElementID:  fromElementID,
+		TokenID:        tokenID,
+		TakenFlowIDs:   []string{flowID},
+		NextElementIDs: []string{next},
+		OutgoingFlowID: flowID,
+	}
+	// Pause element for BP matching is the sequence flow id (edge stop).
+	if x.tryBarrier(inst, flowID, tokenID, edge) {
+		return nil, nil
 	}
 	return x.Enter(ctx, dep, inst, tokenID, next, emit)
 }
@@ -492,6 +597,16 @@ func (x *Executor) forkOutgoings(
 	flows []string,
 	emit Emitter,
 ) ([]handlers.Publication, error) {
+	if x.intervention != nil {
+		x.intervention.mu.Lock()
+		x.intervention.forkSuppressDepth++
+		x.intervention.mu.Unlock()
+		defer func() {
+			x.intervention.mu.Lock()
+			x.intervention.forkSuppressDepth--
+			x.intervention.mu.Unlock()
+		}()
+	}
 	type forkBranch struct {
 		tid  string
 		next string
@@ -526,6 +641,186 @@ func (x *Executor) forkOutgoings(
 		}
 	}
 	return pubs, nil
+}
+
+func (x *Executor) tryBarrier(inst *projection.Instance, elementID, tokenID string, pending *PendingTransition) bool {
+	if x == nil || x.intervention == nil || pending == nil {
+		return false
+	}
+	instanceID := x.activeInstanceID
+	if instanceID == "" && inst != nil {
+		instanceID = inst.ID
+	}
+	return x.intervention.shouldBarrier(instanceID, elementID, tokenID, x.activeSourceCmdID, pending)
+}
+
+// tryBarrierWait arms only on breakpoint hit at wait ACTIVATED (not Step policy).
+func (x *Executor) tryBarrierWait(inst *projection.Instance, elementID, tokenID string, pending *PendingTransition) bool {
+	if x == nil || x.intervention == nil || pending == nil {
+		return false
+	}
+	instanceID := x.activeInstanceID
+	if instanceID == "" && inst != nil {
+		instanceID = inst.ID
+	}
+	return x.intervention.shouldBarrierWait(instanceID, elementID, tokenID, x.activeSourceCmdID, pending)
+}
+
+func (x *Executor) resumePending(
+	ctx context.Context,
+	dep *deploy.Deployment,
+	inst *projection.Instance,
+	pending *PendingTransition,
+	emit Emitter,
+) ([]handlers.Publication, error) {
+	if pending == nil {
+		return nil, fmt.Errorf("INVALID_STATE: no pending transition")
+	}
+	switch pending.Kind {
+	case PendingDecide:
+		mode := pending.DecideMode
+		if mode == "" {
+			mode = DecideExclusive
+		}
+		return x.finalizeGatewayDecide(ctx, dep, inst, pending.TokenID, pending.FromElementID, mode, pending.TerminateJoinPeers, emit)
+	case PendingLeave:
+		flowID := pending.OutgoingFlowID
+		if flowID == "" && len(pending.TakenFlowIDs) > 0 {
+			flowID = pending.TakenFlowIDs[0]
+		}
+		return x.leaveViaOutgoings(ctx, dep, inst, pending.TokenID, pending.FromElementID, flowID, emit)
+	case PendingEdge:
+		next := ""
+		if len(pending.NextElementIDs) > 0 {
+			next = pending.NextElementIDs[0]
+		}
+		if next == "" {
+			return nil, fmt.Errorf("INVALID_STATE: edge pending missing next element")
+		}
+		return x.Enter(ctx, dep, inst, pending.TokenID, next, emit)
+	case PendingWait:
+		// Wait BP / manual pause: resume clears pause only; token stays waiting.
+		return nil, nil
+	case PendingFork:
+		return x.forkOutgoings(ctx, dep, inst, pending.TokenID, pending.FromElementID, pending.TakenFlowIDs, emit)
+	case PendingEnterChild:
+		childTokenID := pending.TokenID
+		if pending.SpawnChildToken {
+			var err error
+			childTokenID, err = spawnScopeChildToken(inst, pending.TokenID)
+			if err != nil {
+				return nil, err
+			}
+		}
+		typ, err := dep.TypeOf(pending.FromElementID)
+		if err == nil && (typ == eventv1.Element_TYPE_SUB_PROCESS || typ == eventv1.Element_TYPE_TRANSACTION) {
+			if err := emitEventSubProcessStartArms(dep, inst, pending.FromElementID, x.now(), emit); err != nil {
+				return nil, err
+			}
+		}
+		return x.Enter(ctx, dep, inst, childTokenID, pending.EnterChildID, emit)
+	case PendingLink:
+		var pubs []handlers.Publication
+		for i, catchID := range pending.LinkCatchIDs {
+			tid := pending.TokenID
+			if i > 0 {
+				var err error
+				tid, err = NextID()
+				if err != nil {
+					return pubs, err
+				}
+			}
+			more, err := x.Enter(ctx, dep, inst, tid, catchID, emit)
+			pubs = append(pubs, more...)
+			if err != nil {
+				return pubs, err
+			}
+		}
+		return pubs, nil
+	default:
+		return nil, fmt.Errorf("INVALID_STATE: unknown pending kind %q", pending.Kind)
+	}
+}
+
+// finalizeGatewayDecide chooses outgoings with current variables, emits
+// COMPLETING/COMPLETED, then leaves or forks. Leave barriers are suppressed in
+// this burst so StepInto from PendingDecide does not double-stop on the gateway;
+// sequence-flow-edge barriers (K2) still apply after SEQUENCE_FLOW_TAKEN.
+func (x *Executor) finalizeGatewayDecide(
+	ctx context.Context,
+	dep *deploy.Deployment,
+	inst *projection.Instance,
+	tokenID, elementID string,
+	mode DecideMode,
+	terminateJoinPeers string,
+	emit Emitter,
+) ([]handlers.Publication, error) {
+	var vars map[string]string
+	if inst != nil {
+		vars = inst.Variables
+	}
+	var flows []string
+	var err error
+	switch mode {
+	case DecideInclusive:
+		flows, err = dep.ChooseInclusiveOutgoing(elementID, vars)
+	case DecideComplex:
+		flows, err = dep.ChooseComplexOutgoing(elementID, vars)
+	default:
+		var flowID string
+		flowID, err = dep.ChooseExclusiveOutgoing(elementID, vars)
+		if err == nil {
+			flows = []string{flowID}
+		}
+	}
+	if err != nil {
+		return nil, err
+	}
+	if len(flows) == 0 {
+		return nil, fmt.Errorf("NO_OUTGOING_FLOW: gateway %q", elementID)
+	}
+	typ := eventv1.Element_TYPE_EXCLUSIVE_GATEWAY
+	if t, typeErr := dep.TypeOf(elementID); typeErr == nil {
+		typ = t
+	}
+	for _, intent := range []eventv1.Element_Intent{
+		eventv1.Element_INTENT_COMPLETING,
+		eventv1.Element_INTENT_COMPLETED,
+	} {
+		el := &eventv1.Element{
+			Intent:  intent,
+			Type:    typ,
+			Id:      elementID,
+			TokenId: tokenID,
+		}
+		if intent == eventv1.Element_INTENT_COMPLETED && mode == DecideExclusive {
+			el.Payload = &eventv1.Element_GatewayPayload{
+				GatewayPayload: &eventv1.GatewayPayload{TakenSequenceFlowId: flows[0]},
+			}
+		}
+		if err := emit(el); err != nil {
+			return nil, err
+		}
+	}
+	if terminateJoinPeers != "" {
+		if err := x.terminateJoinPeers(dep, inst, tokenID, terminateJoinPeers, emit); err != nil {
+			return nil, err
+		}
+	}
+	if x.intervention != nil {
+		x.intervention.mu.Lock()
+		x.intervention.decideFinalizeDepth++
+		x.intervention.mu.Unlock()
+		defer func() {
+			x.intervention.mu.Lock()
+			x.intervention.decideFinalizeDepth--
+			x.intervention.mu.Unlock()
+		}()
+	}
+	if len(flows) == 1 {
+		return x.leaveViaOutgoings(ctx, dep, inst, tokenID, elementID, flows[0], emit)
+	}
+	return x.forkOutgoings(ctx, dep, inst, tokenID, elementID, flows, emit)
 }
 
 // tryCompleteScope checks if the scope containing elementID can be completed.

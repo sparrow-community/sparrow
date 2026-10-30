@@ -40,6 +40,9 @@ func (e *Engine) FireDue(ctx context.Context) error {
 			return err
 		}
 		if err := e.completeScopeBoundary(ctx, sd.instanceID, sd.boundaryID); err != nil {
+			if strings.HasPrefix(err.Error(), "INVALID_STATE:") {
+				continue
+			}
 			if first == nil {
 				first = err
 			}
@@ -50,6 +53,9 @@ func (e *Engine) FireDue(ctx context.Context) error {
 			return err
 		}
 		if err := e.triggerEventSubProcess(ctx, ew.instanceID, ew.eventSubProcessElementID, nil); err != nil {
+			if strings.HasPrefix(err.Error(), "INVALID_STATE:") {
+				continue
+			}
 			if first == nil {
 				first = err
 			}
@@ -160,9 +166,15 @@ func messageWaiterElementID(tok *projection.Token) string {
 	if tok.MessageBoundaryID != "" {
 		return tok.MessageBoundaryID
 	}
-	if tok.BoundaryID != "" {
-		return tok.BoundaryID
+	for _, w := range tok.BoundaryWaits {
+		if w.Kind != "message" {
+			continue
+		}
+		if tok.BoundaryID == w.BoundaryID || (tok.MessageName != "" && tok.MessageName == w.MessageName) {
+			return w.BoundaryID
+		}
 	}
+	// Activity-level message wait (e.g. receive task). Do not route via timer BoundaryID.
 	return tok.ElementID
 }
 
@@ -170,8 +182,13 @@ func signalWaiterElementID(tok *projection.Token) string {
 	if tok.SignalBoundaryID != "" {
 		return tok.SignalBoundaryID
 	}
-	if tok.BoundaryID != "" && tok.SignalName != "" {
-		return tok.BoundaryID
+	for _, w := range tok.BoundaryWaits {
+		if w.Kind != "signal" {
+			continue
+		}
+		if tok.BoundaryID == w.BoundaryID || (tok.SignalName != "" && tok.SignalName == w.SignalName) {
+			return w.BoundaryID
+		}
 	}
 	return tok.ElementID
 }

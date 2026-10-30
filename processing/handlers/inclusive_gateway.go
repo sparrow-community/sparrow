@@ -34,24 +34,25 @@ func (InclusiveGatewayHandler) OnEnter(in EnterInput) (*Effect, error) {
 }
 
 func inclusiveSplit(in EnterInput) (*Effect, error) {
-	var vars map[string]string
-	if in.Instance != nil {
-		vars = in.Instance.Variables
-	}
-	flows, err := in.Deployment.ChooseInclusiveOutgoing(in.ElementID, vars)
-	if err != nil {
-		return nil, err
-	}
-	if len(flows) == 1 {
-		return &Effect{
-			Records:        InstantLifecycle(in.Type, in.ElementID, in.TokenID, nil),
-			TakeOutgoing:   true,
-			OutgoingFlowID: flows[0],
-		}, nil
-	}
+	// Two-phase Instant: ACTIVATING/ACTIVATED first; executor finalizes choose
+	// (COMPLETING/COMPLETED + leave/fork). Default-off still emits the full
+	// lifecycle in one Enter burst. Intervention may barrier at ACTIVATED.
 	return &Effect{
-		Records: InstantLifecycle(in.Type, in.ElementID, in.TokenID, nil),
-		Fork:    flows,
+		Records: []*eventv1.Element{
+			{
+				Intent:  eventv1.Element_INTENT_ACTIVATING,
+				Type:    in.Type,
+				Id:      in.ElementID,
+				TokenId: in.TokenID,
+			},
+			{
+				Intent:  eventv1.Element_INTENT_ACTIVATED,
+				Type:    in.Type,
+				Id:      in.ElementID,
+				TokenId: in.TokenID,
+			},
+		},
+		DecideInclusive: true,
 	}, nil
 }
 

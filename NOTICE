@@ -13,10 +13,15 @@ BPMN Model Interchange Working Group (BPMN MIWG) test fixtures
 
 The files under bpmn/test/ (BPMN XML and PNG) are unmodified copies of the
 "bpmn.io (Camunda Modeler) 18.6.1" results from the BPMN Model Interchange
-Test Suite:
+Test Suite. Separately, C.10.0-reference.* is copied from upstream Reference/
+(no Camunda 18.6.1 vendor export for C.10.0); that additive Reference drop is
+the only non-vendor material under bpmn/test/.
+
+Upstream repository and pin:
 
     https://github.com/bpmn-miwg/bpmn-miwg-test-suite
     https://github.com/bpmn-miwg/bpmn-miwg-test-suite/tree/master/bpmn.io%20(Camunda%20Modeler)%2018.6.1
+    SHA 8416c1118ff98e9161e9e342220460be545ebf7c  (recorded in bpmn/test/MIWG_UPSTREAM_SHA)
 
 The upstream LICENSE.txt states:
 

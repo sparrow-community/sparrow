@@ -125,6 +125,9 @@ func (e *Engine) claimJobs(req ActivateRequest) ([]Job, time.Time) {
 		if inst == nil || lock == nil {
 			continue
 		}
+		if e.errIfInstancePaused(iid) != nil {
+			continue
+		}
 
 		lock.Lock()
 		tokenIDs := make([]string, 0, len(inst.Tokens))

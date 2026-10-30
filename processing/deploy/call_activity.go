@@ -31,12 +31,18 @@ type CallActivity struct {
 	Outputs         []VariableMapping
 	// ExternalCallee is true when calledElement is not embedded in the same definitions.
 	ExternalCallee bool
+	// Opaque is true when calledElement is missing: the Call Activity is a modeling
+	// stub on the control-flow path and runs as wait → Complete (like empty SubProcess).
+	// Missing callee must not block Deploy.
+	Opaque bool
 }
 
 func validateCallActivity(ca element.CallActivity, catalog map[string]*element.Process) (CallActivity, error) {
 	called := strings.TrimSpace(ca.CalledElement)
 	if called == "" {
-		return CallActivity{}, fmt.Errorf("UNSUPPORTED_ELEMENT: callActivity %q needs calledElement", ca.ID)
+		// Modeling stub: incomplete IO associations to Data Objects are documentary —
+		// they must not block Deploy when there is no callee to map into.
+		return CallActivity{ID: ca.ID, Opaque: true}, nil
 	}
 	inputs, err := compileInputMappings(ca.DataInputAssociations, ca.ID)
 	if err != nil {

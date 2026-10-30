@@ -607,6 +607,7 @@ func TestC_6_0_roundtrip(t *testing.T) {
 											ErrorEventDefinitions: []element.ErrorEventDefinition{{}},
 										},
 									},
+									CancelActivity: true,
 									AttachedToRef: "_614d6469-2bb8-4ad6-a20a-db5db6321c6b",
 								},
 								{
@@ -633,6 +634,7 @@ func TestC_6_0_roundtrip(t *testing.T) {
 											},
 										},
 									},
+									CancelActivity: true,
 									AttachedToRef: "_c38139c7-a2d1-47c7-b75a-19e14c7212c8",
 								},
 								{
@@ -663,6 +665,7 @@ func TestC_6_0_roundtrip(t *testing.T) {
 											},
 										},
 									},
+									CancelActivity: true,
 									AttachedToRef: "_e839800f-ad4f-4bcc-aaf2-d38fe4a32bcd",
 								},
 							},
@@ -990,6 +993,7 @@ func TestC_6_0_roundtrip(t *testing.T) {
 														},
 													},
 												},
+												CancelActivity: true,
 												AttachedToRef: "_b595ec43-0769-4864-8f2e-403c405c8217",
 											},
 											{
@@ -1016,6 +1020,7 @@ func TestC_6_0_roundtrip(t *testing.T) {
 														},
 													},
 												},
+												CancelActivity: true,
 												AttachedToRef: "_ea5cc55d-bfce-49c6-8a1a-a8a41a85da12",
 											},
 										},

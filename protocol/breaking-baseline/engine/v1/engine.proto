@@ -1,0 +1,394 @@
+syntax = "proto3";
+
+package engine.v1;
+
+import "event/v1/event.proto";
+
+// Token is a projection snapshot of one execution token.
+message Token {
+  // Execution token id (UUIDv7).
+  string id = 1;
+  // BPMN element id the token currently sits on.
+  string element_id = 2;
+  // active or waiting.
+  string status = 3;
+  // Worker subscription key when waiting on a job-backed activity; empty otherwise.
+  string job_type = 4;
+  // BPMN message name when waiting on a message catch; empty otherwise.
+  string message_name = 5;
+  // Timer due (unix milliseconds) when waiting on a timer catch or interrupting timer boundary.
+  int64 due_unix_ms = 6;
+  // Attached interrupting timer boundary id; empty otherwise.
+  string boundary_id = 7;
+  // BPMN signal name when waiting on a signal catch; empty otherwise.
+  string signal_name = 8;
+  // Child process instance id when waiting on a Call Activity host; empty otherwise.
+  string called_process_instance_id = 9;
+  // Multi-instance inner iteration index (0-based); -1 for loop host or non-MI tokens.
+  int32 loop_instance_index = 10;
+  // Worker error snapshot when status is blocked; empty otherwise.
+  string incident_error_message = 11;
+  // Consecutive job failures since last activation or resolve; informational.
+  int32 job_fail_count = 12;
+}
+
+// Instance is a read-only projection snapshot. It is not an EventLog record.
+message Instance {
+  // Process instance id (UUIDv7).
+  string id = 1;
+  // Deployment id (UUIDv7).
+  string deployment_id = 2;
+  // Version of the deployed process definition.
+  int32 process_version = 3;
+  // active, completed, or terminated.
+  string status = 4;
+  // Instance variables: name -> JSON text.
+  map<string, string> variables = 5;
+  // Current tokens.
+  repeated Token tokens = 6;
+  // Parent process instance id when this instance was started by a Call Activity.
+  string parent_process_instance_id = 7;
+  // Call Activity element id on the parent.
+  string parent_element_id = 8;
+  // BPMN process id bound at start.
+  string process_id = 9;
+}
+
+// DeployRequest uploads BPMN XML and compiles the M1 executable subset.
+message DeployRequest {
+  // Raw BPMN 2.0 XML bytes.
+  bytes bpmn_xml = 1;
+}
+
+// DeployResponse returns the new deployment id and process revision.
+message DeployResponse {
+  // Deployment id (UUIDv7).
+  string deployment_id = 1;
+  // Primary process id in the definitions (the one CreateInstance starts from this deployment).
+  string process_id = 2;
+  // Assigned revision for that process id.
+  int32 process_version = 3;
+}
+
+// CreateInstanceRequest starts a process instance from a deployment.
+message CreateInstanceRequest {
+  // Deployment id returned by Deploy.
+  string deployment_id = 1;
+  // Initial variables: name -> JSON text.
+  map<string, string> variables = 2;
+  // Optional BPMN process id; start latest revision when deployment_id is empty.
+  // When both are set they MUST agree.
+  string process_id = 3;
+  // Optional revision with process_id; 0 means latest.
+  int32 process_version = 4;
+}
+
+// CreateInstanceResponse returns the new process instance id.
+message CreateInstanceResponse {
+  // Process instance id (UUIDv7).
+  string process_instance_id = 1;
+}
+
+// CompleteRequest finishes a waiting activity (UserTask, ServiceTask, timer/message catch, …).
+message CompleteRequest {
+  // Process instance id (UUIDv7).
+  string process_instance_id = 1;
+  // BPMN element id from the process definition.
+  string element_id = 2;
+  // Execution token id (UUIDv7).
+  string token_id = 3;
+  // Variable deltas: name -> JSON text. Empty map means no change.
+  map<string, string> variables = 4;
+}
+
+// CompleteResponse is empty on success.
+message CompleteResponse {}
+
+// GetInstanceRequest loads a projection snapshot.
+message GetInstanceRequest {
+  // Process instance id (UUIDv7).
+  string process_instance_id = 1;
+}
+
+// GetInstanceResponse carries the snapshot.
+message GetInstanceResponse {
+  // Current instance projection.
+  Instance instance = 1;
+}
+
+// PublishMessageRequest correlates a BPMN message to waiting message catches.
+// If no waiter matches, the message is buffered in memory until a matching catch
+// activates (lost on Recover; not an EventLog record).
+message PublishMessageRequest {
+  // BPMN message name (Definitions/message@name, else message id / messageRef).
+  string name = 1;
+  // Optional process instance id. Empty means all matching waiters.
+  string process_instance_id = 2;
+  // Variable deltas applied via Complete: name -> JSON text.
+  map<string, string> variables = 3;
+  // Optional correlation keys: name -> JSON text, same encoding as instance variables.
+  // When set, a waiter matches only if the instance already has each key with the same JSON value.
+  // Empty means name (and optional process_instance_id) only.
+  map<string, string> correlation_keys = 4;
+}
+
+// PublishMessageResponse reports delivery to waiting catches and in-memory buffering.
+message PublishMessageResponse {
+  // Number of waiting tokens completed immediately.
+  int32 delivered = 1;
+  // 1 if the message was buffered because no waiter matched; otherwise 0.
+  int32 buffered = 2;
+}
+
+// PublishSignalRequest broadcasts a BPMN signal to waiting signal catches.
+// Late signals with no waiter are dropped (not buffered).
+message PublishSignalRequest {
+  // BPMN signal name (Definitions/signal@name, else signal id / signalRef).
+  string name = 1;
+  // Optional process instance id. Empty means all matching waiters.
+  string process_instance_id = 2;
+  // Variable deltas applied via Complete: name -> JSON text.
+  map<string, string> variables = 3;
+}
+
+// PublishSignalResponse reports how many waiting signal catches were completed.
+message PublishSignalResponse {
+  // Number of waiting tokens completed.
+  int32 delivered = 1;
+}
+
+// ThrowErrorRequest throws a BPMN error from a waiting UserTask or ServiceTask.
+// Matching interrupting error boundaries catch it; otherwise the instance terminates.
+message ThrowErrorRequest {
+  // Process instance id (UUIDv7).
+  string process_instance_id = 1;
+  // BPMN element id of the waiting activity.
+  string element_id = 2;
+  // Execution token id (UUIDv7).
+  string token_id = 3;
+  // BPMN error code (Definitions/error@errorCode). Empty matches catch-all boundaries only when they have no code.
+  string error_code = 4;
+}
+
+// ThrowErrorResponse is empty on success.
+message ThrowErrorResponse {}
+
+// ResolveIncidentRequest closes an open incident and restores waiting job semantics.
+message ResolveIncidentRequest {
+  // Process instance id (UUIDv7).
+  string process_instance_id = 1;
+  // BPMN element id from the process definition.
+  string element_id = 2;
+  // Execution token id (UUIDv7).
+  string token_id = 3;
+}
+
+// ResolveIncidentResponse is empty on success.
+message ResolveIncidentResponse {}
+
+// GetDeploymentRequest loads a deployed definition by id.
+message GetDeploymentRequest {
+  // Deployment id (UUIDv7).
+  string deployment_id = 1;
+}
+
+// GetDeploymentResponse carries metadata and the original BPMN XML.
+message GetDeploymentResponse {
+  // Deployment id (UUIDv7).
+  string deployment_id = 1;
+  // Primary process id for this deployment.
+  string process_id = 2;
+  // Assigned revision for that process id.
+  int32 process_version = 3;
+  // Original BPMN 2.0 XML bytes submitted at Deploy (or reloaded from the deploy store).
+  bytes bpmn_xml = 4;
+}
+
+// ListEventsRequest reads the audit timeline for one instance.
+message ListEventsRequest {
+  // Process instance id (UUIDv7).
+  string process_instance_id = 1;
+}
+
+// ListEventsResponse is the ledger records for the instance, in append order.
+message ListEventsResponse {
+  // COMMAND, EVENT, and REJECTION records from the event log.
+  repeated event.v1.Event events = 1;
+}
+
+// --- Intervention control plane (ephemeral session; not ledger EVENTs) ---
+
+// PendingTransition is resume work held at an Enter-settled barrier.
+message PendingTransition {
+  // leave | fork | enterChild | link | decide | edge | wait
+  string kind = 1;
+  string from_element_id = 2;
+  string token_id = 3;
+  repeated string taken_flow_ids = 4;
+  repeated string next_element_ids = 5;
+  string outgoing_flow_id = 6;
+  string enter_child_id = 7;
+  bool spawn_child_token = 8;
+  repeated string link_catch_ids = 9;
+  // exclusive | inclusive | complex (PendingDecide)
+  string decide_mode = 10;
+  string terminate_join_peers = 11;
+}
+
+// InterventionState is the read model for GetInterventionState.
+message InterventionState {
+  bool enabled = 1;
+  string focus_instance_id = 2;
+  // continuous | step | breakpoints | stepOver
+  string policy = 3;
+  repeated string breakpoints = 4;
+  bool paused = 5;
+  // step | breakpoint | manual
+  string pause_reason = 6;
+  string pause_element_id = 7;
+  string pause_token_id = 8;
+  PendingTransition pending = 9;
+  // True while barrier-paused; hosts should skip FireDue/Activate for this instance.
+  bool block_host_effects = 10;
+}
+
+message EnableInterventionRequest {
+  string process_instance_id = 1;
+  // continuous | step | breakpoints; empty defaults to continuous
+  string policy = 2;
+}
+
+message EnableInterventionResponse {
+  bool ok = 1;
+}
+
+message DisableInterventionRequest {
+  // Optional: clear one instance session; empty clears all.
+  string process_instance_id = 1;
+}
+
+message DisableInterventionResponse {
+  bool ok = 1;
+}
+
+message SetBreakpointsRequest {
+  string process_instance_id = 1;
+  repeated string element_ids = 2;
+}
+
+message SetBreakpointsResponse {
+  bool ok = 1;
+  repeated string element_ids = 2;
+}
+
+message ContinueRequest {
+  string process_instance_id = 1;
+}
+
+message ContinueResponse {
+  bool ok = 1;
+  bool paused = 2;
+  InterventionState state = 3;
+}
+
+message StepIntoRequest {
+  string process_instance_id = 1;
+}
+
+message StepIntoResponse {
+  bool ok = 1;
+  bool paused = 2;
+  InterventionState state = 3;
+}
+
+message StepOverRequest {
+  string process_instance_id = 1;
+}
+
+message StepOverResponse {
+  bool ok = 1;
+  bool paused = 2;
+  InterventionState state = 3;
+}
+
+message PauseRequest {
+  string process_instance_id = 1;
+}
+
+message PauseResponse {
+  bool ok = 1;
+  InterventionState state = 2;
+}
+
+message HostEffectAllowedRequest {
+  string process_instance_id = 1;
+}
+
+message HostEffectAllowedResponse {
+  bool allowed = 1;
+}
+
+message GetInterventionStateRequest {
+  string process_instance_id = 1;
+}
+
+message GetInterventionStateResponse {
+  InterventionState state = 1;
+}
+
+message SetVariablesRequest {
+  string process_instance_id = 1;
+  // Variable deltas: name -> JSON text.
+  map<string, string> variables = 2;
+}
+
+message SetVariablesResponse {
+  bool ok = 1;
+  InterventionState state = 2;
+}
+
+// EngineService is the process-client command surface (deploy, start, complete, query).
+// Worker pull APIs live on job.v1.JobService. Neither service is the event ledger.
+service EngineService {
+  // Deploy compiles BPMN XML and returns a deployment id.
+  rpc Deploy(DeployRequest) returns (DeployResponse);
+  // CreateInstance starts an instance and runs until the first wait or completion.
+  rpc CreateInstance(CreateInstanceRequest) returns (CreateInstanceResponse);
+  // Complete maps to Engine.Complete for any waiting element.
+  rpc Complete(CompleteRequest) returns (CompleteResponse);
+  // PublishMessage completes waiting message catches whose name (and optional correlation keys) match.
+  rpc PublishMessage(PublishMessageRequest) returns (PublishMessageResponse);
+  // PublishSignal completes waiting signal catches whose name matches (no buffer).
+  rpc PublishSignal(PublishSignalRequest) returns (PublishSignalResponse);
+  // ThrowError maps to Engine.ThrowError for a waiting UserTask or ServiceTask.
+  rpc ThrowError(ThrowErrorRequest) returns (ThrowErrorResponse);
+  // ResolveIncident closes an open Service Task incident and restores job waiting.
+  rpc ResolveIncident(ResolveIncidentRequest) returns (ResolveIncidentResponse);
+  // GetDeployment returns deployment metadata and the original BPMN XML.
+  rpc GetDeployment(GetDeploymentRequest) returns (GetDeploymentResponse);
+  // GetInstance returns a projection snapshot.
+  rpc GetInstance(GetInstanceRequest) returns (GetInstanceResponse);
+  // ListEvents returns the instance audit timeline.
+  rpc ListEvents(ListEventsRequest) returns (ListEventsResponse);
+
+  // EnableIntervention opts into the ephemeral intervention session for one focus instance.
+  rpc EnableIntervention(EnableInterventionRequest) returns (EnableInterventionResponse);
+  // DisableIntervention clears the session when not barrier-paused.
+  rpc DisableIntervention(DisableInterventionRequest) returns (DisableInterventionResponse);
+  // SetBreakpoints replaces the breakpoint element id set.
+  rpc SetBreakpoints(SetBreakpointsRequest) returns (SetBreakpointsResponse);
+  // Continue resumes pending transit under continuous policy (honors breakpoints).
+  rpc Continue(ContinueRequest) returns (ContinueResponse);
+  // StepInto resumes one pending transit then stops at the next Enter-settled barrier.
+  rpc StepInto(StepIntoRequest) returns (StepIntoResponse);
+  // StepOver resumes pending transit and drains Enter-settled barriers past breakpoints until Wait/end.
+  rpc StepOver(StepOverRequest) returns (StepOverResponse);
+  // GetInterventionState returns the ephemeral session snapshot.
+  rpc GetInterventionState(GetInterventionStateRequest) returns (GetInterventionStateResponse);
+  // SetVariables patches variables while barrier-paused (ledger PROCESS variable EVENT).
+  rpc SetVariables(SetVariablesRequest) returns (SetVariablesResponse);
+  // Pause arms PauseReasonManual (immediate on wait, else next barrier).
+  rpc Pause(PauseRequest) returns (PauseResponse);
+  // HostEffectAllowed reports whether FireDue/Activate may proceed for the instance.
+  rpc HostEffectAllowed(HostEffectAllowedRequest) returns (HostEffectAllowedResponse);
+}
