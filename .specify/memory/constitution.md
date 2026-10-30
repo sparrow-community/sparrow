@@ -1,10 +1,12 @@
 <!--
 Sync Impact Report
-- Version change: 1.0.1 → 1.0.2
-- Modified principles: I wording (execution engine → execution and fact kernel) to match AGENTS; MUST intent unchanged
-- Added sections: none
+- Version change: 1.0.2 → 1.1.0
+- Modified principles: none redefined
+- Added sections: Principle VII (Backward Compatibility Is the Promise); compatibility quality gate
+- Clarified: Module Boundaries lists the `wasm` module (five modules, matching AGENTS)
 - Removed sections: none
-- Follow-up TODOs: none
+- Follow-up TODOs: golden event-log fixtures, `buf breaking` against the last release, and the
+  release versioning scheme are delivered by the next stability increment (AGENTS Planned)
 -->
 
 # Sparrow Constitution
@@ -47,9 +49,34 @@ COMMAND handling for a given `process_instance_id` MUST be strictly serial. Inva
 
 Rationale: one lock per instance is the partition model; silent success destroys auditability.
 
+### VII. Backward Compatibility Is the Promise
+
+Every published release (Go module tag, npm package, gateway binary) is a compatibility baseline.
+Later releases MUST honor it:
+
+- **Ledger**: an Event log written by any published release MUST Recover on every later release
+  and rebuild the same projection. A change whose replay of an existing log yields a different
+  projection or different follow-up Events is breaking.
+- **Event wire** (`event.v1`): changes MUST be additive. Field numbers and enum values MUST NOT be
+  removed, renumbered, retyped, or repurposed; retired ones MUST be `reserved`. Readers MUST
+  tolerate unknown fields and enum values.
+- **Definitions**: a BPMN definition accepted by Deploy on a published release MUST remain
+  accepted, and MUST keep its runtime semantics for instances already started on it.
+- **API surfaces**: `engine.v1`, `job.v1`, exported Go API of `processing`, and the WASM
+  `globalThis.sparrow` API with `sparrow.d.ts` MUST evolve additively. REJECTION codes are part
+  of the contract and MUST NOT be renamed or reused.
+
+A breaking change MUST ship with an upgrade path (log migrator or dual reader), a release note, and
+a constitution-reviewed justification in the feature plan's Complexity Tracking table. Bug fixes
+that change semantics are breaking for logs written before the fix unless replay of those logs is
+preserved.
+
+Rationale: Sparrow is embedded by developers and holds facts that outlive any single release.
+A ledger that cannot be read after an upgrade is not a ledger.
+
 ## Module Boundaries
 
-The workspace is four Go modules. New top-level modules MUST NOT be added unless an existing module cannot host the work.
+The workspace is five Go modules. New top-level modules MUST NOT be added unless an existing module cannot host the work.
 
 | Module | MUST | MUST NOT |
 |--------|------|----------|
@@ -57,6 +84,7 @@ The workspace is four Go modules. New top-level modules MUST NOT be added unless
 | `protocol` | Own `.proto` sources and generated packages (`event.v1`, `job.v1`, `engine.v1`) | Treat `job.v1` / `engine.v1` as Event record types |
 | `processing` | Execute, recover, project; persist via `EventLog` + `deploy.Store` + optional `runtime.Store` | Host gRPC or other transports |
 | `gateway` | Adapt EngineService and JobService; process entry `cmd/sparrow` | Reimplement element handlers |
+| `wasm` | Host the in-memory engine for browsers (`globalThis.sparrow`); JS schedules timers and jobs | Reimplement element handlers or embed a timer loop / script runtime |
 
 License headers MUST remain Apache-2.0 (Sparrow community). Protocol changes MUST keep wire compatibility in mind (`buf` breaking category `FILE`).
 
@@ -64,6 +92,9 @@ License headers MUST remain Apache-2.0 (Sparrow community). Protocol changes MUS
 
 - Semantic changes in `processing` MUST ship with tests that exercise the BPMN fixture and assert Event intents (not only the final projection).
 - `go test ./processing/ ./gateway/ ./protocol/proto/event/v1/` MUST pass before a change is treated as done. The `bpmn` MIWG suite MAY run separately when XML model files change.
+- Changes touching Events, Recover, Deploy validation, or a public API surface MUST pass the
+  compatibility checks of Principle VII: replay of committed golden Event logs from published
+  releases, and `buf breaking` against the last published release.
 - Regenerating protocol MUST go through `protocol/proto/build.sh` (`buf lint` then `buf generate`). Hand-edited `*.pb.go` is forbidden.
 - Planning for new work MUST proceed spec → plan → tasks against this constitution. `AGENTS.md` (English, canonical) and `AGENTS.zh.md` (Chinese) hold the implemented-element snapshot and roadmap index; they are not a second source of governing rules. Material snapshot changes MUST update both editions in the same change.
 
@@ -76,8 +107,8 @@ Amendments:
 1. Record the change in this file (principle text, version, date).
 2. Bump **Version** using semver: MAJOR for removed or redefined principles; MINOR for new or materially expanded principles; PATCH for clarification only.
 3. Set **Last Amended** to the amendment date. Keep **Ratified** as the original adoption date.
-4. Reviewers MUST check PRs against these principles (ledger subject, module boundary, no product-suite scope creep, tests for semantics).
+4. Reviewers MUST check PRs against these principles (ledger subject, module boundary, no product-suite scope creep, tests for semantics, backward compatibility).
 
 Complexity that violates a principle (extra modules, parallel graph, new ledger subjects) MUST be listed in the feature plan's Complexity Tracking table with a simpler alternative that was rejected. Unjustified violations MUST block the plan.
 
-**Version**: 1.0.2 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-09-19
+**Version**: 1.1.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-10-16

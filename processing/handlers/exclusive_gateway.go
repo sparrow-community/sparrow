@@ -11,22 +11,25 @@ func (ExclusiveGatewayHandler) Type() eventv1.Element_Type {
 }
 
 func (ExclusiveGatewayHandler) OnEnter(in EnterInput) (*Effect, error) {
-	var vars map[string]string
-	if in.Instance != nil {
-		vars = in.Instance.Variables
-	}
-	flowID, err := in.Deployment.ChooseExclusiveOutgoing(in.ElementID, vars)
-	if err != nil {
-		return nil, err
-	}
+	// Two-phase Instant: ACTIVATING/ACTIVATED first; executor finalizes choose
+	// (COMPLETING/COMPLETED + leave). Default-off still emits the full lifecycle
+	// in one Enter burst. Intervention may barrier at ACTIVATED before choose.
 	return &Effect{
-		Records: InstantLifecycle(in.Type, in.ElementID, in.TokenID, func(el *eventv1.Element) {
-			el.Payload = &eventv1.Element_GatewayPayload{
-				GatewayPayload: &eventv1.GatewayPayload{TakenSequenceFlowId: flowID},
-			}
-		}),
-		TakeOutgoing:   true,
-		OutgoingFlowID: flowID,
+		Records: []*eventv1.Element{
+			{
+				Intent:  eventv1.Element_INTENT_ACTIVATING,
+				Type:    in.Type,
+				Id:      in.ElementID,
+				TokenId: in.TokenID,
+			},
+			{
+				Intent:  eventv1.Element_INTENT_ACTIVATED,
+				Type:    in.Type,
+				Id:      in.ElementID,
+				TokenId: in.TokenID,
+			},
+		},
+		DecideExclusive: true,
 	}, nil
 }
 

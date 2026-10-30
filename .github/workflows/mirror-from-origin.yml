@@ -1,0 +1,102 @@
+# Mirror Origin (Cursor SoT) → this GitHub repo (public CI / Pages / npm).
+#
+# Origin source of truth: origin.cursor.com/git/slowrookie/sparrow
+# GitHub mirror:          github.com/sparrow-community/sparrow
+#
+# Required repo secrets (Settings → Secrets and variables → Actions):
+#   ORIGIN_GIT_TOKEN  — HTTPS token that can `git fetch` Origin (read).
+#                       Create in Cursor / Origin account settings; paste here.
+#   GH_MIRROR_TOKEN   — GitHub PAT (classic) or fine-grained token with
+#                       contents:write on sparrow-community/sparrow.
+#                       Prefer classic with `repo` + `workflow` so pushes of
+#                       `.github/workflows/**` and release tags can trigger
+#                       other Actions (GITHUB_TOKEN pushes do not start new runs).
+#
+# Until both secrets exist, this workflow exits 0 with a warning (no-op).
+# Schedule keeps trying; after Jiaxing adds secrets, sync becomes automatic.
+#
+# Optional later: Origin webhook → repository_dispatch (type: mirror) if/when
+# Origin exposes git webhooks; schedule remains the durable fallback.
+name: mirror-from-origin
+
+on:
+  schedule:
+    # Every 20 minutes — durable catch-up for main + release tags.
+    - cron: "*/20 * * * *"
+  workflow_dispatch:
+  repository_dispatch:
+    types: [mirror]
+
+concurrency:
+  group: mirror-from-origin
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  mirror:
+    name: Origin → GitHub
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require mirror secrets
+        id: secrets
+        env:
+          ORIGIN_GIT_TOKEN: ${{ secrets.ORIGIN_GIT_TOKEN }}
+          GH_MIRROR_TOKEN: ${{ secrets.GH_MIRROR_TOKEN }}
+        run: |
+          set -euo pipefail
+          missing=()
+          if [ -z "${ORIGIN_GIT_TOKEN:-}" ]; then missing+=("ORIGIN_GIT_TOKEN"); fi
+          if [ -z "${GH_MIRROR_TOKEN:-}" ]; then missing+=("GH_MIRROR_TOKEN"); fi
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Mirror skipped — add Actions secrets: ${missing[*]}"
+            echo "See CONTRIBUTING.md (Origin → GitHub mirror) and Project store docs/wasm-npm-publish.md."
+            exit 0
+          fi
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        if: ${{ steps.secrets.outputs.ready == 'true' }}
+        with:
+          fetch-depth: 0
+          # PAT so mirrored tag pushes can trigger publish-wasm.
+          token: ${{ secrets.GH_MIRROR_TOKEN }}
+
+      - name: Fetch Origin and push main + tags
+        if: ${{ steps.secrets.outputs.ready == 'true' }}
+        env:
+          ORIGIN_GIT_TOKEN: ${{ secrets.ORIGIN_GIT_TOKEN }}
+        run: |
+          set -euo pipefail
+          git config user.name "sparrow-mirror"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          ORIGIN_URL="https://x-access-token:${ORIGIN_GIT_TOKEN}@origin.cursor.com/git/slowrookie/sparrow.git"
+          git remote remove origin-sot 2>/dev/null || true
+          git remote add origin-sot "$ORIGIN_URL"
+          git fetch origin-sot --prune --tags
+
+          if ! git rev-parse --verify refs/remotes/origin-sot/main >/dev/null 2>&1; then
+            echo "::error::Origin has no main branch"
+            exit 1
+          fi
+
+          ORIGIN_SHA="$(git rev-parse refs/remotes/origin-sot/main)"
+          GH_SHA="$(git rev-parse refs/remotes/origin/main 2>/dev/null || git rev-parse HEAD)"
+          echo "Origin main: $ORIGIN_SHA"
+          echo "GitHub main: $GH_SHA"
+
+          if [ "$ORIGIN_SHA" = "$GH_SHA" ]; then
+            echo "main already in sync"
+          else
+            # Origin is SoT. force-with-lease avoids clobbering a concurrent GH push.
+            echo "Updating GitHub main → Origin tip"
+            git push --force-with-lease="refs/heads/main:${GH_SHA}" origin "${ORIGIN_SHA}:refs/heads/main"
+          fi
+
+          # Mirror tags (new wasm-v* tags trigger publish-wasm via GH_MIRROR_TOKEN).
+          git push origin --tags
+
+          echo "Mirror complete."

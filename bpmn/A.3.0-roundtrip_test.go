@@ -275,6 +275,7 @@ func TestA_3_0_roudtrip(t *testing.T) {
 											},
 										},
 									},
+									CancelActivity: true,
 									AttachedToRef: "_1ae31d1b-2559-4f78-a3ec-47986a49db48",
 								},
 							},

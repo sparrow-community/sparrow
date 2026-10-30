@@ -32,6 +32,9 @@ func (e *Engine) PublishSignal(ctx context.Context, req PublishSignalRequest) (i
 		if !ok {
 			return 0, fmt.Errorf("NOT_FOUND: instance %q", instanceID)
 		}
+		if err := e.errIfInstancePaused(instanceID); err != nil {
+			return 0, err
+		}
 	}
 	waiters := e.collectSignalWaiters(name, instanceID)
 	scopeWaiters := e.collectScopeSignalWaiters(name, instanceID)
